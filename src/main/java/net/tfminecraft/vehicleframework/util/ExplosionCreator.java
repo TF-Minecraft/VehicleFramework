@@ -190,6 +190,8 @@ public class ExplosionCreator {
         
 	}
 
+	// This API starts FallingBlockEntity.time at 1; generic spawn starts at 0 and would change debris physics.
+	@SuppressWarnings({"deprecation"})
 	private static void spawnDebris(Location loc, Location explosionCenter,
                                BlockData debrisData, Material originalType,
                                String cause, Random random) {

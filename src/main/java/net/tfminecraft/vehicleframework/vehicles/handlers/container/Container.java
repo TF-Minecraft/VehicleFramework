@@ -224,6 +224,8 @@ public class Container {
         updateBoneVisibility();
     }
 
+    // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+    @SuppressWarnings("deprecation")
     private Inventory ensureLive(ActiveVehicle v) {
         if (live != null) {
             return live;

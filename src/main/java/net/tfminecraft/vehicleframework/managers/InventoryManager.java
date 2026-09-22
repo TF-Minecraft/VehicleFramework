@@ -37,6 +37,8 @@ public class InventoryManager {
 	private OwnershipGUIManager ownershipGUI = new OwnershipGUIManager();
 
 	//Seat Selector
+	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
+	@SuppressWarnings("deprecation")
 	public void seatSelection(Inventory i, Player p, ActiveVehicle v, boolean open) {
 		if(open) {
 			i = VehicleFramework.plugin.getServer().createInventory(new VFInventoryHolder(v.getUUID(), VFGUI.SEAT_SELECTION), 27, "§7Select Seat");
@@ -121,6 +123,8 @@ public class InventoryManager {
 		i.setItemMeta(m);
 		return i;
 	}
+	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
+	@SuppressWarnings("deprecation")
 	private ItemStack createDismountButton() {
 		ItemStack i = new ItemStack(Material.BARRIER, 1);
 		ItemMeta m = i.getItemMeta();
@@ -130,6 +134,8 @@ public class InventoryManager {
 	}
 	
 	//Repair Window
+	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
+	@SuppressWarnings("deprecation")
 	public void repairWindow(Inventory i, Player p, ActiveVehicle v, boolean open, String tool) {
 		if(open) {
 			i = VehicleFramework.plugin.getServer().createInventory(new VFInventoryHolder(v.getUUID(), VFGUI.REPAIR), 27, "§7Repair Vehicle");
@@ -165,6 +171,8 @@ public class InventoryManager {
 			p.openInventory(i);
 		}
 	}
+	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
+	@SuppressWarnings("deprecation")
 	private ItemStack getRepairItem(String tool) {
 		ItemStack i = new ItemStack(Material.IRON_SHOVEL, 1);
 		ItemMeta m = i.getItemMeta();
@@ -188,6 +196,8 @@ public class InventoryManager {
 		i.setItemMeta(m);
 		return i;
 	}
+	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
+	@SuppressWarnings("deprecation")
 	private ItemStack getWaterItem(String tool) {
 		ItemStack i = new ItemStack(Material.WATER_BUCKET, 1);
 		ItemMeta m = i.getItemMeta();
@@ -254,6 +264,8 @@ public class InventoryManager {
 		i.setItemMeta(m);
 		return i;
 	}
+	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
+	@SuppressWarnings("deprecation")
 	private ItemStack getWeaponItem(ActiveWeapon w) {
 		ItemStack i = new ItemStack(Material.IRON_BLOCK, 1);
 		ItemMeta m = i.getItemMeta();
@@ -272,6 +284,8 @@ public class InventoryManager {
 	}
 	
 	//Skin Selector
+	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
+	@SuppressWarnings("deprecation")
 	public void skinSelection(Inventory i, Player p, ActiveVehicle v, boolean open) {
 		if(open) {
 			i = VehicleFramework.plugin.getServer().createInventory(new VFInventoryHolder(v.getUUID(), VFGUI.SKIN_SELECTION), 27, "§7Select Skin");
@@ -302,6 +316,8 @@ public class InventoryManager {
 		}
 	}
 		
+	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
+	@SuppressWarnings("deprecation")
 	private ItemStack getSkinItem(VehicleSkin s, String active) {
 		ItemStack i = new ItemStack(Material.GREEN_CONCRETE, 1);
 		if(s.getId().equalsIgnoreCase(active)) {

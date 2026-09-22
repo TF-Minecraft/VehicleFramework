@@ -111,6 +111,8 @@ public class RepairManager implements Listener{
 		inv.repairWindow(null, p, v, true, activeTool.get(p));
 	}
 	
+	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
+	@SuppressWarnings("deprecation")
 	public void tick() {
 		for(Player p : repairing.keySet()) {
 			if(!p.getOpenInventory().getTitle().equalsIgnoreCase("§7Repair Vehicle")) {
