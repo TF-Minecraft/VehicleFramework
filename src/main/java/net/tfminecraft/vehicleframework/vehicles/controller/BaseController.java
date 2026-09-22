@@ -1,0 +1,90 @@
+package net.tfminecraft.vehicleframework.vehicles.controller;
+
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.util.Vector;
+
+import net.tfminecraft.vehicleframework.bones.VectorBone;
+import net.tfminecraft.vehicleframework.enums.Component;
+import net.tfminecraft.vehicleframework.enums.Direction;
+import net.tfminecraft.vehicleframework.enums.State;
+import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
+import net.tfminecraft.vehicleframework.vehicles.component.Harness;
+
+public class BaseController {
+	
+	public Vector climbVector(ActiveVehicle v, Vector velocity) {
+		return velocity;
+	}
+
+	public Vector horizontalMoveVector(ActiveVehicle v, VectorBone vector, Direction dir) {
+		Entity e = v.getEntity();
+		Vector velocity = v.getEntity().getVelocity();
+		if(v.hasComponent(Component.ENGINE) || v.hasComponent(Component.GEARED_ENGINE)) velocity = engineVector(v, vector, e, velocity);
+		if(v.hasComponent(Component.HARNESS)) velocity = harnessVector(v, vector, e, velocity, dir);
+		velocity = velocity.clone();
+		velocity.setY(0);
+		return velocity;
+	}
+	
+	public Vector calculateMoveVector(ActiveVehicle v, VectorBone vector, Direction dir) {
+		Entity e = v.getEntity();
+		Vector velocity = v.getEntity().getVelocity();
+		double y = velocity.getY();
+		if(v.hasComponent(Component.ENGINE) || v.hasComponent(Component.GEARED_ENGINE)) velocity = engineVector(v, vector, e, velocity);
+		if(v.hasComponent(Component.HARNESS)) velocity = harnessVector(v, vector, e, velocity, dir);
+		velocity = setY(v, velocity, y);
+		return velocity;
+	}
+	
+	private Vector setY(ActiveVehicle v, Vector velocity, double y) {
+		if(v.getCurrentState().getType().equals(State.GROUND)
+				&& !v.hasComponent(Component.WINGS)
+				&& !v.hasComponent(Component.BALLOON)) {
+			velocity.setY(-0.49);
+		}
+		if(v.shouldFloat()) {
+			velocity.setY(y);
+		}
+		return velocity;
+	}
+	
+	private Vector harnessVector(ActiveVehicle v, VectorBone vector, Entity e, Vector velocity, Direction dir) {
+		Harness h = (Harness) v.getComponent(Component.HARNESS);
+		if(h.hasMounts() && e != null && e.isValid() && e instanceof LivingEntity) {
+        	Vector direction = vector.getVector().clone().normalize();
+
+        	if(dir.equals(Direction.FORWARD)) velocity = direction.multiply(h.getSpeed()); // Forward velocity  
+        	if(dir.equals(Direction.BACKWARD)) velocity = direction.multiply(h.getSpeed()*-0.3); // Backward velocity  
+        	
+        }
+		return velocity;
+	}
+	
+	private Vector engineVector(ActiveVehicle v, VectorBone vector, Entity e, Vector velocity) {
+		if (e != null && e.isValid() && e instanceof LivingEntity) {
+        	Vector direction = vector.getVector().clone().normalize();
+			if(v.getCurrentState().getType().equals(State.FLYING) && v.hasComponent(Component.WINGS) && (v.getThrottle() != null && v.getThrottle().getCurrent() <= 10)) {
+				double scale = (20-v.getThrottle().getCurrent())/20.0;
+				//So you dont just stop mid air
+				velocity = direction.multiply(0.65*scale); // Forward velocity 
+			} else{
+				velocity = direction.multiply(v.getAccessPanel().getSpeed()); // Forward velocity 
+			}
+        }
+		return velocity;
+	}
+	
+	public Direction getDirection(ActiveVehicle v) {
+		if(v.hasComponent(Component.HARNESS)) {
+			Harness h = (Harness) v.getComponent(Component.HARNESS);
+			if(!h.hasMounts()) return Direction.STILL;
+			return Direction.MOVING;
+		}
+		if(v.getAccessPanel().getSpeed() == 0) {
+			return Direction.STILL;
+		}
+		if(v.getAccessPanel().isReverse()) return Direction.BACKWARD;
+		return Direction.FORWARD;
+	}
+}

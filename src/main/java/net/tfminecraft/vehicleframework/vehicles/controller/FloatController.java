@@ -1,0 +1,223 @@
+package net.tfminecraft.vehicleframework.vehicles.controller;
+
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.Sound;
+import org.bukkit.block.Block;
+import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.util.BoundingBox;
+import org.bukkit.util.Vector;
+
+import com.ticxo.modelengine.api.ModelEngineAPI;
+
+import net.tfminecraft.vehicleframework.enums.Component;
+import net.tfminecraft.vehicleframework.util.LocationChecker;
+import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
+import net.tfminecraft.vehicleframework.vehicles.component.SinkableHull;
+
+public class FloatController {
+
+	static final double BOB_SPEED = 0.05 / 3.0;
+	static final double MIN_DEPTH = 0.6;
+	static final double MAX_DEPTH = 1.0;
+	private static final double MAX_UPRIVER_LIFT = 0.3;
+
+	private boolean goingDown;
+
+	public Vector calculateFloat(ActiveVehicle v, Vector velocity) {
+		if (!checkFloat(v)) {
+			return velocity;
+		}
+
+		breakLilyPadsUnderVehicle(v);
+
+		double y = velocity.getY();
+		if (v.isDestroyed()) {
+			y = -0.03;
+		} else if (v.getComponent(Component.HULL) instanceof SinkableHull hull && hull.hasSinkProgress()) {
+			if (hull.isSinking() && checkSink(v)) {
+				y = 0.01 * (hull.getSinkProgress() / 100.0) * -1;
+			} else {
+				y = 0.01 * ((100 - hull.getSinkProgress()) / 100.0);
+			}
+		} else {
+			Entity entity = v.getEntity();
+			Location loc = entity.getLocation();
+			Double surface = findWaterSurfaceY(loc);
+			// Deeply submerged boats still need lift when the surface is outside the local scan.
+			if (surface == null && LocationChecker.hasDeepWaterAtCentre(loc.getBlock())) {
+				surface = loc.getY() + MAX_DEPTH;
+			}
+			if (surface != null) {
+				double depth = surface - loc.getY();
+				BobStep step = bobStep(depth, goingDown, MIN_DEPTH, MAX_DEPTH, BOB_SPEED);
+				goingDown = step.goingDown;
+				y = step.goingDown
+						? descentVelocity(entity.hasGravity(), entity.getVelocity().getY(), BOB_SPEED)
+						: step.vy;
+				if (!goingDown) {
+					y += calculateUpriverLift(v);
+				}
+			}
+		}
+
+		if (v.getEntity() instanceof ArmorStand stand && !stand.hasGravity()) {
+			// No-gravity armor stands skip velocity-based travel. Move the buoyancy delta
+			// through Minecraft's collision-aware move path instead of teleporting.
+			ModelEngineAPI.getEntityHandler().move(stand, 0, y, 0);
+			y = 0;
+		}
+		velocity.setY(y);
+		return velocity;
+	}
+
+	/** Flip at min/max depth; descent is half the ascent speed. */
+	public static BobStep bobStep(double depthBelowSurface, boolean goingDown, double minDepth, double maxDepth, double speed) {
+		if (depthBelowSurface >= maxDepth) {
+			return new BobStep(speed, false);
+		}
+		if (depthBelowSurface <= minDepth) {
+			return new BobStep(-speed / 2.0, true);
+		}
+		return new BobStep(goingDown ? -speed / 2.0 : speed, goingDown);
+	}
+
+	static double descentVelocity(boolean gravity, double currentY, double speed) {
+		// Gravity supplies the fall. Cap it so freefall cannot turn a slow bob into a plunge.
+		return gravity ? Math.max(-speed / 2.0, Math.min(0, currentY)) : -speed / 2.0;
+	}
+
+	public static final class BobStep {
+		public final double vy;
+		public final boolean goingDown;
+
+		public BobStep(double vy, boolean goingDown) {
+			this.vy = vy;
+			this.goingDown = goingDown;
+		}
+	}
+
+	private double calculateUpriverLift(ActiveVehicle v) {
+		if (v.getAccessPanel().getSpeed() <= 0) {
+			return 0;
+		}
+
+		Entity entity = v.getEntity();
+		if (entity == null || !entity.isValid()) {
+			return 0;
+		}
+
+		Location loc = entity.getLocation();
+		Vector forward = loc.getDirection().clone();
+		forward.setY(0);
+		if (forward.lengthSquared() < 1e-6) {
+			return 0;
+		}
+		forward.normalize();
+
+		Double currentSurface = findWaterSurfaceY(loc);
+		Double aheadSurface = findWaterSurfaceY(loc.clone().add(forward.multiply(1.5)));
+		if (currentSurface == null || aheadSurface == null) {
+			return 0;
+		}
+		double rise = aheadSurface - currentSurface;
+		if (rise <= 0) {
+			return 0;
+		}
+		return Math.min(MAX_UPRIVER_LIFT, rise * 0.5);
+	}
+
+	private Double findWaterSurfaceY(Location loc) {
+		int x = loc.getBlockX();
+		int z = loc.getBlockZ();
+		int startY = loc.getBlockY();
+
+		for (int y = startY + 2; y >= startY - 3; y--) {
+			Block block = loc.getWorld().getBlockAt(x, y, z);
+			Block above = loc.getWorld().getBlockAt(x, y + 1, z);
+			if (isWaterBlock(block) && !isWaterBlock(above)) {
+				return y + 1.0;
+			}
+		}
+		return null;
+	}
+
+	private void breakLilyPadsUnderVehicle(ActiveVehicle v) {
+		Entity entity = v.getEntity();
+		if (entity == null || !entity.isValid()) return;
+
+		BoundingBox box = entity.getBoundingBox().clone().expand(1, 0, 1);
+
+		for (int x = (int) Math.floor(box.getMinX()); x <= (int) Math.floor(box.getMaxX()); x++) {
+			for (int y = (int) Math.floor(box.getMinY()); y <= (int) Math.floor(box.getMaxY()); y++) {
+				for (int z = (int) Math.floor(box.getMinZ()); z <= (int) Math.floor(box.getMaxZ()); z++) {
+					Block block = entity.getWorld().getBlockAt(x, y, z);
+					if (block.getType() == Material.LILY_PAD) {
+						block.breakNaturally();
+						entity.getWorld().playSound(block.getLocation(), Sound.BLOCK_GRASS_BREAK, 1.0f, 1.0f);
+					}
+				}
+			}
+		}
+	}
+
+	private boolean checkFloat(ActiveVehicle v) {
+		if (!v.shouldFloat()) {
+			return false;
+		}
+
+		Entity entity = v.getEntity();
+		if (entity == null || !entity.isValid() || !(entity instanceof LivingEntity)) {
+			return false;
+		}
+
+		if (LocationChecker.hasDeepWaterAtCentre(entity.getLocation().getBlock())) return true;
+
+		BoundingBox box = entity.getBoundingBox();
+		int waterCount = 0;
+		int sampleCount = 0;
+
+		int minX = (int) Math.floor(box.getMinX());
+		int maxX = (int) Math.floor(box.getMaxX());
+		int minZ = (int) Math.floor(box.getMinZ());
+		int maxZ = (int) Math.floor(box.getMaxZ());
+		int minY = (int) Math.floor(box.getMinY());
+		int midY = (int) Math.floor((box.getMinY() + box.getMaxY()) / 2.0);
+
+		for (int y : new int[] {minY, midY}) {
+			for (int x = minX; x <= maxX; x++) {
+				for (int z = minZ; z <= maxZ; z++) {
+					sampleCount++;
+					if (isWaterBlock(entity.getWorld().getBlockAt(x, y, z))) {
+						waterCount++;
+					}
+				}
+			}
+		}
+
+		return sampleCount > 0 && ((double) waterCount / sampleCount) >= 0.35;
+	}
+
+	private boolean isWaterBlock(Block block) {
+		if (block.isLiquid()) {
+			return true;
+		}
+		return LocationChecker.isInWater(block.getLocation());
+	}
+
+	private boolean checkSink(ActiveVehicle v) {
+		Entity entity = v.getEntity();
+		if (entity != null && entity.isValid() && entity instanceof LivingEntity) {
+			Location location = entity.getLocation().clone();
+			location.add(0, 2, 0);
+			Block block = location.getBlock();
+
+			if (block.isLiquid()) {
+				return false;
+			}
+		}
+		return true;
+	}
+}

@@ -1,0 +1,1678 @@
+package net.tfminecraft.vehicleframework.managers;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Sound;
+import org.bukkit.World;
+import org.bukkit.entity.Donkey;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.Horse;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mule;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.InventoryAction;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
+import org.bukkit.event.player.PlayerAnimationEvent;
+import org.bukkit.event.player.PlayerAnimationType;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.scheduler.BukkitRunnable;
+
+import com.ticxo.modelengine.api.ModelEngineAPI;
+import com.ticxo.modelengine.api.model.ModeledEntity;
+
+import io.lumine.mythic.bukkit.MythicBukkit;
+import io.lumine.mythic.core.mobs.ActiveMob;
+import net.tfminecraft.tlibs.objects.api.ItemAPI;
+import net.tfminecraft.tlibs.objects.api.subapi.StringFormatter;
+import net.tfminecraft.tlibs.TLibs;
+import net.tfminecraft.vehicleframework.cache.Cache;
+import net.tfminecraft.vehicleframework.data.NamingData;
+import net.tfminecraft.vehicleframework.data.OwnedVehicleSummary;
+import net.tfminecraft.vehicleframework.data.StoredVehicleMeta;
+import net.tfminecraft.vehicleframework.database.IncompleteVehicle;
+import net.tfminecraft.vehicleframework.database.PersistenceLog;
+import net.tfminecraft.vehicleframework.database.VehiclePersistResult;
+import net.tfminecraft.vehicleframework.database.VehiclePersistence;
+import net.tfminecraft.vehicleframework.database.VehicleSnapshot;
+import net.tfminecraft.vehicleframework.enums.Component;
+import net.tfminecraft.vehicleframework.enums.Keybind;
+import net.tfminecraft.vehicleframework.enums.SeatType;
+import net.tfminecraft.vehicleframework.enums.VFGUI;
+import net.tfminecraft.vehicleframework.enums.VehicleRemoveReason;
+import net.tfminecraft.vehicleframework.events.VFEntityDamageEvent;
+import net.tfminecraft.vehicleframework.events.VehicleOwnerClaimedEvent;
+import net.tfminecraft.vehicleframework.events.VehiclePreInteractEvent;
+import net.tfminecraft.vehicleframework.events.VehicleSpawnEvent;
+import net.tfminecraft.vehicleframework.loaders.FuelLoader;
+import net.tfminecraft.vehicleframework.loaders.VehicleLoader;
+import net.tfminecraft.vehicleframework.managers.inventory.VFInventoryHolder;
+import net.tfminecraft.vehicleframework.managers.spawner.VehicleSpawner;
+import net.tfminecraft.vehicleframework.protocol.PacketConverter;
+import net.tfminecraft.vehicleframework.tracks.TrainTapeInteract;
+import net.tfminecraft.vehicleframework.tracks.TrainCollision;
+import net.tfminecraft.vehicleframework.tracks.TrackJunction;
+import net.tfminecraft.vehicleframework.util.Damager;
+import net.tfminecraft.vehicleframework.VFLogger;
+import net.tfminecraft.vehicleframework.VehicleFramework;
+import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
+import net.tfminecraft.vehicleframework.vehicles.VehicleHealthDecay;
+import net.tfminecraft.vehicleframework.vehicles.component.Harness;
+import net.tfminecraft.vehicleframework.vehicles.handlers.container.Container;
+import net.tfminecraft.vehicleframework.vehicles.handlers.SkinHandler;
+import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleTicketInteract;
+import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleTicketItems;
+import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleTicketRules;
+import net.tfminecraft.vehicleframework.vehicles.handlers.TowHandler;
+import net.tfminecraft.vehicleframework.vehicles.handlers.SeatHandler.MountResult;
+import net.tfminecraft.vehicleframework.vehicles.seat.Seat;
+import net.tfminecraft.vehicleframework.vehicles.handlers.train.ConsistRelinker;
+import net.tfminecraft.vehicleframework.vehicles.Vehicle;
+
+public class VehicleManager implements Listener{
+	private ItemAPI api = TLibs.getItemAPI();
+	private InventoryManager inv = new InventoryManager();
+	private RepairManager repairManager = new RepairManager(this);
+	private SpawnManager spawnManager = new SpawnManager(this);
+	
+	private HashMap<Player, Long> cooldown = new HashMap<>();
+	
+	//Various utils and stuff
+	private VehicleSpawner spawner = new VehicleSpawner();
+	private PacketConverter converter = new PacketConverter();
+	
+	//Player management
+	private HashMap<Player, ActiveVehicle> tempVehicle = new HashMap<>();
+	private HashMap<Player, ActiveVehicle> activeVehicle = new HashMap<>();
+	private HashMap<Player, NamingData> naming = new HashMap<>();
+
+	// Ownership – whitelist-add state (player typed name is pending)
+	private HashMap<Player, ActiveVehicle> addingToWhitelist = new HashMap<>();
+	private HashMap<Player, Integer> addingToWhitelistTimeout = new HashMap<>();
+
+	// Owner-eject cooldown: player cannot re-enter that vehicle until timestamp expires
+	private HashMap<Player, HashMap<String, Long>> ejectCooldown = new HashMap<>();
+
+	// Admin takeover: player is waiting to click a vehicle and claim ownership
+	private HashMap<Player, Integer> pendingTakeover = new HashMap<>();
+
+	private OwnershipGUIManager ownershipGUI = new OwnershipGUIManager();
+	
+	private HashMap<Player, ActiveVehicle> tow = new HashMap<>();
+
+	private HashMap<Player, ActiveVehicle> pendingEntityVehicle = new HashMap<>();
+	private HashMap<Player, String> pendingEntitySeat = new HashMap<>();
+	
+	private HashMap<Entity, ActiveVehicle> vehicles = new HashMap<>();
+
+	private Set<Entity> damagedEntities = new HashSet<>();
+	private final Set<String> mountReloading = ConcurrentHashMap.newKeySet();
+	private final Map<UUID, Boolean> packetSneak = new ConcurrentHashMap<>();
+	private final Map<UUID, Long> mountedLeftClickAt = new ConcurrentHashMap<>();
+
+	public void setDamaged(Entity e, boolean damaged) {
+		if (damaged) {
+			damagedEntities.add(e);
+		} else {
+			damagedEntities.remove(e);
+		}
+	}
+
+	//Managers
+	public RepairManager getRepairManager() {
+		return repairManager;
+	}
+	public SpawnManager getSpawnManager() {
+		return spawnManager;
+	}
+
+	public HashMap<Entity, ActiveVehicle> get() {
+		return vehicles;
+	}
+
+	public ActiveVehicle getByUUID(String UUID) {
+		for (Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
+        	ActiveVehicle v = entry.getValue();
+            if(v.getUUID().equalsIgnoreCase(UUID)) return v;
+        }
+		return null;
+	}
+
+	/**
+	 * Adds {@code fractionOfMax * maxHealth} damage to every component and weapon,
+	 * clamping remaining health to {@code minHealthFraction}. Spawned vehicles are
+	 * updated in memory then saved; unspawned vehicles are edited on disk in place.
+	 */
+	public boolean unloadedDamage(String vehicleUuid, double fractionOfMax, double minHealthFraction) {
+		if (vehicleUuid == null || vehicleUuid.isBlank()) {
+			return false;
+		}
+		ActiveVehicle live = getByUUID(vehicleUuid.trim());
+		if (live != null) {
+			VehicleHealthDecay.applyToLive(live, fractionOfMax, minHealthFraction);
+			saveLive(live);
+			return true;
+		}
+		VehiclePersistence persistence = VehiclePersistence.current();
+		if (persistence == null) {
+			return false;
+		}
+		return persistence.applyStoredDecay(vehicleUuid.trim(), fractionOfMax, minHealthFraction);
+	}
+	
+	public ActiveVehicle get(Entity e) {
+		if(vehicles.containsKey(e)) return vehicles.get(e);
+		return null;
+	}
+	public ActiveVehicle getByPassenger(Entity e) {
+		for (Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
+        	ActiveVehicle v = entry.getValue();
+            if(v.isPassenger(e, true)) return v;
+        }
+		return null;
+	}
+	public ActiveVehicle get(String id) {
+		for (Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
+        	ActiveVehicle v = entry.getValue();
+            if(v.getUUID().equalsIgnoreCase(id)) return v;
+        }
+		return null;
+	}
+	public void unregister(Entity e) {
+		ActiveVehicle removed = vehicles.remove(e);
+		if (removed == null) return;
+		activeVehicle.entrySet().removeIf(entry -> entry.getValue() == removed);
+		tempVehicle.entrySet().removeIf(entry -> entry.getValue() == removed);
+		tow.entrySet().removeIf(entry -> entry.getValue() == removed);
+	}
+	
+	private void register(ActiveVehicle v) {
+		vehicles.put(v.getEntity(), v);
+	}
+
+	public int kill(Player p, Location loc, int radius) {
+		World world = loc.getWorld();
+		if (world == null) return 0;
+		int count = 0;
+		for (Entity entity : world.getNearbyEntities(loc, radius, radius, radius)) {
+			if(get(entity) == null) continue;
+			ActiveVehicle v = get(entity);
+			v.remove(VehicleRemoveReason.ADMIN_KILL);
+			if (!persistDestroy(v)) {
+				VFLogger.log("Failed to tombstone " + describeVehicle(v) + " at " + describeLocation(v)
+						+ " after admin kill");
+			}
+			count++;
+			if(p != null) VFLogger.message(p, "§cKilled "+v.getName());
+		}
+		return count;
+	}
+	
+	public ActiveVehicle spawn(Location loc, String s) {
+		Vehicle v = VehicleLoader.getByString(s);
+		if(v == null) {
+			VFLogger.log("Attempted to spawn vehicle by the id "+s+" but no vehicle was found!");
+			return null;
+		}
+		return spawn(loc, v);
+	}
+	
+	public ActiveVehicle spawn(Location loc, Vehicle v) {
+		return spawn(loc, v, null);
+	}
+	
+	public ActiveVehicle spawn(Location loc, Vehicle v, IncompleteVehicle i) {
+		ActiveVehicle vehicle = spawner.spawn(loc, v, this, i);
+		if (vehicle == null || vehicle.getEntity() == null) {
+			VFLogger.log("Failed to spawn vehicle " + (v == null ? "unknown" : v.getId()));
+			return null;
+		}
+		register(vehicle);
+		try {
+			ConsistRelinker.tryLink(vehicle);
+			vehicle.restorePassengers(i);
+			PersistenceLog.spawned(vehicle, loc);
+			Bukkit.getPluginManager().callEvent(new VehicleSpawnEvent(vehicle));
+			return vehicle;
+		} catch (RuntimeException ex) {
+			try {
+				vehicle.remove(VehicleRemoveReason.UNLOAD);
+			} catch (RuntimeException cleanup) {
+				ex.addSuppressed(cleanup);
+			}
+			VFLogger.log("Failed to initialize vehicle " + vehicle.getUUID() + ": " + ex);
+			return null;
+		}
+	}
+	
+	public void start() {
+		spawnManager.start();
+		vehicleFastTickCycle();
+		vehicleSlowTickCycle();
+		snapshotCycle();
+	}
+
+	public void reload() {
+		PersistenceLog.append("VEHICLE_MANAGER_RELOAD");
+		spawnManager.reload();
+	}
+	private void vehicleSlowTickCycle() {
+		new BukkitRunnable() {
+	        @SuppressWarnings("unchecked")
+			@Override
+	        public void run() {
+				updateInventory();
+	            for (Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
+	            	ActiveVehicle v = entry.getValue();
+	                try {
+						v.slowTick();
+					} catch (Exception e) {
+						VFLogger.log(v.getId()+" has run into an issue");
+					}
+	            }
+				for (Map.Entry<Player, NamingData> entry : ((HashMap<Player, NamingData>) naming.clone()).entrySet()) {
+	            	if(entry.getValue().tick()) {
+						naming.remove(entry.getKey());
+						entry.getKey().sendMessage("§cNaming timed out.");
+					}
+	            }
+	        }
+	    }.runTaskTimer(VehicleFramework.plugin, 0L, 20L);
+	}
+	private void vehicleFastTickCycle() {
+		new BukkitRunnable() {
+			@Override
+	        public void run() {
+	            for (Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
+	            	ActiveVehicle v = entry.getValue();
+	                try {
+						v.tick();
+					} catch (Exception e) {
+						VFLogger.log(v.getId()+" has run into an issue");
+					}
+	            }
+				TrainCollision.tick(vehicles.values());
+	            Iterator<Map.Entry<Player, ActiveVehicle>> iterator = tow.entrySet().iterator();
+	            while (iterator.hasNext()) {
+	                Map.Entry<Player, ActiveVehicle> entry = iterator.next();
+	                ActiveVehicle v = entry.getValue();
+	                Player p = entry.getKey();
+
+	                if (p.getLocation().distanceSquared(v.getEntity().getLocation()) > 64) {
+	                    p.sendMessage("§7Deselected " + v.getName() + " §7for towing (Too far away)");
+	                    p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+	                    iterator.remove(); // Safely remove the entry
+	                }
+	            }
+	        }
+	    }.runTaskTimer(VehicleFramework.plugin, 0L, 1L);
+	}
+	private void snapshotCycle() {
+		new BukkitRunnable() {
+			@Override
+	        public void run() {
+				VFLogger.info("Checkpointing vehicles...");
+				VehiclePersistence persistence = VehiclePersistence.current();
+				if (persistence == null) {
+					VFLogger.log("Checkpoint skipped: SQLite is not open");
+					return;
+				}
+				for (ActiveVehicle v : vehicles.values()) {
+					if (v.isDestroyed()) {
+						continue;
+					}
+					VehiclePersistResult result = persistence.saveLiveResult(v);
+					if (result.isFailed()) {
+						VFLogger.log("Failed to persist " + describeVehicle(v) + " at " + describeLocation(v)
+								+ " during checkpoint: " + result.reason());
+					}
+				}
+				persistence.checkpointWal(false);
+				persistence.vacuumIntoBackup();
+	        }
+	    }.runTaskTimer(VehicleFramework.plugin, 0L, 6000L);
+	}
+	
+	public void updateInventory() {
+		for(Player p : Bukkit.getOnlinePlayers()) {
+			if(p.getOpenInventory().getTopInventory() == null) continue;
+			Inventory i = p.getOpenInventory().getTopInventory();
+			if(!(i.getHolder() instanceof VFInventoryHolder)) continue;
+			VFInventoryHolder h = (VFInventoryHolder) i.getHolder();
+			ActiveVehicle v = get(h.getId());
+			if(v == null) continue;
+			if(h.getType().equals(VFGUI.SEAT_SELECTION)) {
+				inv.seatSelection(i, p, v, false);
+			} else if(h.getType().equals(VFGUI.SKIN_SELECTION)) {
+				inv.skinSelection(i, p, v, false);
+			} else if(h.getType().equals(VFGUI.REPAIR)) {
+				inv.repairWindow(i, p, v, false, repairManager.getTool(p));
+			}
+		}
+	}
+	
+	public boolean isPassenger(Entity e) {
+		for (Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
+        	ActiveVehicle v = entry.getValue();
+            if(v.isPassenger(e, true)) return true;
+        }
+		return false;
+	}
+	
+	public void dismount(Player p) {
+		if(activeVehicle.containsKey(p)) activeVehicle.remove(p);
+		if (p != null) {
+			packetSneak.remove(p.getUniqueId());
+			mountedLeftClickAt.remove(p.getUniqueId());
+		}
+	}
+	
+	public void leashedInteract(Player p, ActiveVehicle v, LivingEntity e) {
+		e.setLeashHolder(null);
+		if(e instanceof Horse || e instanceof Donkey || e instanceof Mule) {
+			if(v.getComponent(Component.HARNESS) != null) {
+				Harness h = (Harness) v.getComponent(Component.HARNESS);
+				h.mount(p, e);
+			}
+		} else {
+			
+		}
+	}
+	
+	public boolean leadInteract(Player p, ActiveVehicle v) {
+		if(v.getComponent(Component.HARNESS) != null) {
+			Harness h = (Harness) v.getComponent(Component.HARNESS);
+			return h.dismount(p);
+		}
+		return false;
+	}
+	
+	public void seatInteract(Player p, ActiveVehicle v) {
+		if(activeVehicle.containsKey(p)) return;
+	    if(v.isPassenger(p, true)) {
+	    	return;
+	    }
+	    ActiveVehicle accessVehicle = v.ticketSource();
+	    boolean hasTicket = VehicleTicketItems.inventoryHas(
+	    		p, accessVehicle.getOwnerData().getTicketId());
+	    if (!VehicleTicketRules.mayOpenSeatMenu(accessVehicle.getOwnerData(), p.getName(), hasTicket)) {
+	    	p.sendMessage("§cYou are not on this vehicle's whitelist.");
+	    	return;
+	    }
+	    // Check if this player was ejected by the owner and is still on cooldown for this vehicle
+	    long ejectUntil = ejectUntil(p, v);
+	    if (ejectUntil > System.currentTimeMillis()) {
+	    	long remaining = (ejectUntil - System.currentTimeMillis() + 999) / 1000;
+	    	p.sendMessage("§cYou cannot enter this vehicle for §e" + remaining + "§c more seconds.");
+	    	return;
+	    }
+	    // Clear any pending entity mount when opening the seat menu again
+	    pendingEntityVehicle.remove(p);
+	    pendingEntitySeat.remove(p);
+	    inv.seatSelection(null, p, v, true);
+	    tempVehicle.put(p, v);
+	}
+	
+	public void skinInteract(Player p, ActiveVehicle v) {
+	    inv.skinSelection(null, p, v, true);
+	    tempVehicle.put(p, v);
+	}
+
+	private void handlePendingEntityMount(Player p, Entity entity) {
+		ActiveVehicle v = pendingEntityVehicle.remove(p);
+		String seatBone = pendingEntitySeat.remove(p);
+		if(v == null || seatBone == null) return;
+		if(v.isDestroyed()) {
+			p.sendMessage("§cThe vehicle has been destroyed");
+			return;
+		}
+		if(!isEntityAllowed(entity, v.getEntitySeatWhitelist())) {
+			p.sendMessage("§cThat entity is not allowed in this seat");
+			return;
+		}
+		Seat seat = v.getSeat(seatBone);
+		if(seat == null || seat.isOccupied()) {
+			p.sendMessage("§cSeat is no longer available");
+			return;
+		}
+		MountResult mounted = v.addPassenger(entity, seat);
+		if (mounted == MountResult.MOUNTED) {
+			p.sendMessage("§aEntity mounted");
+			return;
+		}
+		if (mounted == MountResult.REJECTED) {
+			recoverRejectedMount(v, entity, seat.getBone(), p);
+			return;
+		}
+		p.sendMessage("§cSeat is no longer available");
+	}
+
+	private boolean isEntityAllowed(Entity entity, List<String> whitelist) {
+		if(whitelist == null || whitelist.isEmpty()) return false;
+		for(String entry : whitelist) {
+			if(entry.startsWith("mm.")) {
+				String mmId = entry.substring(3);
+				try {
+					Optional<ActiveMob> mob = MythicBukkit.inst().getMobManager().getActiveMob(entity.getUniqueId());
+					if(mob.isPresent() && mob.get().getType().getInternalName().equals(mmId)) return true;
+				} catch(Exception ex) {}
+			} else if(entry.startsWith("v.")) {
+				String vanillaType = entry.substring(2).toUpperCase();
+				if(entity.getType().name().equalsIgnoreCase(vanillaType)) return true;
+			}
+		}
+		return false;
+	}
+
+	public void startTakeover(Player p) {
+		cancelTakeover(p);
+		int taskId = new BukkitRunnable() {
+			@Override
+			public void run() {
+				if(pendingTakeover.containsKey(p)) {
+					pendingTakeover.remove(p);
+					p.sendMessage("\u00a7cTakeover expired.");
+				}
+			}
+		}.runTaskLater(VehicleFramework.plugin, 300L).getTaskId();
+		pendingTakeover.put(p, taskId);
+		p.sendMessage("\u00a7aRight-click a vehicle within 15 seconds to claim ownership.");
+	}
+
+	private void cancelTakeover(Player p) {
+		if(pendingTakeover.containsKey(p)) {
+			VehicleFramework.plugin.getServer().getScheduler().cancelTask(pendingTakeover.get(p));
+			pendingTakeover.remove(p);
+		}
+	}
+
+	/**
+	 * @return true if ownership was committed to the player
+	 */
+	private boolean claimOwnership(Player player, ActiveVehicle vehicle) {
+		if (player == null || vehicle == null) {
+			return false;
+		}
+		String previous = vehicle.getOwnerData().getOwner();
+		if (previous != null && !previous.equalsIgnoreCase("none")) {
+			return false;
+		}
+		String newOwner = "player_" + player.getName();
+		VehicleOwnerClaimedEvent event =
+				new VehicleOwnerClaimedEvent(player, vehicle, previous, newOwner);
+		Bukkit.getPluginManager().callEvent(event);
+		if (event.isCancelled()) {
+			return false;
+		}
+		vehicle.getOwnerData().setOwner(newOwner);
+		return true;
+	}
+
+	public void towSelect(Player p, ActiveVehicle v) {
+		if(tow.containsKey(p)) {
+			p.sendMessage("§7Deselected "+tow.get(p).getName()+" §7for towing");
+			tow.remove(p);
+		}
+		p.sendMessage("§aSelected "+v.getName()+" §afor towing, right click a vehicle to attach it");
+		p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BIT, 1f, 1f);
+		tow.put(p, v);
+	}
+	
+	public void towAttach(Player p, ActiveVehicle v) {
+		TowHandler h = v.getTowHandler();
+		if(h.isOccupied()) {
+			p.sendMessage("§cThis vehicle is already towing something");
+			p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+			return;
+		}
+		ActiveVehicle selected = tow.get(p);
+		if(h.getTowLocation().distanceSquared(selected.getEntity().getLocation()) > 16) {
+			p.sendMessage("§cThis vehicle is too far away");
+			p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+			return;
+		}
+		h.attach(tow.get(p));
+		tow.remove(p);
+		p.sendMessage("§aAttached "+selected.getName()+" §ato "+v.getName());
+		p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BIT, 1f, 1f);
+	}
+	
+	
+	//Events
+	@EventHandler
+	public void swap(PlayerSwapHandItemsEvent e) {
+		Player p = e.getPlayer();
+		if(get(p) == null) return;
+		ActiveVehicle v = get(p);
+		v.key(p, Keybind.SWAP);
+	}
+	@EventHandler 
+	public void vehicleInteract(PlayerInteractEntityEvent e){
+		Entity entity = e.getRightClicked();
+		Player p = e.getPlayer();
+		for (Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
+        	ActiveVehicle v = entry.getValue();
+            if(v.isPassenger(entity, true)) {
+            	e.setCancelled(true);
+            	return;
+            }
+        }
+		// Handle pending entity mount: player selected an entity seat and is now right-clicking an entity
+		if(pendingEntityVehicle.containsKey(p) && !vehicles.containsKey(entity)) {
+			e.setCancelled(true);
+			handlePendingEntityMount(p, entity);
+			return;
+		}
+		if(!vehicles.containsKey(entity)) return;
+		ActiveVehicle v = vehicles.get(entity);
+		// Admin takeover
+		if(pendingTakeover.containsKey(p)) {
+			cancelTakeover(p);
+			String previousOwner = v.getOwnerData().getOwner();
+			boolean claimed;
+			if (previousOwner == null || previousOwner.equalsIgnoreCase("none")) {
+				claimed = claimOwnership(p, v);
+			} else {
+				v.getOwnerData().setOwner("player_" + p.getName());
+				claimed = true;
+			}
+			if (claimed) {
+				e.setCancelled(true);
+				p.sendMessage("\u00a7aYou are now the owner of \u00a7e" + v.getName() + "\u00a7a.");
+			}
+			return;
+		}
+		VehiclePreInteractEvent preInteract = new VehiclePreInteractEvent(p, v);
+		Bukkit.getPluginManager().callEvent(preInteract);
+		if (preInteract.isCancelled()) {
+			e.setCancelled(true);
+			return;
+		}
+		if(cooldown.containsKey(p)) {
+			if(cooldown.get(p) > System.currentTimeMillis()) {
+				return;
+			}
+		}
+		cooldown.put(p, System.currentTimeMillis()+100);
+		if (TrainTapeInteract.handle(p, v)) {
+			e.setCancelled(true);
+			return;
+		}
+		if (VehicleTicketInteract.handle(p, v)) {
+			e.setCancelled(true);
+			return;
+		}
+		//Containers
+		if(v.hasContainers()) {
+			if(v.getContainerHandler().open(p)) return;
+		}
+		//Set Ownership
+		claimOwnership(p, v);
+		//Destroy
+		if(api.getChecker().checkItemWithPath(p.getInventory().getItemInMainHand(), Cache.destroyItem)) {
+			v.remove(VehicleRemoveReason.PLAYER_DESTROY);
+			if (!persistDestroy(v)) {
+				VFLogger.log("Failed to tombstone " + describeVehicle(v) + " at " + describeLocation(v)
+						+ " after player destroy");
+			}
+			p.sendMessage("§cRemoved");
+			return;
+		}
+		//Repair
+		if(api.getChecker().checkItemWithPath(p.getInventory().getItemInMainHand(), Cache.repairItem)) {
+			repairManager.repair(p, v);
+			return;
+		}
+		//Fuel check
+		String path = api.getChecker().getAsStringPath(p.getInventory().getItemInMainHand());
+		if(v.usesFuel() && FuelLoader.itemIsFuel(path)) {
+			v.refuel(p, path);
+			return;
+		}
+		//all this is shit
+		if(p.isSneaking()) {
+			if(v.isTowable()) {
+				towSelect(p, v);
+				return;
+			} else if(tow.containsKey(p) && !tow.get(p).equals(v)) {
+				if(v.hasTowHandler()) {
+					towAttach(p, v);
+					return;
+				} else if(v.isTrain()){
+					boolean success = tow.get(p).getBehaviourHandler().getTrainHandler().attach(p, v);
+					if(success) tow.remove(p);
+					return;
+				} else {
+					p.sendMessage("§cThis vehicle cannot tow anything");
+					p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+					return;
+				}
+			} else if(!tow.containsKey(p) && v.hasTowHandler() && v.getTowHandler().isOccupied()) {
+				v.getTowHandler().unattach();
+				p.sendMessage("§eStopped towing");
+				p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BIT, 1f, 1f);
+				return;
+			} else if(v.isTrain() && v.getBehaviourHandler().getTrainHandler().isAttachable()){
+				towSelect(p, v);
+				return;
+			} else {
+				p.sendMessage("§cThis vehicle cannot be towed");
+				p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+				return;
+			}
+		}
+		for(Entity nearbyEntity : p.getNearbyEntities(10, 10, 10)) {
+	        if (nearbyEntity instanceof LivingEntity) {
+	            LivingEntity livingEntity = (LivingEntity) nearbyEntity;
+	            if(livingEntity.getPassengers().size() != 0) continue;
+	            if (livingEntity.isLeashed() && livingEntity.getLeashHolder() instanceof Player) {
+	                Player leashHolder = (Player) livingEntity.getLeashHolder();
+	                if (leashHolder.equals(p)) {
+	                	leashedInteract(p, v, livingEntity);
+	                    return;
+	                }
+	            }
+	        }
+	    }
+		if(p.getInventory().getItemInMainHand().getType().equals(Material.LEAD)) {
+			if(leadInteract(p, v)) return;
+		}
+		if(activeVehicle.containsKey(p)) return;
+		if(v.getSeatHandler().isPassenger(p)) {
+			v.key(p, Keybind.RIGHT_CLICK);
+			return;
+		}
+		if(api.getChecker().checkItemWithPath(p.getInventory().getItemInMainHand(), Cache.skinItem)) {
+			skinInteract(p, v);
+			return;
+		}
+		if(p.getInventory().getItemInMainHand().getType().equals(Material.NAME_TAG)) {
+			naming.put(p, new NamingData(v));
+			p.sendTitle("", "§eType the §aName §ein chat", 10, 80, 10);
+			p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1f);
+			return;
+		}
+		seatInteract(p, v);
+	}
+	@EventHandler
+	public void ownershipClick(InventoryClickEvent e) {
+		Player p = (Player) e.getWhoClicked();
+		if(!(e.getView().getTopInventory().getHolder() instanceof VFInventoryHolder)) return;
+		VFInventoryHolder h = (VFInventoryHolder) e.getView().getTopInventory().getHolder();
+		if(!h.getType().equals(VFGUI.OWNERSHIP)) return;
+		e.setCancelled(true);
+		if(!h.getVehicle().isPresent()) return;
+		ActiveVehicle v = h.getVehicle().get();
+		if(v.isDestroyed()) { p.closeInventory(); return; }
+		ItemStack item = e.getCurrentItem();
+		if(item == null || item.getType().equals(Material.GRAY_STAINED_GLASS_PANE)) return;
+		switch(e.getSlot()) {
+			case 0: // Toggle whitelisting
+				v.getOwnerData().setWhiteListed(!v.getOwnerData().isWhiteListed());
+				ownershipGUI.ownershipGui(e.getView().getTopInventory(), p, v, false);
+				break;
+			case 2: // Add to whitelist
+				p.closeInventory();
+				addingToWhitelist.put(p, v);
+				addingToWhitelistTimeout.put(p, 0);
+				p.sendMessage("§aType the player name in chat to add them to the whitelist. Type §ccancel §ato abort.");
+				break;
+			case 4: // View whitelist
+				p.closeInventory();
+				ownershipGUI.whitelistGui(null, p, v, true);
+				break;
+			case 6: // Remove ownership
+				v.getOwnerData().setOwner("none");
+				v.getOwnerData().setWhiteListed(false);
+				p.closeInventory();
+				p.sendMessage("§7Ownership of §f" + v.getName() + "§7 has been removed.");
+				break;
+			case 8: // Toggle tickets on the consist loco when attached
+				v.ticketSource().getOwnerData().toggleTickets();
+				ownershipGUI.ownershipGui(e.getView().getTopInventory(), p, v, false);
+				break;
+			default:
+				break;
+		}
+	}
+
+	@EventHandler
+	public void whitelistClick(InventoryClickEvent e) {
+		Player p = (Player) e.getWhoClicked();
+		if(!(e.getView().getTopInventory().getHolder() instanceof VFInventoryHolder)) return;
+		VFInventoryHolder h = (VFInventoryHolder) e.getView().getTopInventory().getHolder();
+		if(!h.getType().equals(VFGUI.WHITELIST)) return;
+		e.setCancelled(true);
+		if(!h.getVehicle().isPresent()) return;
+		ActiveVehicle v = h.getVehicle().get();
+		if(v.isDestroyed()) { p.closeInventory(); return; }
+		ItemStack item = e.getCurrentItem();
+		if(item == null || item.getType().equals(Material.GRAY_STAINED_GLASS_PANE)) return;
+		if(e.getSlot() == 26) {
+			// Back button
+			p.closeInventory();
+			ownershipGUI.ownershipGui(null, p, v, true);
+			return;
+		}
+		// Player head – remove from whitelist
+		if(item.getType().equals(Material.PLAYER_HEAD)) {
+			NamespacedKey key = new NamespacedKey(VehicleFramework.plugin, "vf_whitelist_entry");
+			String entry = item.getItemMeta().getPersistentDataContainer().get(key, PersistentDataType.STRING);
+			if(entry != null) {
+				v.getOwnerData().removeFromWhiteList(entry);
+				p.sendMessage("§eRemoved §f" + (entry.startsWith("player_") ? entry.substring(7) : entry) + "§e from the whitelist.");
+				ownershipGUI.whitelistGui(e.getView().getTopInventory(), p, v, false);
+			}
+		}
+	}
+
+	@EventHandler
+	public void nameVehicle(AsyncPlayerChatEvent e) {
+		Player p = e.getPlayer();
+		if(!naming.containsKey(p) && !addingToWhitelist.containsKey(p)) return;
+		e.setCancelled(true);
+		// Whitelist add
+		if(addingToWhitelist.containsKey(p)) {
+			new BukkitRunnable() {
+				@Override
+				public void run() {
+					ActiveVehicle v = addingToWhitelist.get(p);
+					addingToWhitelist.remove(p);
+					addingToWhitelistTimeout.remove(p);
+					if(e.getMessage().equalsIgnoreCase("cancel")) {
+						p.sendMessage("§cCancelled.");
+						return;
+					}
+					String playerName = e.getMessage().trim();
+					String entry = "player_" + playerName;
+					if(v.getOwnerData().getWhiteList().contains(entry)) {
+						p.sendMessage("§c" + playerName + " is already on the whitelist.");
+						return;
+					}
+					v.getOwnerData().addToWhiteList(entry);
+					p.sendMessage("§aAdded §f" + playerName + "§a to the whitelist.");
+				}
+			}.runTask(VehicleFramework.plugin);
+			return;
+		}
+		if(!naming.containsKey(p)) return;
+		new BukkitRunnable() {
+			@Override
+			public void run() {
+				ActiveVehicle v = naming.get(p).getVehicle();
+				if(get(v.getEntity()) == null) return;
+				v.setName(StringFormatter.formatHex(e.getMessage().replace("_", " ")));
+				naming.remove(p);
+				p.sendMessage("§aRenamed the vehicle to "+v.getName());
+				p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1f);
+			}
+		}.runTask(VehicleFramework.plugin);
+	}
+	@EventHandler
+	public void playerLeave(PlayerQuitEvent e) {
+		Player p = e.getPlayer();
+		packetSneak.remove(p.getUniqueId());
+		mountedLeftClickAt.remove(p.getUniqueId());
+		if (VehicleFramework.getPacketListener() != null) {
+			VehicleFramework.getPacketListener().unregisterPlayer(p);
+		}
+		pendingEntityVehicle.remove(p);
+		pendingEntitySeat.remove(p);
+		addingToWhitelist.remove(p);
+		addingToWhitelistTimeout.remove(p);
+		ejectCooldown.remove(p);
+		cancelTakeover(p);
+		for (Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
+        	ActiveVehicle v = entry.getValue();
+            if(v.isPassenger(p, false)) {
+            	v.dismountPassenger(p, false);
+            	return;
+            }
+        }
+	}
+	@EventHandler
+	public void passengerDeath(PlayerDeathEvent e) {
+		Player p = e.getEntity();
+		for (Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
+        	ActiveVehicle v = entry.getValue();
+            if(v.isPassenger(p, false)) {
+            	v.dismountPassenger(p, false);
+            	return;
+            }
+        }
+	}
+	@EventHandler(priority = EventPriority.HIGHEST)
+	public void damagePassenger(EntityDamageEvent e) {
+		Entity entity = e.getEntity();
+		if (e instanceof EntityDamageByEntityEvent by) {
+			DamageCause cause = e.getCause();
+			if ((cause == DamageCause.ENTITY_ATTACK || cause == DamageCause.ENTITY_SWEEP_ATTACK)
+					&& by.getDamager() instanceof Player attacker) {
+				fireMountedLeftClick(attacker);
+				if (isOwnVehicleMelee(attacker, entity)) {
+					e.setCancelled(true);
+					return;
+				}
+			}
+		}
+		if(damagedEntities.contains(entity)) return;
+		for (Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
+        	ActiveVehicle v = entry.getValue();
+            if(v.isPassenger(entity, SeatType.HARNESS)) {
+            	if(e.getCause().equals(DamageCause.SUFFOCATION)) e.setCancelled(true);
+            	return;
+            }
+        }
+		if(!(vehicles.containsKey(entity) || getByPassenger(entity) != null)) return;
+		VFEntityDamageEvent event = new VFEntityDamageEvent(e.getEntity(), null, e.getCause().toString(), e.getDamage());
+        Bukkit.getPluginManager().callEvent(event);
+        if (!event.isCancelled()) {
+        	if(e.getEntity() instanceof LivingEntity) {
+				if(e.isCancelled()) return; 
+				e.setCancelled(true);
+        		LivingEntity l = (LivingEntity) e.getEntity();
+        		try {
+					Damager.damage(l, event.getDamage());
+				} catch (Exception ex) {
+					ex.printStackTrace();
+				}
+        	}
+        }
+	}
+	@EventHandler(ignoreCancelled = true)
+	public void damageVehicle(VFEntityDamageEvent e) {
+		Entity entity = e.getEntity();
+		if(vehicles.containsKey(entity)) {
+			e.setCancelled(true);
+			double damage = e.getDamage();
+			ActiveVehicle v = vehicles.get(entity);
+			v.damage(e.getCause(), damage);
+		}
+		if(entity instanceof Player) {
+			Player p = (Player) entity;
+			if(p.getGameMode().equals(GameMode.SPECTATOR) || p.getGameMode().equals(GameMode.CREATIVE)) {
+				e.setCancelled(true);
+				return;
+			}
+			for(Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
+				if(entry.getValue().isPassenger(p, false)) {
+					double finalDamage = Math.min(e.getDamage()/2, 18);
+					e.setDamage(finalDamage);
+				}
+			}
+		}
+	}
+	
+	@EventHandler
+	public void closeInv(InventoryCloseEvent e){
+		Player p = (Player) e.getPlayer();
+		if(tempVehicle.containsKey(p)) tempVehicle.remove(p);
+	}
+	@EventHandler
+	public void clickWhileMounted(PlayerInteractEvent e) {
+		Player p = e.getPlayer();
+		if(!activeVehicle.containsKey(p)) return;
+		ActiveVehicle v = vehicles.get(activeVehicle.get(p).getEntity());
+		if(!v.isPassenger(p, false)) return;
+		Action a = e.getAction();
+		if(a.equals(Action.LEFT_CLICK_AIR) || a.equals(Action.LEFT_CLICK_BLOCK)) {
+			fireMountedLeftClick(p);
+			return;
+		}
+		if(mountedShifting(p)) {
+			if(a.equals(Action.RIGHT_CLICK_AIR) || a.equals(Action.RIGHT_CLICK_BLOCK)) v.key(p, Keybind.SHIFT_RIGHT_CLICK);
+			return;
+		}
+		if(a.equals(Action.RIGHT_CLICK_AIR) || a.equals(Action.RIGHT_CLICK_BLOCK)) v.key(p, Keybind.RIGHT_CLICK);
+	}
+
+	@EventHandler
+	public void swingWhileMounted(PlayerAnimationEvent e) {
+		if (e.getAnimationType() != PlayerAnimationType.ARM_SWING) {
+			return;
+		}
+		fireMountedLeftClick(e.getPlayer());
+	}
+
+	private boolean mountedShifting(Player p) {
+		if (p == null) {
+			return false;
+		}
+		return p.isSneaking() || packetSneak.getOrDefault(p.getUniqueId(), false);
+	}
+
+	private void fireMountedLeftClick(Player p) {
+		ActiveVehicle v = mountedVehicle(p);
+		if (v == null) {
+			return;
+		}
+		long now = System.currentTimeMillis();
+		Long last = mountedLeftClickAt.get(p.getUniqueId());
+		if (last != null && now - last < 75L) {
+			return;
+		}
+		mountedLeftClickAt.put(p.getUniqueId(), now);
+		if (mountedShifting(p)) {
+			v.key(p, Keybind.SHIFT_LEFT_CLICK);
+		} else {
+			v.key(p, Keybind.LEFT_CLICK);
+		}
+	}
+
+	private ActiveVehicle mountedVehicle(Player p) {
+		if (p == null) {
+			return null;
+		}
+		ActiveVehicle v = activeVehicle.get(p);
+		if (v == null || !v.isPassenger(p, false)) {
+			return null;
+		}
+		return v;
+	}
+
+	private boolean isOwnVehicleMelee(Player attacker, Entity hurt) {
+		ActiveVehicle v = mountedVehicle(attacker);
+		if (v == null || hurt == null) {
+			return false;
+		}
+		if (hurt.equals(v.getEntity())) {
+			return true;
+		}
+		ActiveVehicle mapped = vehicles.get(hurt);
+		if (mapped != null && mapped == v) {
+			return true;
+		}
+		try {
+			ModeledEntity hit = ModelEngineAPI.getModeledEntity(hurt);
+			ModeledEntity base = ModelEngineAPI.getModeledEntity(v.getEntity());
+			return hit != null && hit.equals(base);
+		} catch (Exception ignored) {
+			return false;
+		}
+	}
+
+	static boolean isPassengerMeleeOnOwnVehicle(EntityDamageEvent e, Map<Entity, ActiveVehicle> vehicles) {
+		if (!(e instanceof EntityDamageByEntityEvent by)) {
+			return false;
+		}
+		DamageCause cause = e.getCause();
+		if (cause != DamageCause.ENTITY_ATTACK && cause != DamageCause.ENTITY_SWEEP_ATTACK) {
+			return false;
+		}
+		if (!(by.getDamager() instanceof Player player)) {
+			return false;
+		}
+		ActiveVehicle v = vehicles.get(e.getEntity());
+		return v != null && v.isPassenger(player, false);
+	}
+
+	private boolean allowTicketSeat(Player p, ActiveVehicle v, Seat seat) {
+		if (p == null || v == null || seat == null) {
+			return true;
+		}
+		ActiveVehicle source = v.ticketSource();
+		boolean exempt = VehicleTicketRules.ownerOrWhitelisted(source.getOwnerData(), p.getName());
+		boolean has = VehicleTicketItems.inventoryHas(p, source.getOwnerData().getTicketId());
+		return VehicleTicketRules.mayEnter(source.getOwnerData().isTicketsEnabled(), seat.getType(), exempt, has);
+	}
+
+	private void putEjectCooldown(Player player, ActiveVehicle vehicle) {
+		if (player == null || vehicle == null || vehicle.getUUID() == null) {
+			return;
+		}
+		ejectCooldown.computeIfAbsent(player, ignored -> new HashMap<>())
+				.put(vehicle.getUUID(), System.currentTimeMillis() + 60000L);
+	}
+
+	private long ejectUntil(Player player, ActiveVehicle vehicle) {
+		if (player == null || vehicle == null || vehicle.getUUID() == null) {
+			return 0;
+		}
+		HashMap<String, Long> byVehicle = ejectCooldown.get(player);
+		if (byVehicle == null) {
+			return 0;
+		}
+		Long until = byVehicle.get(vehicle.getUUID());
+		if (until == null) {
+			return 0;
+		}
+		if (until <= System.currentTimeMillis()) {
+			byVehicle.remove(vehicle.getUUID());
+			if (byVehicle.isEmpty()) {
+				ejectCooldown.remove(player);
+			}
+			return 0;
+		}
+		return until;
+	}
+
+	private boolean takeSeat(Player p, ActiveVehicle v, Seat seat) {
+		if (p == null || v == null || seat == null) {
+			return false;
+		}
+		MountResult result = v.isPassenger(p, true) ? v.changeSeat(p, seat) : v.addPassenger(p, seat);
+		if (result != MountResult.MOUNTED) {
+			if (result == MountResult.REJECTED) {
+				p.closeInventory();
+				recoverRejectedMount(v, p, seat.getBone(), p);
+			}
+			return false;
+		}
+		if (tempVehicle.containsKey(p)) tempVehicle.remove(p);
+		if (!activeVehicle.containsKey(p)) activeVehicle.put(p, v);
+		return true;
+	}
+
+	public void recoverRejectedMount(ActiveVehicle vehicle, Entity rider, String seatBone, Player notify) {
+		if (vehicle == null || vehicle.isDestroyed()) {
+			if (notify != null) notify.sendMessage("§cCould not mount this seat.");
+			return;
+		}
+		String uuid = vehicle.getUUID();
+		if (uuid == null || uuid.isBlank() || !mountReloading.add(uuid)) {
+			if (notify != null) notify.sendMessage("§cCould not mount this seat.");
+			return;
+		}
+		if (notify != null) {
+			notify.sendMessage("§eReloading the vehicle.");
+		}
+		UUID riderId = rider == null ? null : rider.getUniqueId();
+		UUID notifyId = notify == null ? null : notify.getUniqueId();
+		Bukkit.getScheduler().runTask(VehicleFramework.plugin, () -> finishMountReload(uuid, riderId, seatBone, notifyId));
+	}
+
+	private void finishMountReload(String uuid, UUID riderId, String seatBone, UUID notifyId) {
+		try {
+			Player notify = notifyId == null ? null : Bukkit.getPlayer(notifyId);
+			ActiveVehicle vehicle = getByUUID(uuid);
+			if (vehicle == null || vehicle.getEntity() == null || !vehicle.getEntity().isValid()) {
+				if (notify != null) notify.sendMessage("§cCould not mount this seat.");
+				return;
+			}
+			Location loc = vehicle.getEntity().getLocation().clone();
+			if (!unload(vehicle, "after a rejected mount")) {
+				if (notify != null) notify.sendMessage("§cCould not mount this seat.");
+				return;
+			}
+			VehiclePersistence persistence = VehiclePersistence.current();
+			if (persistence == null) {
+				if (notify != null) notify.sendMessage("§cCould not mount this seat.");
+				return;
+			}
+			Optional<IncompleteVehicle> loaded = persistence.loadIncomplete(uuid);
+			if (loaded.isEmpty() || loaded.get().getId() == null || loaded.get().getId().isBlank()) {
+				if (notify != null) notify.sendMessage("§cCould not mount this seat.");
+				return;
+			}
+			Vehicle type = VehicleLoader.getByString(loaded.get().getId());
+			if (type == null) {
+				if (notify != null) notify.sendMessage("§cCould not mount this seat.");
+				return;
+			}
+			ActiveVehicle fresh = spawn(loc, type, loaded.get());
+			if (fresh == null) {
+				if (notify != null) notify.sendMessage("§cCould not mount this seat.");
+				return;
+			}
+			retryMount(fresh, riderId, seatBone, notify);
+		} finally {
+			mountReloading.remove(uuid);
+		}
+	}
+
+	private void retryMount(ActiveVehicle fresh, UUID riderId, String seatBone, Player notify) {
+		Seat seat = fresh.getSeat(seatBone);
+		if (seat == null) {
+			if (notify != null) notify.sendMessage("§cCould not mount this seat.");
+			return;
+		}
+		Entity rider = riderId == null ? null : Bukkit.getEntity(riderId);
+		if (rider instanceof Player player && player.isOnline()) {
+			takeSeat(player, fresh, seat);
+			return;
+		}
+		if (rider == null || !rider.isValid() || rider.isDead()) {
+			return;
+		}
+		if (fresh.addPassenger(rider, seat) == MountResult.REJECTED) {
+			recoverRejectedMount(fresh, rider, seatBone, notify);
+		}
+	}
+
+	public void mount(Player p, String seat, ActiveVehicle v) {
+		Seat s = v.getSeatHandler().getSeat(seat);
+		if(s == null) return;
+		if (ejectUntil(p, v) > System.currentTimeMillis()) {
+			long remaining = (ejectUntil(p, v) - System.currentTimeMillis() + 999) / 1000;
+			p.sendMessage("§cYou cannot enter this vehicle for §e" + remaining + "§c more seconds.");
+			return;
+		}
+		if (!allowTicketSeat(p, v, s)) {
+			p.sendMessage("§cYou need a ticket for this vehicle.");
+			return;
+		}
+		takeSeat(p, v, s);
+	}
+
+	@EventHandler
+	public void seatSelect(InventoryClickEvent e) {
+		Player p = (Player) e.getWhoClicked();
+		if(!(e.getView().getTopInventory().getHolder() instanceof VFInventoryHolder)) return;
+		VFInventoryHolder h = (VFInventoryHolder) e.getView().getTopInventory().getHolder();
+		if(!h.getType().equals(VFGUI.SEAT_SELECTION)) return;
+		e.setCancelled(true);
+		ActiveVehicle v = null;
+		if(tempVehicle.containsKey(p)) v = tempVehicle.get(p);
+		if(activeVehicle.containsKey(p)) v = activeVehicle.get(p);
+		if(v == null) return;
+		ItemStack i = e.getCurrentItem();
+		if(i == null) return;
+		if(i.getType().equals(Material.GRAY_STAINED_GLASS_PANE)) return;
+		if(v.isDestroyed()) {
+	    	p.sendMessage("Vehicle is destroyed");
+	    	return;
+	    }
+		if(e.getSlot() == 25) {
+			// Ownership settings – only owner can open this
+			if(v.getOwnerData().getOwner().equalsIgnoreCase("player_" + p.getName())) {
+				p.closeInventory();
+				ownershipGUI.ownershipGui(null, p, v, true);
+			}
+			return;
+		}
+		if(e.getSlot() == 26) {
+			v.dismountPassenger(p, false);
+			return;
+		}
+		NamespacedKey key = new NamespacedKey(VehicleFramework.plugin, "vf_seat_id");
+		String id = i.getItemMeta().getPersistentDataContainer().get(key, PersistentDataType.STRING);
+		if(id == null) return;
+		Seat seat = v.getSeat(id);
+		
+		// Occupied entity seat: click to dismount the entity and teleport it to the player
+		if(i.getType().equals(Material.GRAY_CONCRETE) && seat != null && seat.getType().equals(SeatType.ENTITY)) {
+			if(seat.isOccupied()) {
+				Entity mounted = seat.getEntity();
+				v.dismountPassenger(mounted, false);
+				mounted.teleport(p.getLocation());
+				p.sendMessage("§eEntity dismounted");
+			}
+			p.closeInventory();
+			return;
+		}
+		// Empty entity seat: enter pending entity mount mode
+		if(i.getType().equals(Material.CYAN_CONCRETE) && seat != null && seat.getType().equals(SeatType.ENTITY)) {
+			pendingEntityVehicle.put(p, v);
+			pendingEntitySeat.put(p, id);
+			p.closeInventory();
+			p.sendMessage("§eRight-click an entity to mount it in this seat");
+			return;
+		}
+		if(i.getType().equals(Material.YELLOW_CONCRETE)) {
+			// Owner can eject the player occupying this seat
+			if(seat != null && !seat.getType().equals(SeatType.ENTITY)
+					&& v.getOwnerData().getOwner().equalsIgnoreCase("player_" + p.getName())) {
+				Entity occupant = seat.getEntity();
+				if(occupant instanceof Player) {
+					Player ejected = (Player) occupant;
+					if (ejected.getUniqueId().equals(p.getUniqueId())) {
+						p.sendMessage("§cYou cannot eject yourself");
+						return;
+					}
+					v.dismountPassenger(ejected, false);
+					putEjectCooldown(ejected, v);
+					ejected.sendMessage("§cYou have been removed from this vehicle by the owner and cannot re-enter it for 60 seconds.");
+					p.sendMessage("§aEjected §e" + ejected.getName() + "§a from the vehicle.");
+					inv.seatSelection(p.getOpenInventory().getTopInventory(), p, v, false);
+					return;
+				}
+			}
+			p.sendMessage("§cSeat is occupied");
+			return;
+		}
+		if (!allowTicketSeat(p, v, seat)) {
+			p.sendMessage("§cYou need a ticket for this vehicle.");
+			return;
+		}
+		if (ejectUntil(p, v) > System.currentTimeMillis()) {
+			long remaining = (ejectUntil(p, v) - System.currentTimeMillis() + 999) / 1000;
+			p.sendMessage("§cYou cannot enter this vehicle for §e" + remaining + "§c more seconds.");
+			return;
+		}
+	    if (!takeSeat(p, v, seat)) return;
+		inv.seatSelection(p.getOpenInventory().getTopInventory(), p, activeVehicle.get(p), false);
+	}
+	@EventHandler
+	public void skinSelect(InventoryClickEvent e) {
+		Player p = (Player) e.getWhoClicked();
+		if(!(e.getView().getTopInventory().getHolder() instanceof VFInventoryHolder)) return;
+		VFInventoryHolder h = (VFInventoryHolder) e.getView().getTopInventory().getHolder();
+		if(!h.getType().equals(VFGUI.SKIN_SELECTION)) return;
+		e.setCancelled(true);
+		ActiveVehicle v = null;
+		if(tempVehicle.containsKey(p)) v = tempVehicle.get(p);
+		if(activeVehicle.containsKey(p)) v = activeVehicle.get(p);
+		if(v == null) return;
+		ItemStack i = e.getCurrentItem();
+		if(i == null) return;
+		if(i.getType().equals(Material.GRAY_STAINED_GLASS_PANE)) return;
+	    if(v.isDestroyed()) {
+	    	p.sendMessage("Vehicle is destroyed");
+	    	return;
+	    }
+		
+		if(i.getType().equals(Material.YELLOW_CONCRETE)) {
+			p.sendMessage("§cAlready using this skin");
+			return;
+		}
+		NamespacedKey key = new NamespacedKey(VehicleFramework.plugin, "vf_skin_id");
+		String skinId = i.getItemMeta().getPersistentDataContainer().get(key, PersistentDataType.STRING);
+		if (skinId == null || !SkinHandler.isModelAvailable(v.getSkinHandler().getSkins().get(skinId))) {
+			p.sendMessage("§cThat skin is not available.");
+			return;
+		}
+		if (!v.changeSkin(skinId)) {
+			p.sendMessage("§cCould not change skin.");
+			return;
+		}
+		inv.skinSelection(p.getOpenInventory().getTopInventory(), p, v, false);
+	}
+
+	@EventHandler
+	public void containerClick(InventoryClickEvent e) {
+		if (!(e.getView().getTopInventory().getHolder() instanceof VFInventoryHolder h)) {
+			return;
+		}
+		if (!h.getType().equals(VFGUI.CONTAINER)) {
+			return;
+		}
+		Optional<ActiveVehicle> opt = h.getVehicle();
+		if (opt.isEmpty() || !opt.get().hasContainers()) {
+			return;
+		}
+		Container c = opt.get().getContainerHandler().get(h.getId());
+		if (c == null) {
+			return;
+		}
+		ItemStack incoming = incomingToContainer(e);
+		if (incoming == null || c.allows(incoming)) {
+			return;
+		}
+		e.setCancelled(true);
+		e.getWhoClicked().sendMessage("§cThat item is not allowed in this container.");
+	}
+
+	@EventHandler
+	public void containerDrag(InventoryDragEvent e) {
+		if (!(e.getView().getTopInventory().getHolder() instanceof VFInventoryHolder h)) {
+			return;
+		}
+		if (!h.getType().equals(VFGUI.CONTAINER)) {
+			return;
+		}
+		Optional<ActiveVehicle> opt = h.getVehicle();
+		if (opt.isEmpty() || !opt.get().hasContainers()) {
+			return;
+		}
+		Container c = opt.get().getContainerHandler().get(h.getId());
+		if (c == null || c.allows(e.getOldCursor())) {
+			return;
+		}
+		int topSize = e.getView().getTopInventory().getSize();
+		for (int slot : e.getRawSlots()) {
+			if (slot < topSize) {
+				e.setCancelled(true);
+				e.getWhoClicked().sendMessage("§cThat item is not allowed in this container.");
+				return;
+			}
+		}
+	}
+
+	private static ItemStack incomingToContainer(InventoryClickEvent e) {
+		Inventory top = e.getView().getTopInventory();
+		Inventory clicked = e.getClickedInventory();
+		InventoryAction action = e.getAction();
+		if (action == InventoryAction.PLACE_ALL
+				|| action == InventoryAction.PLACE_ONE
+				|| action == InventoryAction.PLACE_SOME
+				|| action == InventoryAction.SWAP_WITH_CURSOR) {
+			if (clicked != null && clicked.equals(top)) {
+				return e.getCursor();
+			}
+		}
+		if (action == InventoryAction.MOVE_TO_OTHER_INVENTORY) {
+			if (clicked != null && !clicked.equals(top)) {
+				return e.getCurrentItem();
+			}
+		}
+		if (action == InventoryAction.HOTBAR_SWAP || action == InventoryAction.HOTBAR_MOVE_AND_READD) {
+			if (clicked != null && clicked.equals(top)) {
+				int hotbar = e.getHotbarButton();
+				if (hotbar >= 0) {
+					return e.getWhoClicked().getInventory().getItem(hotbar);
+				}
+			}
+		}
+		return null;
+	}
+
+	@EventHandler
+	public void saveContainer(InventoryCloseEvent e) {
+		if(e.getView().getTopInventory().getHolder() == null) return;
+		if(!(e.getView().getTopInventory().getHolder() instanceof VFInventoryHolder)) return;
+		VFInventoryHolder h = (VFInventoryHolder) e.getView().getTopInventory().getHolder();
+		if(!h.getType().equals(VFGUI.CONTAINER)) return;
+		Optional<ActiveVehicle> opt = h.getVehicle();
+		if(opt.isEmpty()) return;
+		Container c = opt.get().getContainerHandler().get(h.getId());
+		if(c == null) return;
+		if (e.getPlayer() instanceof Player player) {
+			c.stripDisallowed(e.getView().getTopInventory(), player);
+		}
+		c.close(e.getView().getTopInventory());
+	}
+	
+	public void inputPacket(Player p, float sideways, float forward, boolean space, boolean sneak) {
+	    ActiveVehicle vehicle = activeVehicle.get(p);
+	    if (vehicle == null) return;
+	    packetSneak.put(p.getUniqueId(), sneak);
+	    if (!vehicle.getSeatHandler().isMounted(p)) return;
+
+	    if (vehicle.isTrain()) {
+	    	ActiveVehicle loco = vehicle.ticketSource();
+	    	if (loco.getSeatHandler() != null && loco.getSeatHandler().isCaptain(p)) {
+	    		if (sideways > 0) {
+	    			loco.getTrainHandler().holdJunction(TrackJunction.Side.LEFT);
+	    		} else if (sideways < 0) {
+	    			loco.getTrainHandler().holdJunction(TrackJunction.Side.RIGHT);
+	    		}
+	    	}
+	    }
+
+	    List<Keybind> keybinds = converter.convert(sideways, forward, space, sneak);
+	    for (Keybind key : keybinds) {
+	        vehicle.key(p, key);
+	    }
+	}
+
+	//Database and persistence, unload vehicle safely and store them in on disk
+	//Chunks and stuff is managed in the spawnmanager
+
+	@SuppressWarnings("unchecked")
+	public void unloadAll() {
+		HashMap<Entity, ActiveVehicle> vc = (HashMap<Entity, ActiveVehicle>) vehicles.clone();
+		for(Map.Entry<Entity, ActiveVehicle> entry : vc.entrySet()) {
+			unload(entry.getValue(), "during unload");
+		}
+	}
+
+	private boolean saveLive(ActiveVehicle vehicle) {
+		VehiclePersistence persistence = VehiclePersistence.current();
+		if (persistence == null) {
+			VFLogger.log("Cannot save vehicle: SQLite repository is not open");
+			return false;
+		}
+		return persistence.saveLive(vehicle);
+	}
+
+	public boolean persistDestroy(ActiveVehicle v) {
+		if (v == null || v.getUUID() == null) {
+			return false;
+		}
+		VehiclePersistence persistence = VehiclePersistence.current();
+		if (persistence == null) {
+			VFLogger.log("Cannot tombstone vehicle " + v.getUUID() + ": SQLite is not open");
+			return false;
+		}
+		return persistence.tombstone(v.getUUID().toString());
+	}
+
+	public boolean unload(ActiveVehicle v) {
+		return unload(v, "during unload");
+	}
+
+	public boolean unload(ActiveVehicle v, String context) {
+		if (v == null) {
+			return false;
+		}
+		String when = context == null || context.isBlank() ? "during unload" : context;
+		PersistenceLog.unload(v, v.isDestroyed() ? "destroyed" : "unload");
+		if (v.isDestroyed()) {
+			if (!persistDestroy(v)) {
+				VFLogger.log("Failed to persist " + describeVehicle(v) + " at " + describeLocation(v)
+						+ " " + when + ": tombstone failed");
+			}
+		} else {
+			VehiclePersistence persistence = VehiclePersistence.current();
+			if (persistence == null) {
+				VFLogger.log("Failed to persist " + describeVehicle(v) + " at " + describeLocation(v)
+						+ " " + when + ": SQLite is not open");
+				return false;
+			}
+			VehiclePersistResult result = persistence.saveLiveResult(v);
+			if (result.isAlreadyStored()) {
+				VFLogger.info("Vehicle " + describeVehicle(v) + " already saved. Entity was already unloaded.");
+			} else if (result.isFailed()) {
+				VFLogger.log("Failed to persist " + describeVehicle(v) + " at " + describeLocation(v)
+						+ " " + when + ": " + result.reason());
+				return false;
+			}
+		}
+		v.remove(VehicleRemoveReason.UNLOAD);
+		return true;
+	}
+
+	static String describeVehicle(ActiveVehicle v) {
+		if (v == null) {
+			return "unknown vehicle";
+		}
+		String id = v.getId() == null || v.getId().isBlank() ? "unknown" : v.getId();
+		String uuid = v.getUUID() == null || v.getUUID().isBlank() ? "no-uuid" : v.getUUID();
+		String name = v.getName();
+		if (name != null && !name.isBlank()) {
+			return id + " '" + name + "' (" + uuid + ")";
+		}
+		return id + " (" + uuid + ")";
+	}
+
+	static String describeLocation(ActiveVehicle v) {
+		if (v == null) {
+			return "unknown location";
+		}
+		Entity entity = v.getEntity();
+		if (entity == null || entity.isDead()) {
+			return "unknown location";
+		}
+		try {
+			Location loc = entity.getLocation();
+			if (loc == null || loc.getWorld() == null) {
+				return "unknown location";
+			}
+			return loc.getWorld().getName() + " " + loc.getBlockX() + " " + loc.getBlockY() + " " + loc.getBlockZ();
+		} catch (Exception ex) {
+			return "unknown location";
+		}
+	}
+
+	public Map<Vehicle, Integer> getVehiclesByOwner(String owner) {
+		Map<Vehicle, Integer> owned = new HashMap<>();
+		Set<String> liveUuids = new HashSet<>();
+		for(Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
+			ActiveVehicle v = entry.getValue();
+			if(v.getOwnerData().getOwner().equalsIgnoreCase(owner)) {
+				if (v.getUUID() != null) {
+					liveUuids.add(v.getUUID().toLowerCase());
+				}
+				Vehicle base = VehicleLoader.getByString(v.getId());
+				if(base == null) continue;
+				owned.put(base, owned.getOrDefault(base, 0) + 1);
+			}
+		}
+
+		Map<String, Integer> stored = Map.of();
+		VehiclePersistence persistence = VehiclePersistence.current();
+		if (persistence != null) {
+			stored = persistence.countByOwner(owner, liveUuids);
+		}
+		for(Map.Entry<String, Integer> entry : stored.entrySet()) {
+			Vehicle base = VehicleLoader.getByString(entry.getKey());
+			if(base == null) continue;
+			owned.put(base, owned.getOrDefault(base, 0) + entry.getValue());
+		}
+
+		return owned;
+	}
+
+	public Optional<Location> getOfflineLocation(String vehicleUuid) {
+		if (vehicleUuid == null || vehicleUuid.isBlank()) {
+			return Optional.empty();
+		}
+		ActiveVehicle live = get(vehicleUuid);
+		if (live != null) {
+			return Optional.of(live.getLocation());
+		}
+		Optional<Location> pending = SpawnManager.findSpawnLocation(vehicleUuid);
+		if (pending.isPresent()) {
+			return pending;
+		}
+		VehiclePersistence persistence = VehiclePersistence.current();
+		if (persistence == null) {
+			return Optional.empty();
+		}
+		return persistence.findLive(vehicleUuid).flatMap(VehicleManager::locationFromSnapshot);
+	}
+
+	private static Optional<Location> locationFromSnapshot(VehicleSnapshot snapshot) {
+		if (snapshot == null || snapshot.getWorld() == null) {
+			return Optional.empty();
+		}
+		World world = Bukkit.getWorld(snapshot.getWorld());
+		if (world == null) {
+			return Optional.empty();
+		}
+		return Optional.of(new Location(
+				world,
+				snapshot.getX(),
+				snapshot.getY(),
+				snapshot.getZ(),
+				snapshot.getYaw(),
+				0f));
+	}
+
+	public List<OwnedVehicleSummary> listOwnedVehicles(String owner) {
+		if (owner == null || owner.isBlank()) {
+			return List.of();
+		}
+		return collectOwnedVehicles(
+				liveOwner -> liveOwner != null && liveOwner.equalsIgnoreCase(owner),
+				persistenceListByOwner(owner));
+	}
+
+	public List<OwnedVehicleSummary> listAllPlayerOwnedVehicles() {
+		VehiclePersistence persistence = VehiclePersistence.current();
+		List<StoredVehicleMeta> stored = persistence == null ? List.of() : persistence.listPlayerOwned();
+		return collectOwnedVehicles(StoredVehicleMeta::isPlayerOwner, stored);
+	}
+
+	private List<StoredVehicleMeta> persistenceListByOwner(String owner) {
+		VehiclePersistence persistence = VehiclePersistence.current();
+		if (persistence == null) {
+			return List.of();
+		}
+		return persistence.listByOwner(owner);
+	}
+
+	private List<OwnedVehicleSummary> collectOwnedVehicles(
+			java.util.function.Predicate<String> liveOwnerMatch,
+			List<StoredVehicleMeta> stored) {
+		Map<String, OwnedVehicleSummary> byUuid = new LinkedHashMap<>();
+		for (ActiveVehicle vehicle : vehicles.values()) {
+			String liveOwner = vehicle.getOwnerData().getOwner();
+			if (!liveOwnerMatch.test(liveOwner)) {
+				continue;
+			}
+			String uuid = vehicle.getUUID();
+			byUuid.put(
+					uuid.toLowerCase(),
+					new OwnedVehicleSummary(
+							uuid,
+							vehicle.getName(),
+							vehicle.getId(),
+							Optional.of(vehicle.getLocation()),
+							true,
+							liveOwner));
+		}
+		for (StoredVehicleMeta meta : stored) {
+			String key = meta.getUuid().toLowerCase();
+			if (byUuid.containsKey(key)) {
+				continue;
+			}
+			byUuid.put(
+					key,
+					new OwnedVehicleSummary(
+							meta.getUuid(),
+							meta.getName(),
+							meta.getTypeId(),
+							getOfflineLocation(meta.getUuid()),
+							false,
+							meta.getOwner()));
+		}
+		return new ArrayList<>(byUuid.values());
+	}
+
+	public Optional<StoredVehicleMeta> readStoredVehicle(String vehicleUuid) {
+		VehiclePersistence persistence = VehiclePersistence.current();
+		if (persistence == null) {
+			return Optional.empty();
+		}
+		return persistence.readMeta(vehicleUuid);
+	}
+
+	public void clearOwnership(String vehicleUuid) {
+		if (vehicleUuid == null || vehicleUuid.isBlank()) {
+			return;
+		}
+		ActiveVehicle live = get(vehicleUuid);
+		if (live != null) {
+			live.getOwnerData().setOwner("none");
+			live.getOwnerData().setWhiteListed(false);
+			saveLive(live);
+			return;
+		}
+		VehiclePersistence persistence = VehiclePersistence.current();
+		if (persistence != null) {
+			persistence.clearOwnership(vehicleUuid);
+		}
+	}
+}
