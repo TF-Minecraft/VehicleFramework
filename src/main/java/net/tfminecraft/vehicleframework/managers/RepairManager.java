@@ -17,7 +17,6 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import net.tfminecraft.tlibs.TLibs;
-import net.tfminecraft.tlibs.enums.APIType;
 import net.tfminecraft.tlibs.objects.api.ItemAPI;
 import net.tfminecraft.vehicleframework.util.Text;
 import net.tfminecraft.vehicleframework.VehicleFramework;
@@ -35,7 +34,7 @@ import net.tfminecraft.vehicleframework.weapons.ActiveWeapon;
 
 public class RepairManager implements Listener{
 	@SuppressWarnings("deprecation")
-	private ItemAPI api = (ItemAPI) TLibs.getApiInstance(APIType.ITEM_API);
+	private ItemAPI api = TLibs.getItemAPI();
 	private VehicleManager manager;
 	private InventoryManager inv = new InventoryManager();
 	

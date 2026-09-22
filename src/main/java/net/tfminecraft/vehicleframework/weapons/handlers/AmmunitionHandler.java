@@ -11,7 +11,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
 import com.ticxo.modelengine.api.model.ActiveModel;
 import net.tfminecraft.tlibs.TLibs;
-import net.tfminecraft.tlibs.enums.APIType;
 import net.tfminecraft.tlibs.objects.api.ItemAPI;
 import net.tfminecraft.vehicleframework.VFLogger;
 import net.tfminecraft.vehicleframework.VehicleFramework;
@@ -200,7 +199,7 @@ public class AmmunitionHandler {
 	public void load(Player p, ItemStack i, boolean message) {
 		if(i.getType().equals(Material.AIR)) return;
 		@SuppressWarnings("deprecation")
-		ItemAPI api = (ItemAPI) TLibs.getApiInstance(APIType.ITEM_API);
+		ItemAPI api = TLibs.getItemAPI();
 		String input = api.getChecker().getAsStringPath(i);
 		if(AmmunitionLoader.getByInput(input) == null) return;
 		Ammunition a = AmmunitionLoader.getByInput(input);
