@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>net.tfminecraft</groupId>
   <artifactId>vehicleframework</artifactId>
-  <version>1.1.12</version>
+  <version>1.1.13</version>
   <build>
     <resources>
       <resource>
@@ -94,7 +94,7 @@
     <dependency>
       <groupId>me.plugins</groupId>
       <artifactId>tlibs</artifactId>
-      <version>1.1.0</version>
+      <version>1.1.1</version>
       <scope>provided</scope>
       <exclusions>
         <exclusion>
@@ -192,7 +192,7 @@
   </dependencies>
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
-    <tlibs.version>1.1.0</tlibs.version>
+    <tlibs.version>1.1.1</tlibs.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <coreprotect.version>24.0</coreprotect.version>
   </properties>
