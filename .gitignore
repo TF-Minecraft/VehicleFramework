@@ -1,5 +1,6 @@
 # Ignore Maven target directory
 target
+/dependency-reduced-pom.xml
 
 # Ignore Eclipse/IntelliJ IDEA/NetBeans project files
 *.iml
