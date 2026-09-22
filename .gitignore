@@ -47,3 +47,6 @@ Desktop.ini
 
 # Local investigation notes and test artifacts
 /.scratch/
+
+# Local runtime data and obsolete packaged snapshots
+/src/main/resources/trains.zip
