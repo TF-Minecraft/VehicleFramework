@@ -5,6 +5,21 @@
   <artifactId>vehicleframework</artifactId>
   <version>1.1.12</version>
   <build>
+    <resources>
+      <resource>
+        <filtering>true</filtering>
+        <directory>src/main/resources</directory>
+        <includes>
+          <include>plugin.yml</include>
+        </includes>
+      </resource>
+      <resource>
+        <directory>src/main/resources</directory>
+        <excludes>
+          <exclude>plugin.yml</exclude>
+        </excludes>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
@@ -41,27 +56,13 @@
           </dependency>
         </dependencies>
       </plugin>
-      <plugin>
-        <artifactId>maven-antrun-plugin</artifactId>
-        <version>3.1.0</version>
-        <executions>
-          <execution>
-            <phase>package</phase>
-            <goals>
-              <goal>run</goal>
-            </goals>
-            <configuration>
-              <target>
-                <mkdir />
-                <copy />
-              </target>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
     </plugins>
   </build>
   <repositories>
+    <repository>
+      <id>spigot-snapshots</id>
+      <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
+    </repository>
     <repository>
       <id>playpro-repo</id>
       <url>https://maven.playpro.com</url>
@@ -73,12 +74,45 @@
   </repositories>
   <dependencies>
     <dependency>
-      <groupId>net.coreprotect</groupId>
-      <artifactId>CoreProtect</artifactId>
-      <version>${coreprotect.version}</version>
+      <groupId>it.unimi.dsi</groupId>
+      <artifactId>fastutil</artifactId>
+      <version>8.5.15</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains</groupId>
+      <artifactId>annotations</artifactId>
+      <version>24.1.0</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.spigotmc</groupId>
+      <artifactId>spigot-api</artifactId>
+      <version>1.21.10-R0.1-SNAPSHOT</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>me.plugins</groupId>
+      <artifactId>tlibs</artifactId>
+      <version>1.1.0</version>
       <scope>provided</scope>
       <exclusions>
-          <exclusion><groupId>*</groupId><artifactId>*</artifactId></exclusion>
+        <exclusion>
+          <artifactId>*</artifactId>
+          <groupId>*</groupId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>net.coreprotect</groupId>
+      <artifactId>CoreProtect</artifactId>
+      <version>24.0</version>
+      <scope>provided</scope>
+      <exclusions>
+        <exclusion>
+          <artifactId>*</artifactId>
+          <groupId>*</groupId>
+        </exclusion>
       </exclusions>
     </dependency>
     <dependency>
@@ -118,66 +152,48 @@
       <artifactId>json-simple</artifactId>
       <version>1.1</version>
       <scope>system</scope>
-      <systemPath>${tfmc.refs}/json-simple-1.1.jar</systemPath>
+      <systemPath>${project.basedir}/libs/json-simple-1.1.jar</systemPath>
     </dependency>
     <dependency>
       <groupId>local</groupId>
       <artifactId>gson</artifactId>
       <version>2.10.1</version>
       <scope>system</scope>
-      <systemPath>${tfmc.refs}/gson-2.10.1.jar</systemPath>
+      <systemPath>${project.basedir}/libs/gson-2.10.1.jar</systemPath>
     </dependency>
     <dependency>
       <groupId>local</groupId>
       <artifactId>ProtocolLib</artifactId>
       <version>1.0</version>
       <scope>system</scope>
-      <systemPath>${tfmc.refs}/ProtocolLib.jar</systemPath>
+      <systemPath>${project.basedir}/libs/ProtocolLib.jar</systemPath>
     </dependency>
     <dependency>
       <groupId>local</groupId>
       <artifactId>MythicMobs</artifactId>
       <version>5.8.0-SNAPSHOT</version>
       <scope>system</scope>
-      <systemPath>${tfmc.refs}/MythicMobs-5.8.0-SNAPSHOT.jar</systemPath>
+      <systemPath>${project.basedir}/libs/MythicMobs-5.8.0-SNAPSHOT.jar</systemPath>
     </dependency>
     <dependency>
       <groupId>local</groupId>
       <artifactId>joml</artifactId>
       <version>1.10.8</version>
       <scope>system</scope>
-      <systemPath>${tfmc.refs}/joml-1.10.8.jar</systemPath>
+      <systemPath>${project.basedir}/libs/joml-1.10.8.jar</systemPath>
     </dependency>
     <dependency>
       <groupId>local</groupId>
       <artifactId>ModelEngine</artifactId>
       <version>4.0.8</version>
       <scope>system</scope>
-      <systemPath>${tfmc.refs}/ModelEngine-4.0.8.jar</systemPath>
-    </dependency>
-    <dependency>
-      <groupId>local</groupId>
-      <artifactId>spigot-api</artifactId>
-      <version>1.21.8</version>
-      <scope>system</scope>
-      <systemPath>${tfmc.refs}/spigot-api.jar</systemPath>
-    </dependency>
-    <dependency>
-      <groupId>me.plugins</groupId>
-      <artifactId>tlibs</artifactId>
-      <version>${tlibs.version}</version>
-      <scope>provided</scope>
-      <exclusions>
-        <exclusion><groupId>*</groupId><artifactId>*</artifactId></exclusion>
-      </exclusions>
+      <systemPath>${project.basedir}/libs/ModelEngine-4.0.8.jar</systemPath>
     </dependency>
   </dependencies>
   <properties>
-    <coreprotect.version>24.0</coreprotect.version>
-    <maven.compiler.release>25</maven.compiler.release>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <tfmc.refs>D:/Dokumenter/My Plugins/Reference Libs</tfmc.refs>
+    <maven.compiler.release>21</maven.compiler.release>
     <tlibs.version>1.1.0</tlibs.version>
-    <tfmc.builds>D:/Dokumenter/My Plugins/TFMC/VehicleFramework</tfmc.builds>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <coreprotect.version>24.0</coreprotect.version>
   </properties>
 </project>
