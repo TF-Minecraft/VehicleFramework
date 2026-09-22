@@ -1,4 +1,4 @@
-main: net.tfminecraft.VehicleFramework.VehicleFramework
+main: net.tfminecraft.vehicleframework.VehicleFramework
 api-version: '1.21.10'
 name: VehicleFramework
 version: ${project.version}

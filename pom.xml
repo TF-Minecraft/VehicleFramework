@@ -192,7 +192,7 @@
                             <relocations>
                                 <relocation>
                                     <pattern>org.apache.commons.lang3</pattern>
-                                    <shadedPattern>net.tfminecraft.shadeutils.lang3</shadedPattern>
+                                    <shadedPattern>net.tfminecraft.vehicleframework.shadeutils.lang3</shadedPattern>
                                 </relocation>
                             </relocations>
                         </configuration>
