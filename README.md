@@ -1,46 +1,28 @@
-# vehicleframework
+# VehicleFramework
 
-Technical documentation is maintained in [TF-Minecraft/Docs](https://github.com/TF-Minecraft/Docs/blob/main/projects/VehicleFramework/README.md).
+> Custom vehicles, transport, and vehicle combat for TF-Minecraft.
 
-Use that project index for setup, configuration, architecture, integration and testing guides. This repository contains the source and project-specific assets.
+VehicleFramework brings modeled vehicles into the Minecraft world with their own movement, seats, components, and controls. Its systems support ground travel, boats, aircraft, and trains, letting each vehicle combine the features suited to its role.
 
-## TLibs build dependency
+Fuel, damage, ownership, and repairs make vehicles persistent parts of the world, with uses ranging from passenger transport and hauling to armed encounters.
 
-TLibs is a versioned Maven `provided` dependency. From this repository, prepare
-it once with the shared installer, then build as usual:
+## Features
 
-```sh
-python3 ../tlibs/tools/install-dependency.py --pom pom.xml
-bash .github/scripts/prepare-release.sh
-mvn clean verify
-```
+- **Different ways to travel** — movement systems for ground vehicles, floating hulls, wings, balloons, and rail travel.
+- **Drivers and passengers** — multiple seats, ownership rules, access lists, and vehicle tickets control who can ride.
+- **Vehicle upkeep** — fuel tanks, damageable components, and repairs give vehicles ongoing maintenance needs.
+- **Cargo and towing** — vehicle containers and towing support transport beyond individual passengers.
+- **Mounted weapons** — vehicle weapons use ammunition systems including bullets, projectiles, bombs, and torpedoes.
+- **Connected trains** — track and carriage systems support railway vehicles and linked consists.
 
-See [TLibs dependency setup](https://github.com/TF-Minecraft/TLibs/blob/5da8e77d0e0696bbff7d7064a2644072da9c6428/DEPENDENCIES.md)
-for private-source access, offline installation and the pinned binary versions.
-Set `GH_TOKEN` to a token with Contents read access to ServerAssets for the dependency preparation steps.
-Use JDK 25 for this TLibs binary; the server must also run Java 25.
+## Related projects
 
-## Builds and releases
+[VFBuilders](https://github.com/TF-Minecraft/VFBuilders) adds vehicle construction gameplay around VehicleFramework.
 
-PR builds run unit tests and publish UTC `DEV-YYYYMMDD-HHmm` JARs. Numeric tags matching the Maven version create draft releases. See the [shared pipeline guide](https://github.com/TF-Minecraft/Docs/blob/main/PIPELINES.md).
+Originally created by [Drefvelin](https://github.com/Drefvelin).
 
-Builds and server runtime require Java 25. Local builds default to [TLibs 1.1.0](https://github.com/TF-Minecraft/TLibs/releases/tag/v1.1.0); CI resolves the latest published stable TLibs release for each build, verifies its checksum, and uses its exact version throughout that job.
+## Documentation
 
-## Shared plugin dependencies
+[Project documentation](https://github.com/TF-Minecraft/Docs/blob/main/projects/VehicleFramework/README.md)
 
-Build and release workflows install checksum-verified plugin releases through
-[TLibs' shared installer](https://github.com/TF-Minecraft/TLibs/blob/main/DEPENDENCIES.md).
-CI selects the latest published versions; local builds use the explicit Maven
-version properties. Shared plugins use `provided` scope and remain separate
-server plugins. Each build records exact versions and checksums in
-`.build/plugin-dependencies.json` alongside its JAR.
-
-From this checkout, with the TLibs repository next to it:
-
-```sh
-python3 ../tlibs/tools/install-plugins.py --pom pom.xml
-```
-
-Prepare any remaining third-party inputs with `.github/scripts/prepare-release.sh`
-before running Maven. Any source-unavailable inputs remain private and checksum-pinned wherever declared; see the installer
-documentation for authentication and reproducible rebuilds.
+Technical documentation is maintained in [TF-Minecraft/Docs](https://github.com/TF-Minecraft/Docs).
