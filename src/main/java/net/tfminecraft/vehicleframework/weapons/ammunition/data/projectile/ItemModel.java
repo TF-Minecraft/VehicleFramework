@@ -1,5 +1,7 @@
 package net.tfminecraft.vehicleframework.weapons.ammunition.data.projectile;
 
+import net.tfminecraft.vehicleframework.util.LegacyModelData;
+
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
@@ -60,7 +62,7 @@ public class ItemModel implements ProjectileModel{
         if (model >= 0) {
             ItemMeta meta = itemStack.getItemMeta();
             if (meta != null) {
-                meta.setCustomModelData(model);
+                LegacyModelData.set(meta, model);
                 itemStack.setItemMeta(meta);
             }
         }

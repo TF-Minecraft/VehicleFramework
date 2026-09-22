@@ -106,6 +106,8 @@ class TrackSplineTest {
 		assertTrue(loaded.isLoop());
 	}
 
+	// json-simple 1.1 exposes raw containers; this fixture inserts a String key/value.
+	@SuppressWarnings("unchecked")
 	@Test
 	void json_roundtripPreservesBrokenAndWorld() {
 		UUID id = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");

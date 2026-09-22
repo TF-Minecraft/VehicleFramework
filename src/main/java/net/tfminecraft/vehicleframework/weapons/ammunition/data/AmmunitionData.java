@@ -237,6 +237,8 @@ public class AmmunitionData {
 		return clouds;
 	}
 
+	// Existing configuration accepts legacy enum names and aliases; registry keys are not equivalent.
+	@SuppressWarnings("deprecation")
 	private LingeringCloudData parseLingeringCloud(String input) {
 		if (input == null || input.isEmpty()) return null;
 

@@ -9,4 +9,4 @@ curl --fail --location --silent --show-error --retry 3 -H "Authorization: Bearer
 curl --fail --location --silent --show-error --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/TF-Minecraft/ServerAssets/contents/jars/575aa30aee8e/MythicMobs-5.8.0-SNAPSHOT.jar?ref=$ref" > "libs/MythicMobs-5.8.0-SNAPSHOT.jar"
 curl --fail --location --silent --show-error --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/TF-Minecraft/ServerAssets/contents/jars/bf1951014517/joml-1.10.8.jar?ref=$ref" > "libs/joml-1.10.8.jar"
 curl --fail --location --silent --show-error --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/TF-Minecraft/ServerAssets/contents/runtime/plugins/ModelEngine.jar?ref=$ref" > "libs/ModelEngine-4.0.8.jar"
-sha256sum --check .github/dependencies.sha256
+bash .github/scripts/install-local-dependencies.sh "$@"

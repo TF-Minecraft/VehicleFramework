@@ -50,6 +50,8 @@ class ConsistDataTest {
 	}
 
 	@Test
+	// json-simple 1.1 exposes a raw Map; this fixture writes known String keys and JSON values.
+	@SuppressWarnings("unchecked")
 	void fromJson_readsLongS() {
 		JSONObject json = new JSONObject();
 		json.put("s", Long.valueOf(8));

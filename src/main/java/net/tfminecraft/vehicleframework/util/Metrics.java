@@ -74,12 +74,12 @@ public class Metrics {
       // Inform the server owners about bStats
       config
           .options()
-          .header(
+          .setHeader(java.util.Arrays.asList((
               "bStats (https://bStats.org) collects some basic information for plugin authors, like how\n"
                   + "many people use their plugin and their total player count. It's recommended to keep bStats\n"
                   + "enabled, but if you're not comfortable with this, you can turn this setting off. There is no\n"
                   + "performance penalty associated with having metrics enabled, and data sent to bStats is fully\n"
-                  + "anonymous.")
+                  + "anonymous.").split("\n", -1)))
           .copyDefaults(true);
       try {
         config.save(configFile);
@@ -352,7 +352,7 @@ public class Metrics {
         infoLogger.accept("Sent bStats metrics data: " + data.toString());
       }
       String url = String.format(REPORT_URL, platform);
-      HttpsURLConnection connection = (HttpsURLConnection) new URL(url).openConnection();
+      HttpsURLConnection connection = (HttpsURLConnection) java.net.URI.create(url).toURL().openConnection();
       // Compress the data to save bandwidth
       byte[] compressedData = compress(data.toString());
       connection.setRequestMethod("POST");

@@ -37,44 +37,38 @@
         <dependency>
             <groupId>local</groupId>
             <artifactId>json-simple</artifactId>
-            <version>1.1</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/json-simple-1.1.jar</systemPath>
+            <version>1.1-tfmc-2d9484f4c649</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>local</groupId>
             <artifactId>gson</artifactId>
-            <version>2.10.1</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/gson-2.10.1.jar</systemPath>
+            <version>2.10.1-tfmc-4241c14a7727</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>local</groupId>
             <artifactId>ProtocolLib</artifactId>
-            <version>1.0</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/ProtocolLib.jar</systemPath>
+            <version>1.0-tfmc-ee2e7ab9b538</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>local</groupId>
             <artifactId>MythicMobs</artifactId>
-            <version>5.8.0-SNAPSHOT</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/MythicMobs-5.8.0-SNAPSHOT.jar</systemPath>
+            <version>5.8.0-SNAPSHOT-tfmc-575aa30aee8e</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>local</groupId>
             <artifactId>joml</artifactId>
-            <version>1.10.8</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/joml-1.10.8.jar</systemPath>
+            <version>1.10.8-tfmc-bf1951014517</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>local</groupId>
             <artifactId>ModelEngine</artifactId>
-            <version>4.0.8</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/ModelEngine-4.0.8.jar</systemPath>
+            <version>4.0.8-tfmc-44ee292392dd</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>io.papermc.paper</groupId>
@@ -123,6 +117,12 @@
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
             <version>3.49.1.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>2.0.17</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -189,6 +189,26 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer"/>
+                            </transformers>
+                            <!-- The shaded plugin is not a JPMS module. -->
+                            <filters>
+                                <!-- Keep the plugin manifest; dependency manifests describe separate JARs. -->
+                                <filter>
+                                    <artifact>org.apache.commons:commons-lang3</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/versions/**/module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
                             <relocations>
                                 <relocation>
                                     <pattern>org.apache.commons.lang3</pattern>

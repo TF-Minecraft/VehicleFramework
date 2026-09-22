@@ -58,6 +58,8 @@ class ThrottleTapeTest {
 		assertFalse(loaded.isEmpty());
 	}
 
+	// json-simple 1.1 exposes raw containers; these fixtures contain only JSON-compatible values.
+	@SuppressWarnings("unchecked")
 	@Test
 	void fromJson_missingHold_defaultsToOne() {
 		JSONObject root = new JSONObject();
@@ -125,6 +127,8 @@ class ThrottleTapeTest {
 		assertEquals("branch-id", loaded.getSamples().get(1).splineId);
 	}
 
+	// json-simple 1.1 exposes raw containers; these fixtures contain only JSON-compatible values.
+	@SuppressWarnings("unchecked")
 	@Test
 	void fromJson_missingSampleSpline_inheritsOrigin() {
 		JSONObject root = new JSONObject();
