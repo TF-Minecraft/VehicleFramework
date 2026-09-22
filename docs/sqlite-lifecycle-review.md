@@ -2,9 +2,10 @@
 
 Compared the last JSON implementation (`20f8a74`) with the starting SQLite branch
 (`7bbe8fd`), then integrated the fixes onto TF-Minecraft main (`39c239d`),
-preserving its rejected-mount reload workflow and walking controller. This is a
-code and automated-test comparison, not an inspection of a
-production database or a reproduction on the live Minecraft server.
+preserving its rejected-mount reload workflow and walking controller. Code review and automated tests were followed by a CachyOS lab playtest on
+Paper 1.21.10 build 130 and ModelEngine R4.1.1 using the supplied assets.
+No production database was inspected or changed. See
+[the playtest results](sqlite-lifecycle-playtest.md).
 
 ## Storage versus runtime ownership
 
@@ -29,10 +30,12 @@ left the later boarding attempt with a stale manager.
 
 The patch removes that unnecessary replacement and validates bindings on every
 boarding attempt, including the first rider after an empty load. These are relevant
-fixes, but the exact reported failure remains unconfirmed. The specific in-game
-regression to check is: load an unoccupied vehicle from SQLite, wait for loading to
-finish, then board it and verify both seat position and controls. Repeat after a
-chunk reload and a server restart, with default and saved alternate skins.
+fixes. The lab reproduced an unattended entity-unload failure on the old build:
+VF retained a registered vehicle after its ModelEngine model was destroyed.
+That is a confirmed lifecycle defect consistent with the report, but the exact
+reported intermittent boarding occurrence remains unconfirmed. Boarding after
+an empty SQLite load passed on the patch after restart (default and alternate
+skins) and after another chunk unload/reload.
 
 ## Findings and fixes
 
@@ -42,14 +45,16 @@ chunk reload and a server restart, with default and saved alternate skins.
 | A construction exception could leave a spawned base/model outside the vehicle registry. | Also present in JSON version. | Roll back partial spawns and failures after registration. Preserve the stored row for retry. Reject missing saved skins/models before spawning. |
 | Removal set its one-shot flag before dismount/relink callbacks, with base removal only at the end. A failure could prevent removal permanently. | Also present in JSON version. | Unregister and tear down ModelEngine in a `finally` path; base entity removal runs even if model cleanup throws. Clear control/menu/tow references on unregister. |
 | Base entities and ModelEngine models could be independently persisted outside SQLite. | Shared runtime setup; retained SQLite rows make independent restoration especially problematic. | Disable Bukkit entity persistence and ModelEngine model saving for newly spawned runtime vehicles. |
-| Chunk-unload matching excluded dead/invalid entities, leaving stale registry entries that could block SQLite respawn. | SQLite-era chunk-unload code. | Match location even if Bukkit already invalidated the unloading entity. |
+| Paper invalidates entities before chunk unload; the old listener skipped them and the snapshot factory rejected them. The lab retained a registered vehicle with zero model bones. Chunk matching could also load unrelated chunks. | SQLite-era unload handling; reproduced on the pre-patch build. | Save and remove at `EntitiesUnloadEvent`; permit snapshots of unloaded but non-dead entities. Match fallback chunk coordinates without loading chunks. |
 | A successful mount return value could still leave missing controller registration or a binding to the wrong seat. Mouse bindings bypassed the packet validation. | Runtime mount handling. | Require the requested seat, passenger map, passenger membership and rider controller to agree before recording occupancy. Gate all vehicle key input on that validation. |
 | Seafloor water was classified as shallow from the block below, regardless of water above. Deep boats could be outside the surface search range. | Boat physics, independent of persistence. | Two water blocks in the centre column override ground selection. Deeply submerged floating boats receive upward lift even beyond the local surface scan. |
 
 Bobbing ascent changes from `0.05` to `0.05 / 3` blocks per tick. Descent uses half
 that commanded speed. Gravity-enabled entities retain their falling velocity,
 capped to the slow descent speed; entities without gravity receive an explicit
-slow downward velocity. Native server physics still needs an in-game check.
+slow downward motion. No-gravity armor stands skip native velocity travel, so
+their vertical motion uses ModelEngine's collision-aware entity-move API.
+Live gravity-enabled and no-gravity motion are checked in the playtest results.
 
 ## Evidence and remaining checks
 
@@ -63,10 +68,9 @@ slow downward velocity. Native server physics still needs an in-game check.
 - Existing persistence tests cover revisions, tombstones, corrupt payloads, chunk
   queries and save failures.
 
-No plugin was deployed and no live database was changed. In-game verification
-should cover boarding after chunk unload/reload and restart, saved non-default
-skins, destroy/unload entity counts, gravity/no-gravity bobbing, and recovery from
-the bottom of a deep pool with only the centre column clear. Existing unregistered
+The lab checks cover empty-load boarding after restart and chunk reload, saved
+alternate skin, unload/delete entity cleanup, slower bobbing, and recovery from a
+deep pool floor. The lab uses a disposable database. Existing unregistered
 phantoms have no reliable ownership marker and are not automatically deleted by
 this patch.
 

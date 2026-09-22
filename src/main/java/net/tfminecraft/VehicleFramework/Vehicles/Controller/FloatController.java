@@ -4,10 +4,13 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.block.Block;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
+
+import com.ticxo.modelengine.api.ModelEngineAPI;
 
 import net.tfminecraft.VehicleFramework.Enums.Component;
 import net.tfminecraft.VehicleFramework.Util.LocationChecker;
@@ -60,6 +63,12 @@ public class FloatController {
 			}
 		}
 
+		if (v.getEntity() instanceof ArmorStand stand && !stand.hasGravity()) {
+			// No-gravity armor stands skip velocity-based travel. Move the buoyancy delta
+			// through Minecraft's collision-aware move path instead of teleporting.
+			ModelEngineAPI.getEntityHandler().move(stand, 0, y, 0);
+			y = 0;
+		}
 		velocity.setY(y);
 		return velocity;
 	}

@@ -1511,7 +1511,7 @@ public class VehicleManager implements Listener{
 			return "unknown location";
 		}
 		Entity entity = v.getEntity();
-		if (entity == null || entity.isDead() || !entity.isValid()) {
+		if (entity == null || entity.isDead()) {
 			return "unknown location";
 		}
 		try {
