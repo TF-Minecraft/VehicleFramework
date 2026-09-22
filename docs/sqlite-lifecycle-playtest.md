@@ -77,3 +77,10 @@ These tests exercise the supplied runtime and models. They do not prove the abse
 of all server-specific races, repair existing unregistered phantoms, or establish
 crash-time freshness of every SQLite row. See [the lifecycle review](sqlite-lifecycle-review.md)
 for the remaining persistence limitations.
+
+## Merge validation
+
+After integrating main's Java 21 / TLibs 1.1.1 build update, version 1.1.14
+passed a clean Maven `verify` on Java 21 (398 tests). The lab observations above
+precede that dependency update; they are not a new playtest of the updated TLibs
+release.
