@@ -41,6 +41,7 @@ import net.tfminecraft.VehicleFramework.Loaders.FuelLoader;
 import net.tfminecraft.VehicleFramework.Managers.VehicleManager;
 import net.tfminecraft.VehicleFramework.Util.ConditionChecker;
 import net.tfminecraft.VehicleFramework.VFLogger;
+import net.tfminecraft.VehicleFramework.Util.VehicleEntityCleanup;
 import net.tfminecraft.VehicleFramework.Vehicles.Component.Engine;
 import net.tfminecraft.VehicleFramework.Vehicles.Component.Fuel.FuelTank;
 import net.tfminecraft.VehicleFramework.Vehicles.Component.GearedEngine;
@@ -145,7 +146,8 @@ public class ActiveVehicle {
 	public ActiveVehicle(Vehicle stored, Entity e, ActiveModel m, VehicleManager manager, IncompleteVehicle i) {
 		spawnTime = System.currentTimeMillis();
 		vehicleManager = manager;
-		skinHandler = new SkinHandler(this, stored.getModel(), stored.getSkinHandler());
+		// The spawner already selected the saved model; bind every handler to it once.
+		skinHandler = new SkinHandler(this, i == null ? stored.getModel() : i.getSkin(), stored.getSkinHandler());
 		entity = e;
 		model = m;
 		fixed = stored.isFixed();
@@ -364,7 +366,6 @@ public class ActiveVehicle {
 		initializeWeapons(inc.getWeapons());
 		initializeComponents(inc.getComponents());
 		initializeRotations(inc.getRotations());
-		initializePassengers(inc.getPassengers());
 		initializeContainers(inc.getContainers());
 		name = inc.getName();
 		uuid = inc.getUUID();
@@ -374,9 +375,6 @@ public class ActiveVehicle {
 		ownerData.setTicketId(inc.getTicketId());
 		ownerData.setTicketsEnabled(inc.isTicketsEnabled());
 		setFuel(inc.getFuel());
-		if(!changeSkin(inc.getSkin(), true)) {
-			VFLogger.log("could not apply skin "+inc.getSkin()+" to "+id);
-		}
 		if(hasComponent(Component.ENGINE)) {
 			Engine e = (Engine) getComponent(Component.ENGINE);
 			if(inc.getThrottle() != 0) e.setStarted(true);
@@ -404,6 +402,10 @@ public class ActiveVehicle {
 				c.loadFromJson(json);
 			}
 		}
+	}
+
+	public void restorePassengers(IncompleteVehicle saved) {
+		if (saved != null) initializePassengers(saved.getPassengers());
 	}
 
 	private void initializePassengers(List<PassengerData> passengers) {
@@ -520,14 +522,20 @@ public class ActiveVehicle {
 		}
 		removed = true;
 		pendingDeathCause = null;
-		seatHandler.dismountAll();
-		VehicleRemovePayload resolved = payload != null
-			? payload
-			: VehicleRemovePayload.remove(VehicleRemoveReason.GENERIC);
-		ConsistRelinker.onRemove(this, resolved);
-		Bukkit.getPluginManager().callEvent(new VehicleRemoveEvent(this, resolved));
-		vehicleManager.unregister(entity);
-		entity.remove();
+		try {
+			seatHandler.dismountAll();
+			VehicleRemovePayload resolved = payload != null
+				? payload
+				: VehicleRemovePayload.remove(VehicleRemoveReason.GENERIC);
+			ConsistRelinker.onRemove(this, resolved);
+			Bukkit.getPluginManager().callEvent(new VehicleRemoveEvent(this, resolved));
+		} finally {
+			try {
+				vehicleManager.unregister(entity);
+			} finally {
+				VehicleEntityCleanup.remove(entity);
+			}
+		}
 	}
 
 	private VehicleRemovePayload buildRemovePayload(VehicleRemoveReason reason) {
@@ -618,6 +626,8 @@ public class ActiveVehicle {
 	}
 	//Input
 	public void key(Player p, Keybind key) {
+		// Mouse/weapon bindings must obey the same rider validation as movement packets.
+		if (removed || !seatHandler.isMounted(p)) return;
 		stateHandler.key(p, key);
 		weaponHandler.input(nearby, key, p);
 		updateBoard();

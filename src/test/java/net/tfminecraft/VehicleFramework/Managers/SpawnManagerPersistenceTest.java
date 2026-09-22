@@ -31,6 +31,38 @@ class SpawnManagerPersistenceTest {
 		assertEquals("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", SpawnManager.stripJson("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"));
 	}
 
+	@Test
+	void invalidUnloadingEntityStillBelongsToItsChunkWithoutLoadingChunks() {
+		org.bukkit.World world = (org.bukkit.World) java.lang.reflect.Proxy.newProxyInstance(
+				org.bukkit.World.class.getClassLoader(), new Class<?>[]{org.bukkit.World.class},
+				(proxy, method, args) -> switch (method.getName()) {
+					case "equals" -> proxy == args[0];
+					default -> throw new AssertionError(method);
+				});
+		org.bukkit.Chunk chunk = (org.bukkit.Chunk) java.lang.reflect.Proxy.newProxyInstance(
+				org.bukkit.Chunk.class.getClassLoader(), new Class<?>[]{org.bukkit.Chunk.class},
+				(proxy, method, args) -> switch (method.getName()) {
+					case "getWorld" -> world;
+					case "getX" -> -1;
+					case "getZ" -> 2;
+					default -> throw new AssertionError(method);
+				});
+		org.bukkit.Location location = new org.bukkit.Location(world, -0.5, 64, 32) {
+			@Override public org.bukkit.Chunk getChunk() { throw new AssertionError("Must not load chunks"); }
+		};
+		org.bukkit.entity.Entity entity = (org.bukkit.entity.Entity) java.lang.reflect.Proxy.newProxyInstance(
+				org.bukkit.entity.Entity.class.getClassLoader(), new Class<?>[]{org.bukkit.entity.Entity.class},
+				(proxy, method, args) -> switch (method.getName()) {
+					case "isValid" -> false;
+					case "isDead" -> true;
+					case "getLocation" -> location;
+					default -> throw new AssertionError(method);
+				});
+		assertTrue(SpawnManager.entityInChunk(entity, chunk));
+		location.setX(0);
+		assertFalse(SpawnManager.entityInChunk(entity, chunk));
+	}
+
 	private static IncompleteVehicle blankVehicle() {
 		return new IncompleteVehicle(
 				"uuid",

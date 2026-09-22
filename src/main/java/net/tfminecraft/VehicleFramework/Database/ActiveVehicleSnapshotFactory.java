@@ -44,7 +44,9 @@ public final class ActiveVehicleSnapshotFactory {
 			return SnapshotAttempt.fail("no UUID");
 		}
 		Entity entity = vehicle.getEntity();
-		if (entity == null || entity.isDead() || !entity.isValid()) {
+		// Paper invalidates entities before firing chunk-unload callbacks. Their
+		// location and VF state remain readable until removal; save them before cleanup.
+		if (entity == null || entity.isDead()) {
 			return SnapshotAttempt.fail("entity invalid");
 		}
 		Location loc;

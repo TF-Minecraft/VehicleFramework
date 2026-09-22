@@ -14,9 +14,11 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
+import org.bukkit.event.world.EntitiesUnloadEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -230,8 +232,19 @@ public class SpawnManager implements Listener {
 		enqueueChunk(e.getChunk());
 	}
 
+	@EventHandler(priority = EventPriority.LOWEST)
+	public void entitiesUnload(EntitiesUnloadEvent e) {
+		// Entity sections can unload before the chunk itself (and before ME destroys its model).
+		for (Entity entity : e.getEntities()) {
+			ActiveVehicle vehicle = vehicleManager.get().get(entity);
+			if (vehicle != null) {
+				vehicleManager.unload(vehicle, "on entity unload");
+			}
+		}
+	}
+
 	@SuppressWarnings("unchecked")
-	@EventHandler
+	@EventHandler(ignoreCancelled = true)
 	public void chunkUnload(ChunkUnloadEvent e) {
 		Chunk c = e.getChunk();
 		HashMap<Entity, ActiveVehicle> vc = (HashMap<Entity, ActiveVehicle>) vehicleManager.get().clone();
@@ -245,12 +258,17 @@ public class SpawnManager implements Listener {
 		}
 	}
 
-	private static boolean entityInChunk(Entity entity, Chunk c) {
-		if (entity == null || c == null || entity.isDead() || !entity.isValid()) {
+	static boolean entityInChunk(Entity entity, Chunk c) {
+		if (entity == null || c == null) {
 			return false;
 		}
 		try {
-			return entity.getLocation().getChunk().equals(c);
+			// Bukkit may already mark an unloading entity invalid; it still needs VF/ME cleanup.
+			Location loc = entity.getLocation();
+			// getChunk() can load an unrelated chunk while another chunk is unloading.
+			return c.getWorld().equals(loc.getWorld())
+					&& (loc.getBlockX() >> 4) == c.getX()
+					&& (loc.getBlockZ() >> 4) == c.getZ();
 		} catch (Exception ex) {
 			return false;
 		}
