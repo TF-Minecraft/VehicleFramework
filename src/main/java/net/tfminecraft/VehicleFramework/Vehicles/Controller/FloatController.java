@@ -16,7 +16,7 @@ import net.tfminecraft.VehicleFramework.Vehicles.Component.SinkableHull;
 
 public class FloatController {
 
-	static final double BOB_SPEED = 0.05;
+	static final double BOB_SPEED = 0.05 / 3.0;
 	static final double MIN_DEPTH = 0.6;
 	static final double MAX_DEPTH = 1.0;
 	private static final double MAX_UPRIVER_LIFT = 0.3;
@@ -43,11 +43,17 @@ public class FloatController {
 			Entity entity = v.getEntity();
 			Location loc = entity.getLocation();
 			Double surface = findWaterSurfaceY(loc);
+			// Deeply submerged boats still need lift when the surface is outside the local scan.
+			if (surface == null && LocationChecker.hasDeepWaterAtCentre(loc.getBlock())) {
+				surface = loc.getY() + MAX_DEPTH;
+			}
 			if (surface != null) {
 				double depth = surface - loc.getY();
 				BobStep step = bobStep(depth, goingDown, MIN_DEPTH, MAX_DEPTH, BOB_SPEED);
 				goingDown = step.goingDown;
-				y = step.vy;
+				y = step.goingDown
+						? descentVelocity(entity.hasGravity(), entity.getVelocity().getY(), BOB_SPEED)
+						: step.vy;
 				if (!goingDown) {
 					y += calculateUpriverLift(v);
 				}
@@ -58,15 +64,20 @@ public class FloatController {
 		return velocity;
 	}
 
-	/** Triangle-wave bob: flip at min/max depth, keep direction inside the band. */
+	/** Flip at min/max depth; descent is half the ascent speed. */
 	public static BobStep bobStep(double depthBelowSurface, boolean goingDown, double minDepth, double maxDepth, double speed) {
 		if (depthBelowSurface >= maxDepth) {
 			return new BobStep(speed, false);
 		}
 		if (depthBelowSurface <= minDepth) {
-			return new BobStep(-speed, true);
+			return new BobStep(-speed / 2.0, true);
 		}
-		return new BobStep(goingDown ? -speed : speed, goingDown);
+		return new BobStep(goingDown ? -speed / 2.0 : speed, goingDown);
+	}
+
+	static double descentVelocity(boolean gravity, double currentY, double speed) {
+		// Gravity supplies the fall. Cap it so freefall cannot turn a slow bob into a plunge.
+		return gravity ? Math.max(-speed / 2.0, Math.min(0, currentY)) : -speed / 2.0;
 	}
 
 	public static final class BobStep {
@@ -152,6 +163,8 @@ public class FloatController {
 		if (entity == null || !entity.isValid() || !(entity instanceof LivingEntity)) {
 			return false;
 		}
+
+		if (LocationChecker.hasDeepWaterAtCentre(entity.getLocation().getBlock())) return true;
 
 		BoundingBox box = entity.getBoundingBox();
 		int waterCount = 0;

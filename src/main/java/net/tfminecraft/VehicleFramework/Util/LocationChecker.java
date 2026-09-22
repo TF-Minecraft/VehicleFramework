@@ -38,6 +38,14 @@ public class LocationChecker {
 		return false;
 	}
 
+	/** Only sample the centre column, including two water blocks over a solid floor. */
+	public static boolean hasDeepWaterAtCentre(Block feet) {
+		Block above = feet.getRelative(BlockFace.UP);
+		if (isWaterBlock(feet)) return isWaterBlock(above);
+		return !feet.isPassable() && isWaterBlock(above)
+				&& isWaterBlock(above.getRelative(BlockFace.UP));
+	}
+
 	public static boolean isShallowWadableBlock(Block footBlock) {
 		if (!isWaterBlock(footBlock)) {
 			return false;

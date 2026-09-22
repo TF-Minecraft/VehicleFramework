@@ -7,7 +7,10 @@ import java.util.List;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
+import com.ticxo.modelengine.api.ModelEngineAPI;
 import com.ticxo.modelengine.api.model.ActiveModel;
+import com.ticxo.modelengine.api.model.bone.type.Mount;
+import com.ticxo.modelengine.api.mount.controller.MountController;
 import com.ticxo.modelengine.api.model.bone.manager.MountManager;
 import com.ticxo.modelengine.api.mount.controller.MountControllerTypes;
 
@@ -55,7 +58,7 @@ public class SeatHandler {
 	}
 	
 	public void updateModel(ActiveModel m) {
-		manager = m.getMountManager().get();
+		manager = m.getMountManager().orElse(null);
 	}
 	
 	public boolean hasPassengers() {
@@ -91,6 +94,24 @@ public class SeatHandler {
 	}
 	public boolean isPassenger(Entity e) {
 		return passengers.contains(e);
+	}
+	/** Require the same seat in VF, ME's passenger map, and ME's rider update registry. */
+	public boolean isMounted(Entity e) {
+		if (!isPassenger(e) || manager == null) return false;
+		return matchesMount(e, getSeat(e));
+	}
+
+	private boolean matchesMount(Entity e, Seat seat) {
+		if (manager == null || seat == null) return false;
+		Mount mount = manager.getPassengerSeatMap().get(e);
+		if (mount == null || manager.getSeat(seat.getBone()).orElse(null) != mount
+				|| !mount.getPassengers().contains(e)) return false;
+		MountController controller = mountController(e);
+		return controller != null && controller.getMount() == mount;
+	}
+
+	MountController mountController(Entity e) {
+		return ModelEngineAPI.getMountPairManager().getController(e.getUniqueId());
 	}
 	public MountResult changeSeat(Entity e, Seat seat) {
 		if (e == null || seat == null || seat.isOccupied()) {
@@ -128,12 +149,10 @@ public class SeatHandler {
 		if (manager == null || e == null || bone == null) {
 			return false;
 		}
-		boolean accepted = manager.mountPassenger(bone, e, MountControllerTypes.WALKING)
-				&& manager.getPassengerSeatMap().containsKey(e);
-		if (!accepted) {
-			manager.dismountPassenger(e);
-		}
-		return accepted;
+		boolean accepted = manager.mountPassenger(bone, e, MountControllerTypes.WALKING);
+		boolean attached = accepted && matchesMount(e, getSeat(bone));
+		if (accepted && !attached) manager.dismountPassenger(e);
+		return attached;
 	}
 	public void dismountPassenger(Entity e, boolean change) {
 		if (manager != null) {
@@ -207,8 +226,10 @@ public class SeatHandler {
 			if(!s.isOccupied()) continue;
 			Entity e = s.getEntity();
 			verify.remove(e);
-			if(manager.getPassengerSeatMap().containsKey(e)) continue;
+			if(isMounted(e)) continue;
 			PersistenceLog.remount(e, v, s.getBone());
+			// Clear stale ME membership before attempting recovery.
+			manager.dismountPassenger(e);
 			if (acceptMount(e, s.getBone())) {
 				continue;
 			}

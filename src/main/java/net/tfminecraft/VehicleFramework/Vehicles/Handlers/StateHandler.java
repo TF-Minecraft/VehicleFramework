@@ -108,12 +108,15 @@ public class StateHandler {
 	    VehicleState floating = states.get(State.FLOATING);
 	    VehicleState flying = states.get(State.FLYING);
 	    boolean floatingConfigured = floating != null && !floating.isDefault();
-	    boolean waterAtFeet = isMostlyWater(blocks, 0.75);
+	    boolean deepCentre = LocationChecker.hasDeepWaterAtCentre(e.getWorld().getBlockAt(
+			(int) Math.floor(box.getCenterX()), (int) Math.floor(box.getMinY()),
+			(int) Math.floor(box.getCenterZ())));
+	    boolean waterAtFeet = deepCentre || isMostlyWater(blocks, 0.75);
 	    boolean shallowWadable = LocationChecker.isMostlyShallowWadableWater(blocks, 0.75);
 	    if (VehicleStateRules.shouldSwapToFloating(
 	    		floatingConfigured,
 	    		waterAtFeet,
-	    		shallowWadable)) {
+			shallowWadable && !deepCentre)) {
 			swapState(State.FLOATING, "water");
 		} else if (VehicleStateRules.shouldSwapToFlying(
 				flying != null && !flying.isDefault(),

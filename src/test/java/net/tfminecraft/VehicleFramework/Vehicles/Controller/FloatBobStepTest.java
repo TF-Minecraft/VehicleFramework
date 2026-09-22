@@ -29,14 +29,14 @@ class FloatBobStepTest {
 	@Test
 	void tooHighSinksAndFlipsDown() {
 		FloatController.BobStep step = FloatController.bobStep(0.2, false, MIN, MAX, SPEED);
-		assertEquals(-SPEED, step.vy);
+		assertEquals(-SPEED / 2.0, step.vy);
 		assertTrue(step.goingDown);
 	}
 
 	@Test
 	void minDepthEndpointSinks() {
 		FloatController.BobStep step = FloatController.bobStep(0.6, false, MIN, MAX, SPEED);
-		assertEquals(-SPEED, step.vy);
+		assertEquals(-SPEED / 2.0, step.vy);
 		assertTrue(step.goingDown);
 	}
 
@@ -50,7 +50,26 @@ class FloatBobStepTest {
 	@Test
 	void midBandKeepsSinking() {
 		FloatController.BobStep step = FloatController.bobStep(0.8, true, MIN, MAX, SPEED);
-		assertEquals(-SPEED, step.vy);
+		assertEquals(-SPEED / 2.0, step.vy);
 		assertTrue(step.goingDown);
+	}
+
+	@Test
+	void ascentIsOneThirdOfPreviousSpeed() {
+		assertEquals(0.05 / 3.0, SPEED);
+	}
+
+	@Test
+	void gravitySuppliesDescentWithoutAnExtraDownwardPush() {
+		assertEquals(0, FloatController.descentVelocity(true, 0.01, SPEED));
+		assertEquals(0, FloatController.descentVelocity(true, 0, SPEED));
+		assertEquals(-0.002, FloatController.descentVelocity(true, -0.002, SPEED));
+		assertEquals(-SPEED / 2, FloatController.descentVelocity(true, -0.4, SPEED));
+	}
+
+	@Test
+	void noGravityStillDescendsAndTurnsUpAtLowerBoundary() {
+		assertEquals(-SPEED / 2, FloatController.descentVelocity(false, 0, SPEED));
+		assertEquals(SPEED, FloatController.bobStep(MAX, true, MIN, MAX, SPEED).vy);
 	}
 }

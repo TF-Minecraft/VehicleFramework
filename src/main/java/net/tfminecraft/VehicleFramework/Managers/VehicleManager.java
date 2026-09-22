@@ -210,7 +210,11 @@ public class VehicleManager implements Listener{
 		return null;
 	}
 	public void unregister(Entity e) {
-		if(vehicles.containsKey(e)) vehicles.remove(e);
+		ActiveVehicle removed = vehicles.remove(e);
+		if (removed == null) return;
+		activeVehicle.entrySet().removeIf(entry -> entry.getValue() == removed);
+		tempVehicle.entrySet().removeIf(entry -> entry.getValue() == removed);
+		tow.entrySet().removeIf(entry -> entry.getValue() == removed);
 	}
 	
 	private void register(ActiveVehicle v) {
@@ -255,10 +259,21 @@ public class VehicleManager implements Listener{
 			return null;
 		}
 		register(vehicle);
-		ConsistRelinker.tryLink(vehicle);
-		PersistenceLog.spawned(vehicle, loc);
-		Bukkit.getPluginManager().callEvent(new VehicleSpawnEvent(vehicle));
-		return vehicle;
+		try {
+			ConsistRelinker.tryLink(vehicle);
+			vehicle.restorePassengers(i);
+			PersistenceLog.spawned(vehicle, loc);
+			Bukkit.getPluginManager().callEvent(new VehicleSpawnEvent(vehicle));
+			return vehicle;
+		} catch (RuntimeException ex) {
+			try {
+				vehicle.remove(VehicleRemoveReason.UNLOAD);
+			} catch (RuntimeException cleanup) {
+				ex.addSuppressed(cleanup);
+			}
+			VFLogger.log("Failed to initialize vehicle " + vehicle.getUUID() + ": " + ex);
+			return null;
+		}
 	}
 	
 	public void start() {
@@ -1392,6 +1407,7 @@ public class VehicleManager implements Listener{
 	    ActiveVehicle vehicle = activeVehicle.get(p);
 	    if (vehicle == null) return;
 	    packetSneak.put(p.getUniqueId(), sneak);
+	    if (!vehicle.getSeatHandler().isMounted(p)) return;
 
 	    if (vehicle.isTrain()) {
 	    	ActiveVehicle loco = vehicle.ticketSource();

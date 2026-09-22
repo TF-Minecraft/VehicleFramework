@@ -40,6 +40,41 @@ class VehiclePersistenceTest {
 	Path tempDir;
 
 	@Test
+	void legacyPayloadRetainsIdentitySkinAndSeatAssignmentsAcrossSqliteRestart() {
+		String legacy = """
+				{"id":"horse_cart","name":"Cart","skin":"winter_cart","owner":"player_Alice",
+				 "yaw":45.0,"components":{"engine":{"damage":3.0,"throttle":20,"fuel":12.5}},
+				 "passengers":{"captain":{"player":"Alice"},
+				 "rear":{"entity":"11111111-2222-3333-4444-555555555555"}},"rotators":{}}
+				""";
+		Path db = tempDir.resolve("restart.db");
+		VehicleRepository repository = VehicleRepository.open(db.toFile());
+		try {
+			assertTrue(new VehiclePersistence(repository).saveLive(snapshot(legacy, 1)));
+		} finally {
+			repository.close();
+		}
+		repository = VehicleRepository.open(db.toFile());
+		try {
+			IncompleteVehicle restored = new VehiclePersistence(repository).loadIncomplete(UUID).orElseThrow();
+			assertEquals(UUID, restored.getUUID());
+			assertEquals("horse_cart", restored.getId());
+			assertEquals("winter_cart", restored.getSkin());
+			assertEquals(20, restored.getThrottle());
+			assertEquals(12.5, restored.getFuel());
+			assertEquals(2, restored.getPassengers().size());
+			PassengerData captain = restored.getPassengers().stream()
+					.filter(p -> p.getSeat().equals("captain")).findFirst().orElseThrow();
+			assertEquals("Alice", captain.getPassenger());
+			PassengerData rear = restored.getPassengers().stream()
+					.filter(p -> p.getSeat().equals("rear")).findFirst().orElseThrow();
+			assertEquals("11111111-2222-3333-4444-555555555555", rear.getEntityUUID().toString());
+		} finally {
+			repository.close();
+		}
+	}
+
+	@Test
 	void saveLiveStartsAtRevisionOneThenBumps() {
 		VehicleRepository repository = VehicleRepository.open(tempDir.resolve("vehicles.db").toFile());
 		try {

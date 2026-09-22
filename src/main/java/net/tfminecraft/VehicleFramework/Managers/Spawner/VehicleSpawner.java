@@ -18,30 +18,53 @@ import net.tfminecraft.VehicleFramework.Database.IncompleteVehicle;
 import net.tfminecraft.VehicleFramework.Managers.VehicleManager;
 import net.tfminecraft.VehicleFramework.Vehicles.ActiveVehicle;
 import net.tfminecraft.VehicleFramework.Vehicles.Vehicle;
+import net.tfminecraft.VehicleFramework.Vehicles.Handlers.Skins.VehicleSkin;
+import net.tfminecraft.VehicleFramework.Vehicles.Handlers.SkinHandler;
+import net.tfminecraft.VehicleFramework.Util.VehicleEntityCleanup;
 
 public class VehicleSpawner {
-	
+
 	public ActiveVehicle spawn(Location loc, Vehicle v, VehicleManager manager, IncompleteVehicle i) {
 		Entity e = null;
-		if(!Cache.mythicMob.equalsIgnoreCase("none")) {
-			MythicMob mob = MythicBukkit.inst().getMobManager().getMythicMob(Cache.mythicMob).orElse(null);
-			if(mob != null){ 
-				ActiveMob activeMob = mob.spawn(BukkitAdapter.adapt(loc),1);
-				e = activeMob.getEntity().getBukkitEntity();
-			} else {
-				VFLogger.log(" could not find the " + Cache.mythicMob + " mythicmob");
-				return null;
+		try {
+			String skinId = i == null ? v.getSkinHandler().getCurrentSkin().getId() : i.getSkin();
+			VehicleSkin skin = v.getSkinHandler().getSkins().get(skinId);
+			if (skin == null || !SkinHandler.isModelAvailable(skin)) {
+				throw new IllegalArgumentException("Missing vehicle skin/model: " + skinId);
 			}
-		} else {
-			ArmorStand a = loc.getWorld().spawn(loc, ArmorStand.class);
-			a.setVisible(false);
-			e = a;
-		}
+			if(!Cache.mythicMob.equalsIgnoreCase("none")) {
+				MythicMob mob = MythicBukkit.inst().getMobManager().getMythicMob(Cache.mythicMob).orElse(null);
+				if(mob != null){
+					ActiveMob activeMob = mob.spawn(BukkitAdapter.adapt(loc),1);
+					e = activeMob.getEntity().getBukkitEntity();
+				} else {
+					VFLogger.log(" could not find the " + Cache.mythicMob + " mythicmob");
+					return null;
+				}
+			} else {
+				ArmorStand a = loc.getWorld().spawn(loc, ArmorStand.class);
+				a.setVisible(false);
+				e = a;
+			}
 
-		ModeledEntity modeledEntity = ModelEngineAPI.createModeledEntity(e);
-		ActiveModel m = ModelEngineAPI.createActiveModel(v.getSkinHandler().getCurrentSkin().getModel());
-		modeledEntity.addModel(m, true);
-		m.getMountManager().get().setCanRide(true);
-		return new ActiveVehicle(v, e, m, manager, i);
+			// SQLite owns persistence; never let Bukkit/ME independently restore this runtime entity.
+			e.setPersistent(false);
+			ModeledEntity modeledEntity = ModelEngineAPI.createModeledEntity(e);
+			modeledEntity.setSaved(false);
+			ActiveModel m = ModelEngineAPI.createActiveModel(skin.getModel());
+			modeledEntity.addModel(m, true);
+			m.getMountManager().get().setCanRide(true);
+			return new ActiveVehicle(v, e, m, manager, i);
+		} catch (RuntimeException ex) {
+			if (e != null) {
+				try {
+					VehicleEntityCleanup.remove(e);
+				} catch (RuntimeException cleanup) {
+					ex.addSuppressed(cleanup);
+				}
+			}
+			VFLogger.log("Failed to spawn " + v.getId() + ": " + ex);
+			return null;
+		}
 	}
 }

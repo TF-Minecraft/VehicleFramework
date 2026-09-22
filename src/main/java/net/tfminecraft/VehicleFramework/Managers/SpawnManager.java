@@ -245,11 +245,12 @@ public class SpawnManager implements Listener {
 		}
 	}
 
-	private static boolean entityInChunk(Entity entity, Chunk c) {
-		if (entity == null || c == null || entity.isDead() || !entity.isValid()) {
+	static boolean entityInChunk(Entity entity, Chunk c) {
+		if (entity == null || c == null) {
 			return false;
 		}
 		try {
+			// Bukkit may already mark an unloading entity invalid; it still needs VF/ME cleanup.
 			return entity.getLocation().getChunk().equals(c);
 		} catch (Exception ex) {
 			return false;
