@@ -18,6 +18,22 @@ checks live UUIDs before spawning, and tombstones permanently destroyed vehicles
 The saved model, runtime handlers and entity must still have one owner. A valid
 SQLite row cannot guarantee that runtime construction or cleanup succeeded.
 
+## Clarification of the reported boarding failure
+
+The reporter was not riding the vehicle when it loaded from the database. Mounting
+saved passengers before replacing the model therefore does not establish the
+cause of that occurrence. The old load path still replaced the model when there
+were no saved passengers, but it also called `SeatHandler.updateModel` with the
+replacement manager. Code inspection alone does not prove that this replacement
+left the later boarding attempt with a stale manager.
+
+The patch removes that unnecessary replacement and validates bindings on every
+boarding attempt, including the first rider after an empty load. These are relevant
+fixes, but the exact reported failure remains unconfirmed. The specific in-game
+regression to check is: load an unoccupied vehicle from SQLite, wait for loading to
+finish, then board it and verify both seat position and controls. Repeat after a
+chunk reload and a server restart, with default and saved alternate skins.
+
 ## Findings and fixes
 
 | Finding | Origin | Change |
