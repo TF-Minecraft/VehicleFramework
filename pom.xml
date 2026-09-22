@@ -6,16 +6,21 @@
 
     <groupId>net.tfminecraft</groupId>
     <artifactId>vehicleframework</artifactId>
-    <version>1.1.12</version>
+    <version>1.1.13</version>
 
     <properties>
         <coreprotect.version>24.0</coreprotect.version>
-        <tlibs.version>1.1.0</tlibs.version>
-        <maven.compiler.release>25</maven.compiler.release>
+        <tlibs.version>1.1.1</tlibs.version>
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
     <repositories>
+        <repository>
+            <id>spigot-snapshots</id>
+            <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
+        </repository>
+
         <repository>
             <id>playpro-repo</id>
             <url>https://maven.playpro.com</url>
@@ -28,7 +33,7 @@
     </repositories>
 
     <dependencies>
-        <!-- ModelEngine's MountPairManager exposes these types in its API. -->
+        <!-- ModelEngine mount APIs expose these types. -->
         <dependency>
             <groupId>it.unimi.dsi</groupId>
             <artifactId>fastutil</artifactId>
@@ -89,11 +94,10 @@
             <systemPath>${project.basedir}/libs/ModelEngine-4.0.8.jar</systemPath>
         </dependency>
         <dependency>
-            <groupId>local</groupId>
+            <groupId>org.spigotmc</groupId>
             <artifactId>spigot-api</artifactId>
-            <version>1.21.8</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/spigot-api.jar</systemPath>
+            <version>1.21.10-R0.1-SNAPSHOT</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>me.plugins</groupId>
