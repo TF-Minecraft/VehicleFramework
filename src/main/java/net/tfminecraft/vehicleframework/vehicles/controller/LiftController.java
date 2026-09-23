@@ -43,17 +43,6 @@ public class LiftController {
 				
 	            AxisAngle4d angles = rotator.getAngles(); // Pitch (x), Yaw (y), Roll (z)
 	            double y = velocity.getY();
-	            /*
-	            if (y > 0) {
-	                ConvertedAngle globalAngles = rotator.getConvertedAngles();
-	                double pitch = Math.toRadians(globalAngles.getPitch()); // Convert to radians
-
-		            // Custom falloff function for lift influence
-		            double falloffFactor = Math.max(0, (Math.cos(pitch) - Math.cos(Math.toRadians(60))) / (1 - Math.cos(Math.toRadians(60))));
-	
-		            y *= falloffFactor; // Reduce y progressively
-	            }
-	            */
 	            y -= 0.49;
 				double throttle = engine.getThrottle().getCurrent();
 
@@ -76,11 +65,6 @@ public class LiftController {
 	            // Calculate lift based on velocity magnitude instead of engine speed
 	            double velocityMagnitude = velocity.length(); // Get speed
 	            double lift = wings.getLift() * velocityMagnitude * 0.1; // Scale lift with speed
-	            /*
-	            for(Player p : Bukkit.getOnlinePlayers()) {
-	            	p.sendTitle(" ", "Lifet. "+lift, 0, 20, 0);
-	            }
-	            */
 
 	            // Apply an upper bound to lift
 	            if (lift > 0.52) lift = 0.52;

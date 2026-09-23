@@ -10,31 +10,15 @@ import net.tfminecraft.vehicleframework.cache.Cache;
 public class VFExplosionEvent extends Event implements Cancellable {
     private static final HandlerList HANDLERS = new HandlerList();
 
-    /*
-    private ActiveVehicle vehicle;
-    private Ammunition ammo;
-    */
     private Location location;
     private boolean blockDamage;
     private boolean cancelled;
 
     public VFExplosionEvent(Location location) {
-        //this.vehicle = vehicle;
         this.location = location;
-        //this.ammo = ammo;
         this.blockDamage = Cache.blockDamage; // Default value from Cache
         this.cancelled = false;
     }
-
-    /*
-    public ActiveVehicle getVehicle() {
-        return vehicle;
-    }
-
-    public Ammunition getAmmo() {
-        return ammo;
-    }
-    */
 
     public Location getLocation() {
         return location;
@@ -48,12 +32,6 @@ public class VFExplosionEvent extends Event implements Cancellable {
         this.blockDamage = blockDamage;
     }
 
-    /* Maybe later, i would have to verify the new location is loaded and im lazy tn
-    public void setLocation(Location location) {
-        this.location = location;
-    }
-    */
-    
     // Cancellable Implementation
     @Override
     public boolean isCancelled() {
