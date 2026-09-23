@@ -38,37 +38,37 @@
         <dependency>
             <groupId>local</groupId>
             <artifactId>json-simple</artifactId>
-            <version>1.1-tfmc-2d9484f4c649</version>
+            <version>1.1.1-tfmc-4e69696892b8</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>local</groupId>
             <artifactId>gson</artifactId>
-            <version>2.10.1-tfmc-4241c14a7727</version>
+            <version>2.14.0-tfmc-2cbd119bf196</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>local</groupId>
             <artifactId>ProtocolLib</artifactId>
-            <version>1.0-tfmc-ee2e7ab9b538</version>
+            <version>5.5.0-SNAPSHOT-tfmc-355f7117af95</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>local</groupId>
             <artifactId>MythicMobs</artifactId>
-            <version>5.8.0-SNAPSHOT-tfmc-575aa30aee8e</version>
+            <version>5.13.1-SNAPSHOT-88530541-tfmc-6df72b5b331d</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>local</groupId>
             <artifactId>joml</artifactId>
-            <version>1.10.8-tfmc-bf1951014517</version>
+            <version>1.10.9-tfmc-feca4db85337</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>local</groupId>
             <artifactId>ModelEngine</artifactId>
-            <version>4.0.8-tfmc-44ee292392dd</version>
+            <version>R4.1.1-tfmc-44ee292392dd</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -105,7 +105,7 @@
         <dependency>
             <groupId>de.tr7zw</groupId>
             <artifactId>item-nbt-api-plugin</artifactId>
-            <version>2.15.0</version>
+            <version>2.16.1</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
