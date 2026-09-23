@@ -55,3 +55,6 @@ Desktop.ini
 
 # Repository-specific generated or local files
 /src/main/resources/trains.zip
+
+# Technical documentation is maintained in TF-Minecraft/Docs
+/docs/
