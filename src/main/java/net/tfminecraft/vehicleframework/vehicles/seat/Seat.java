@@ -8,7 +8,6 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
 import net.tfminecraft.vehicleframework.VFLogger;
-import net.tfminecraft.vehicleframework.database.LogWriter;
 import net.tfminecraft.vehicleframework.enums.SeatType;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.weapons.ActiveWeapon;
@@ -69,11 +68,6 @@ public class Seat {
 	public void mount(Entity entity) {
 		if(e != null) return;
 		e = entity;
-		/*
-		if(e instanceof Player) {
-			LogWriter.logEnter((Player) e, vehicle);
-		}
-		*/
 		if(hasWeapon() && e instanceof Player) {
 			Player p = (Player) e;
 			currentWeapon = 0;
@@ -82,11 +76,6 @@ public class Seat {
 	}
 	
 	public void dismount() {
-		/*
-		if(e != null && e instanceof Player) {
-			LogWriter.logExit((Player) e, vehicle);
-		}
-		*/
 		e = null;
 		if(hasWeapon()) {
 			getWeapon().disconnect();

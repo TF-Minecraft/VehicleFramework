@@ -1,9 +1,7 @@
 package net.tfminecraft.vehicleframework.bones;
 
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
-import org.bukkit.entity.Player;
 import org.joml.AxisAngle4d;
 import org.joml.Quaternionf;
 import com.ticxo.modelengine.api.model.ActiveModel;
@@ -152,12 +150,6 @@ public class BoneRotator {
 		        (float) Math.toRadians(finalPitch),
 		        (float) Math.toRadians(finalRoll)
 		    );
-		    
-		    /*
-		    for(Player p : Bukkit.getOnlinePlayers()) {
-		    	p.sendTitle(" ", Math.round(currentAngles.getYaw()*100)/100+" -> "+Math.round(finalYaw*100)/100, 0, 20, 0);
-		    }
-		    */
 
 		    // 5. SLERP from currentQ to targetQ by slerpFactor
 		    //    - If slerpFactor = 1.0f, you'll snap instantly
@@ -194,20 +186,6 @@ public class BoneRotator {
 			Quaternionf check = new Quaternionf(currentRotation).mul(incrementalRotation);
 
 			ConvertedAngle currentAngles = new ConvertedAngle(check);
-			/*
-			Player p = Bukkit.getPlayerExact("drefvelin");
-
-			p.sendTitle(
-				" ",
-				String.format(
-					"yaw %.2f (%.2f/%.2f); pitch %.2f (%.2f/%.2f); roll %.2f (%.2f/%.2f)", 
-					currentAngles.getYaw(), limits.getMinYaw(), limits.getMaxYaw(),
-					currentAngles.getPitch(), limits.getMinPitch(), limits.getMaxPitch(),
-					currentAngles.getRoll(), limits.getMinRoll(), limits.getMaxRoll()
-				),
-				0, 30, 0
-			);
-			*/
 			//Bukkit.getPlayerExact("drefvelin").sendMessage(currentAngles.getYaw()+"; "+currentAngles.getPitch()+"; "+currentAngles.getRoll() + " offset "+yawOffset);
 			if(limits.withinAll((float) (currentAngles.getYaw()-yawOffset), currentAngles.getPitch(), currentAngles.getRoll())) {
 				// Combine the current rotation with the incremental rotation

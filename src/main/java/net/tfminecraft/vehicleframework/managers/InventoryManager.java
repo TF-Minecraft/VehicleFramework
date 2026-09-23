@@ -99,15 +99,6 @@ public class InventoryManager {
 				lore.add("");
 				lore.add("§cClick to dismount entity");
 			} else {
-				List<String> whitelist = v.getEntitySeatWhitelist();
-				/*
-				if(!whitelist.isEmpty()) {
-					lore.add("§7Allowed entities:");
-					for(String entry : whitelist) {
-						lore.add("§8- §e"+entry);
-					}
-				}
-				*/
 				lore.add("");
 				lore.add("§aClick to select entity to mount");
 			}
