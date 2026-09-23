@@ -577,6 +577,8 @@ public class VehicleManager implements Listener{
 		ActiveVehicle v = get(p);
 		v.key(p, Keybind.SWAP);
 	}
+	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
+	@SuppressWarnings("deprecation")
 	@EventHandler 
 	public void vehicleInteract(PlayerInteractEntityEvent e){
 		Entity entity = e.getRightClicked();
@@ -797,6 +799,8 @@ public class VehicleManager implements Listener{
 		}
 	}
 
+	// Retain Bukkit chat-event ordering and String message semantics for existing integrations.
+	@SuppressWarnings("deprecation")
 	@EventHandler
 	public void nameVehicle(AsyncPlayerChatEvent e) {
 		Player p = e.getPlayer();
@@ -1359,6 +1363,8 @@ public class VehicleManager implements Listener{
 		}
 	}
 
+	// Retain handling for the legacy hotbar action emitted by integrations and fixtures.
+	@SuppressWarnings({"removal"})
 	private static ItemStack incomingToContainer(InventoryClickEvent e) {
 		Inventory top = e.getView().getTopInventory();
 		Inventory clicked = e.getClickedInventory();

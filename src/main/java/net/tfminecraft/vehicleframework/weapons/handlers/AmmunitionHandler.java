@@ -182,6 +182,8 @@ public class AmmunitionHandler {
 		playSound(exitBones.get(0), SoundArg.RELOAD_START);
 		w.getAnimationHandler().animate(Animation.RELOAD);
 		new BukkitRunnable() {
+	        // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+	        @SuppressWarnings("deprecation")
 	        @Override
 	        public void run() {
 	        	if(reloadTime == 0) {

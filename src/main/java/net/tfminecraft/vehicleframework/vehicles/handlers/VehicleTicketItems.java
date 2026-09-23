@@ -33,6 +33,8 @@ public final class VehicleTicketItems {
 		return id;
 	}
 
+	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
+	@SuppressWarnings("deprecation")
 	public static void write(ItemStack item, String ticketId, String vehicleName) {
 		if (item == null || ticketId == null || ticketId.isBlank()) {
 			return;

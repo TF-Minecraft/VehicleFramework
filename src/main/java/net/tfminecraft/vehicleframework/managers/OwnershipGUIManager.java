@@ -21,6 +21,8 @@ public class OwnershipGUIManager {
 
     // ── Ownership Settings GUI ──────────────────────────────────────────────
 
+    // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+    @SuppressWarnings("deprecation")
     public void ownershipGui(Inventory i, Player p, ActiveVehicle v, boolean open) {
         if (open) {
             i = VehicleFramework.plugin.getServer().createInventory(
@@ -45,6 +47,8 @@ public class OwnershipGUIManager {
 
     // ── Whitelist GUI ────────────────────────────────────────────────────────
 
+    // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+    @SuppressWarnings("deprecation")
     public void whitelistGui(Inventory i, Player p, ActiveVehicle v, boolean open) {
         if (open) {
             i = VehicleFramework.plugin.getServer().createInventory(
@@ -70,6 +74,8 @@ public class OwnershipGUIManager {
 
     // ── Seat-selection ownership button (shown to the owner) ─────────────────
 
+    // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+    @SuppressWarnings("deprecation")
     public ItemStack createOwnershipButton() {
         ItemStack i = new ItemStack(Material.GOLDEN_HELMET);
         ItemMeta m = i.getItemMeta();
@@ -83,6 +89,8 @@ public class OwnershipGUIManager {
 
     // ── Private helpers ──────────────────────────────────────────────────────
 
+    // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+    @SuppressWarnings("deprecation")
     private ItemStack createToggleWhitelistButton(boolean enabled) {
         ItemStack i = new ItemStack(enabled ? Material.LIME_DYE : Material.GRAY_DYE);
         ItemMeta m = i.getItemMeta();
@@ -96,6 +104,8 @@ public class OwnershipGUIManager {
         return i;
     }
 
+    // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+    @SuppressWarnings("deprecation")
     private ItemStack createAddToWhitelistButton() {
         ItemStack i = new ItemStack(Material.WRITABLE_BOOK);
         ItemMeta m = i.getItemMeta();
@@ -107,6 +117,8 @@ public class OwnershipGUIManager {
         return i;
     }
 
+    // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+    @SuppressWarnings("deprecation")
     private ItemStack createViewWhitelistButton(int count) {
         ItemStack i = new ItemStack(Material.CHEST);
         ItemMeta m = i.getItemMeta();
@@ -119,6 +131,8 @@ public class OwnershipGUIManager {
         return i;
     }
 
+    // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+    @SuppressWarnings("deprecation")
     private ItemStack createToggleTicketsButton(boolean enabled) {
         ItemStack i = new ItemStack(enabled ? Material.LIME_DYE : Material.GRAY_DYE);
         ItemMeta m = i.getItemMeta();
@@ -133,6 +147,8 @@ public class OwnershipGUIManager {
         return i;
     }
 
+    // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+    @SuppressWarnings("deprecation")
     private ItemStack createRemoveOwnershipButton() {
         ItemStack i = new ItemStack(Material.BARRIER);
         ItemMeta m = i.getItemMeta();
@@ -144,6 +160,8 @@ public class OwnershipGUIManager {
         return i;
     }
 
+    // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+    @SuppressWarnings("deprecation")
     private ItemStack createWhitelistEntry(String storedName) {
         ItemStack i = new ItemStack(Material.PLAYER_HEAD);
         ItemMeta m = i.getItemMeta();
@@ -158,6 +176,8 @@ public class OwnershipGUIManager {
         return i;
     }
 
+    // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+    @SuppressWarnings("deprecation")
     private ItemStack createBackButton() {
         ItemStack i = new ItemStack(Material.BARRIER);
         ItemMeta m = i.getItemMeta();
@@ -166,6 +186,8 @@ public class OwnershipGUIManager {
         return i;
     }
 
+    // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+    @SuppressWarnings("deprecation")
     private void fillGlass(Inventory i) {
         for (int s = 0; s < i.getSize(); s++) {
             if (i.getItem(s) == null) {
