@@ -76,6 +76,56 @@ class VehicleTicketRulesTest {
 		assertTrue(VehicleTicketRules.mayOpenSeatMenu(access, "friend", false));
 	}
 
+	@Test
+	void attachedCar_whitelistOff_ignoresLocomotiveWhitelist() {
+		OwnerData car = gatedAccess();
+		car.setWhiteListed(false);
+		OwnerData locomotive = gatedAccess();
+		assertTrue(VehicleTicketRules.mayOpenSeatMenu(car, locomotive, "Nowko", false));
+	}
+
+	@Test
+	void attachedCar_listedPlayer_canOpenMenuAndBoardWithoutTicket() {
+		OwnerData car = gatedAccess();
+		car.addToWhiteList("player_nowko");
+		OwnerData locomotive = gatedAccess();
+		locomotive.setTicketsEnabled(true);
+		assertTrue(VehicleTicketRules.mayOpenSeatMenu(car, locomotive, "Nowko", false));
+		assertTrue(VehicleTicketRules.mayEnter(car, locomotive, "Nowko", SeatType.PASSENGER, false));
+	}
+
+	@Test
+	void attachedCar_owner_canBoardWithoutLocomotiveTicket() {
+		OwnerData car = gatedAccess();
+		car.setOwner("player_Nowko");
+		OwnerData locomotive = gatedAccess();
+		locomotive.setTicketsEnabled(true);
+		assertTrue(VehicleTicketRules.mayEnter(car, locomotive, "nowko", SeatType.PASSENGER, false));
+	}
+
+	@Test
+	void attachedCar_unlistedPlayer_cannotBypassCarWhitelistThroughLocomotive() {
+		OwnerData car = gatedAccess();
+		OwnerData locomotive = gatedAccess();
+		locomotive.setWhiteListed(false);
+		locomotive.addToWhiteList("player_Nowko");
+		assertFalse(VehicleTicketRules.mayOpenSeatMenu(car, locomotive, "Nowko", false));
+	}
+
+	@Test
+	void attachedCar_usesLocomotiveTicketSettings() {
+		OwnerData car = gatedAccess();
+		OwnerData locomotive = gatedAccess();
+		locomotive.setTicketsEnabled(true);
+		assertTrue(VehicleTicketRules.mayOpenSeatMenu(car, locomotive, "Nowko", true));
+		assertTrue(VehicleTicketRules.mayEnter(car, locomotive, "Nowko", SeatType.PASSENGER, true));
+		assertFalse(VehicleTicketRules.mayEnter(car, locomotive, "Nowko", SeatType.PASSENGER, false));
+		car.setTicketsEnabled(true);
+		locomotive.setTicketsEnabled(false);
+		assertFalse(VehicleTicketRules.mayOpenSeatMenu(car, locomotive, "Nowko", true));
+		assertTrue(VehicleTicketRules.mayEnter(car, locomotive, "Nowko", SeatType.PASSENGER, false));
+	}
+
 	private static OwnerData gatedAccess() {
 		OwnerData access = new OwnerData();
 		access.setOwner("player_owner");
