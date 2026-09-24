@@ -423,10 +423,10 @@ public class VehicleManager implements Listener{
 	    if(v.isPassenger(p, true)) {
 	    	return;
 	    }
-	    ActiveVehicle accessVehicle = v.ticketSource();
-	    boolean hasTicket = VehicleTicketItems.inventoryHas(
-	    		p, accessVehicle.getOwnerData().getTicketId());
-	    if (!VehicleTicketRules.mayOpenSeatMenu(accessVehicle.getOwnerData(), p.getName(), hasTicket)) {
+		ActiveVehicle ticketSource = v.ticketSource();
+		boolean hasTicket = VehicleTicketItems.inventoryHas(
+				p, ticketSource.getOwnerData().getTicketId());
+		if (!VehicleTicketRules.mayOpenSeatMenu(v.getOwnerData(), ticketSource.getOwnerData(), p.getName(), hasTicket)) {
 	    	p.sendMessage("§cYou are not on this vehicle's whitelist.");
 	    	return;
 	    }
@@ -1046,9 +1046,8 @@ public class VehicleManager implements Listener{
 			return true;
 		}
 		ActiveVehicle source = v.ticketSource();
-		boolean exempt = VehicleTicketRules.ownerOrWhitelisted(source.getOwnerData(), p.getName());
 		boolean has = VehicleTicketItems.inventoryHas(p, source.getOwnerData().getTicketId());
-		return VehicleTicketRules.mayEnter(source.getOwnerData().isTicketsEnabled(), seat.getType(), exempt, has);
+		return VehicleTicketRules.mayEnter(v.getOwnerData(), source.getOwnerData(), p.getName(), seat.getType(), has);
 	}
 
 	private void putEjectCooldown(Player player, ActiveVehicle vehicle) {
