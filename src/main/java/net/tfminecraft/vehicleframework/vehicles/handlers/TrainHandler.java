@@ -24,6 +24,7 @@ import net.tfminecraft.vehicleframework.enums.Direction;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTape;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTapeItems;
 import net.tfminecraft.vehicleframework.tracks.TrackAdvance;
+import net.tfminecraft.vehicleframework.tracks.TrainBlockCollision;
 import net.tfminecraft.vehicleframework.tracks.TrackFx;
 import net.tfminecraft.vehicleframework.tracks.TrackJunction;
 import net.tfminecraft.vehicleframework.tracks.TrackJunctionTravel;
@@ -670,15 +671,36 @@ public class TrainHandler {
 	}
 
 	public void placeLoadedCars() {
+		PersistenceLog.placeCars(v);
+		applyPlacements(planCars());
+	}
+
+	private record CarPlacement(ActiveVehicle vehicle, TrackSpline spline, double s, int sign, double missingSpacing) {
+		TrackPose pose() {
+			return spline.sampleAt(s);
+		}
+	}
+
+	private void applyPlacements(List<CarPlacement> placements) {
+		for (CarPlacement placement : placements) {
+			TrainHandler train = placement.vehicle.getTrainHandler();
+			train.splineId = placement.spline.getId();
+			train.s = placement.s;
+			train.travelSign = placement.sign;
+			applyPose(placement.vehicle, placement.pose());
+		}
+	}
+
+	private List<CarPlacement> planCars() {
+		List<CarPlacement> placements = new ArrayList<>();
 		TrackSpline spline = boundSpline();
 		if (spline == null) {
-			return;
+			return placements;
 		}
-		PersistenceLog.placeCars(v);
-		applyPose(v, spline.sampleAt(s));
+		placements.add(new CarPlacement(v, spline, s, travelSign, 0));
 		TrackRegistry registry = VehicleFramework.getTrackRegistry();
 		if (registry == null) {
-			return;
+			return placements;
 		}
 		TrackJunction route = routeJunction();
 		UUID stemId = route == null ? null : route.stemSplineId;
@@ -692,7 +714,9 @@ public class TrainHandler {
 		double branchLength = branch == null ? 0 : branch.length();
 		UUID parentSpline = splineId;
 		double parentS = s;
-		int parentTravelSign = travelSign;
+		// Models face the +s tangent even in reverse. Couplers stay on that
+		// physical side; using travelSign here swaps the cars across the loco.
+		int parentPlacementSign = 1;
 		ActiveVehicle parentCar = v;
 		ActiveVehicle car = child;
 		while (car != null) {
@@ -702,7 +726,7 @@ public class TrainHandler {
 			TrackJunctionTravel.Pose pose = TrackJunctionTravel.rewind(
 					parentSpline,
 					parentS,
-					parentTravelSign,
+					parentPlacementSign,
 					gap,
 					takeBranch && route != null,
 					stemId == null ? splineId : stemId,
@@ -712,26 +736,30 @@ public class TrainHandler {
 					stemLength,
 					stemLoop,
 					branchLength);
-			carTrain.splineId = pose.splineId;
-			carTrain.s = pose.s;
+			int carTravelSign;
+			int carPlacementSign = 1;
 			if (branchId != null && branchId.equals(pose.splineId)) {
-				carTrain.travelSign = 1;
+				carTravelSign = 1;
 			} else {
-				carTrain.travelSign = travelSign;
+				carTravelSign = travelSign;
 				if (takeBranch && route != null && splineId != null && splineId.equals(branchId)) {
-					carTrain.travelSign = facingSign;
+					carTravelSign = facingSign;
+					carPlacementSign = facingSign;
 				}
 			}
 			TrackSpline carSpline = pose.splineId == null ? null : registry.get(pose.splineId).orElse(null);
 			if (carSpline != null) {
-				applyPose(car, carSpline.sampleAt(pose.s));
+				placements.add(new CarPlacement(car, carSpline, pose.s, carTravelSign, pose.missingSpacing));
+			} else {
+				return List.of();
 			}
 			parentSpline = pose.splineId;
 			parentS = pose.s;
 			parentCar = car;
-			parentTravelSign = carTrain.travelSign;
+			parentPlacementSign = carPlacementSign;
 			car = carTrain.child;
 		}
+		return placements;
 	}
 
 	private boolean keepBound() {
@@ -762,31 +790,131 @@ public class TrainHandler {
 				.orElse(false);
 	}
 
+	private record StepState(UUID splineId, double s, int travelSign, UUID routeJunctionId,
+			boolean takeBranch, UUID armedJunctionId, TrackJunction.Side armedSide) {
+	}
+
+	private StepState stepState() {
+		return new StepState(splineId, s, travelSign, routeJunctionId, takeBranch, armedJunctionId, armedSide);
+	}
+
+	private void restoreStep(StepState state) {
+		splineId = state.splineId;
+		s = state.s;
+		travelSign = state.travelSign;
+		routeJunctionId = state.routeJunctionId;
+		takeBranch = state.takeBranch;
+		armedJunctionId = state.armedJunctionId;
+		armedSide = state.armedSide;
+	}
+
 	private void splineStep(double ds) {
-		TrackSpline spline = boundSpline();
-		if (spline == null) {
+		if (boundSpline() == null) {
 			unbind();
 			still();
 			return;
 		}
-		double from = s;
-		TrackAdvance advance = spline.advance(s, ds);
-		TrackRegistry registry = VehicleFramework.getTrackRegistry();
-		if (registry != null && applyJunctionStep(registry, spline, from, advance.s, ds)) {
-			maybeClack(ds);
-			placeLoadedCars();
-			if (advance.stoppedAtBreak) {
-				still();
+		// Plan short steps for every car. Commit only the last clear plan, so a
+		// blocked carriage cannot leave the locomotive moving independently.
+		List<CarPlacement> accepted = planCars();
+		List<Runnable> afterMove = new ArrayList<>();
+		int steps = Math.max(1, (int) Math.ceil(Math.abs(ds) / 0.25));
+		double step = ds / steps;
+		double moved = 0;
+		boolean blocked = false;
+		boolean trackEnd = false;
+		for (int i = 0; i < steps; i++) {
+			StepState before = stepState();
+			TrackSpline spline = boundSpline();
+			TrackAdvance advance = spline.advance(s, step);
+			TrackRegistry registry = VehicleFramework.getTrackRegistry();
+			List<Runnable> junctionEvents = new ArrayList<>();
+			if (!applyJunctionStep(registry, spline, s, advance.s, step, junctionEvents)) {
+				s = advance.s;
 			}
-			return;
+			List<CarPlacement> next = planCars();
+			if (!clearStep(accepted, next)) {
+				restoreStep(before);
+				blocked = true;
+				trackEnd = compressesConsist(accepted, next);
+				break;
+			}
+			trackEnd = reachesTrackEnd(accepted, next);
+			accepted = next;
+			afterMove.addAll(junctionEvents);
+			if (splineId.equals(before.splineId) && Math.abs(s - before.s) < 1e-9) {
+				blocked = true;
+				trackEnd = !spline.isLoop();
+				break;
+			}
+			moved += Math.abs(step);
+			if (trackEnd || advance.stoppedAtBreak) {
+				blocked = true;
+				trackEnd = true;
+				break;
+			}
 		}
-		s = advance.s;
-		applyPose(v, spline.sampleAt(s));
-		maybeClack(ds);
-		placeLoadedCars();
-		if (advance.stoppedAtBreak) {
-			still();
+		if (moved > 0) {
+			applyPlacements(accepted);
+			maybeClack(moved);
+			afterMove.forEach(Runnable::run);
 		}
+		if (blocked) {
+			if (trackEnd) {
+				if (v.getThrottle() != null) {
+					v.getThrottle().setThrottle(0);
+				}
+				if (v.getAccessPanel() != null) {
+					v.getAccessPanel().setSpeed(0);
+				}
+			}
+			animateMove(Direction.STILL);
+			for (CarPlacement car : accepted) {
+				car.vehicle.getEntity().setVelocity(new Vector(0, 0, 0));
+			}
+		}
+	}
+
+	private boolean reachesTrackEnd(List<CarPlacement> previous, List<CarPlacement> next) {
+		TrackRegistry registry = VehicleFramework.getTrackRegistry();
+		for (int i = 0; i < next.size(); i++) {
+			CarPlacement from = previous.get(i);
+			CarPlacement to = next.get(i);
+			if (to.spline.isLoop() || !from.spline.getId().equals(to.spline.getId())) {
+				continue;
+			}
+			if (to.s > from.s && to.s >= to.spline.length() - 1e-9) {
+				return true;
+			}
+			// A branch's start joins the stem; it is not the end of the route.
+			if (to.s < from.s && to.s <= 1e-9
+					&& registry.junctionByBranch(to.spline.getId()).isEmpty()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean clearStep(List<CarPlacement> previous, List<CarPlacement> next) {
+		if (next.isEmpty() || previous.size() != next.size() || compressesConsist(previous, next)) {
+			return false;
+		}
+		for (int i = 0; i < next.size(); i++) {
+			CarPlacement from = previous.get(i);
+			CarPlacement to = next.get(i);
+			if (TrainBlockCollision.blocked(to.vehicle.getEntity(), from.pose(), to.pose())) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private boolean compressesConsist(List<CarPlacement> previous, List<CarPlacement> next) {
+		double before = previous.stream().mapToDouble(CarPlacement::missingSpacing).sum();
+		double after = next.stream().mapToDouble(CarPlacement::missingSpacing).sum();
+		// Cars attached at a track boundary may already lack space. Allow them
+		// to pull away and recover their gaps, but never compress them further.
+		return after > 1e-9 && after >= before - 1e-9;
 	}
 
 	private boolean applyJunctionStep(
@@ -794,7 +922,8 @@ public class TrainHandler {
 			TrackSpline spline,
 			double from,
 			double to,
-			double ds) {
+			double ds,
+			List<Runnable> afterMove) {
 		TrackJunction asBranch = registry.junctionByBranch(splineId).orElse(null);
 		if (asBranch != null && !spline.isLoop() && ds < 0 && to <= 1e-6) {
 			TrackSpline stem = registry.get(asBranch.stemSplineId).orElse(null);
@@ -806,7 +935,6 @@ public class TrainHandler {
 			travelSign = -asBranch.facingSign;
 			routeJunctionId = asBranch.id;
 			takeBranch = true;
-			applyPose(v, stem.sampleAt(s));
 			return true;
 		}
 		if (asBranch != null) {
@@ -836,14 +964,16 @@ public class TrainHandler {
 				+ " frog=" + live.side.name()
 					+ " facing=" + junction.facingSign
 					+ " travel=" + travelSign;
-			if (RecorderLog.throttle("junc:" + v.getUUID() + ":" + junction.id, 2000)) {
-				RecorderLog.junction(v, diverge, junction.id, detail);
-				if (diverge) {
-					tellCaptain("Junction: diverge (" + reason.replace('-', ' ') + ")");
-				} else {
-					tellCaptain("Junction: through (" + reason.replace('-', ' ') + ")");
+			afterMove.add(() -> {
+				if (RecorderLog.throttle("junc:" + v.getUUID() + ":" + junction.id, 2000)) {
+					RecorderLog.junction(v, diverge, junction.id, detail);
+					if (diverge) {
+						tellCaptain("Junction: diverge (" + reason.replace('-', ' ') + ")");
+					} else {
+						tellCaptain("Junction: through (" + reason.replace('-', ' ') + ")");
+					}
 				}
-			}
+			});
 			if (!diverge) {
 				continue;
 			}
@@ -855,7 +985,6 @@ public class TrainHandler {
 			splineId = branch.getId();
 			s = 0;
 			travelSign = 1;
-			applyPose(v, branch.sampleAt(0));
 			return true;
 		}
 		return false;
