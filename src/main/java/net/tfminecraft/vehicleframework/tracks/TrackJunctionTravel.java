@@ -11,10 +11,16 @@ public final class TrackJunctionTravel {
 	public static final class Pose {
 		public final UUID splineId;
 		public final double s;
+		public final double missingSpacing;
 
 		public Pose(UUID splineId, double s) {
+			this(splineId, s, 0);
+		}
+
+		private Pose(UUID splineId, double s, double missingSpacing) {
 			this.splineId = splineId;
 			this.s = s;
+			this.missingSpacing = missingSpacing;
 		}
 	}
 
@@ -173,29 +179,31 @@ public final class TrackJunctionTravel {
 				}
 				double leftover = behind - parentS;
 				double stemS = junctionS - facing * leftover;
-				stemS = TrackJunction.wrapS(stemS, stemLength, stemLoop);
-				return new Pose(stemId != null ? stemId : parentSplineId, stemS);
+				return boundedPose(stemId != null ? stemId : parentSplineId, stemS, stemLength, stemLoop);
 			}
 			if (childS <= branchLength + 1e-9) {
 				return new Pose(branchId, Math.max(0, childS));
 			}
 			double leftover = childS - branchLength;
 			double stemS = junctionS + facing * leftover;
-			stemS = TrackJunction.wrapS(stemS, stemLength, stemLoop);
-			return new Pose(stemId != null ? stemId : parentSplineId, stemS);
+			return boundedPose(stemId != null ? stemId : parentSplineId, stemS, stemLength, stemLoop);
 		}
 		UUID stem = stemId != null ? stemId : parentSplineId;
 		if (!takeBranch || branchId == null) {
 			double childS = parentS - travel * behind;
-			return new Pose(stem, TrackJunction.wrapS(childS, stemLength, stemLoop));
+			return boundedPose(stem, childS, stemLength, stemLoop);
 		}
 		double alongBehind = (parentS - junctionS) * travel;
 		double childS = parentS - travel * behind;
 		if (travel < 0 || alongBehind <= 1e-9 || alongBehind >= behind) {
-			return new Pose(stem, TrackJunction.wrapS(childS, stemLength, stemLoop));
+			return boundedPose(stem, childS, stemLength, stemLoop);
 		}
 		double leftover = behind - alongBehind;
-		double branchS = Math.min(leftover, Math.max(0, branchLength));
-		return new Pose(branchId, branchS);
+		return boundedPose(branchId, leftover, Math.max(0, branchLength), false);
+	}
+
+	private static Pose boundedPose(UUID splineId, double s, double length, boolean loop) {
+		double bounded = TrackJunction.wrapS(s, length, loop);
+		return new Pose(splineId, bounded, loop ? 0 : Math.abs(s - bounded));
 	}
 }
