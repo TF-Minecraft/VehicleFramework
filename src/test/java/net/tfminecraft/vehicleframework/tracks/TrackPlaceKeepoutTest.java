@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class TrackPlaceKeepoutTest {
 
 	@Test
-	void besideAndAboveDenied_belowAndFarAllowed() {
+	void besideAndHeadroomDenied_belowAboveAndFarAllowed() {
 		double x = 0.5;
 		double y = 64.2;
 		double z = 0.5;
@@ -18,6 +18,9 @@ class TrackPlaceKeepoutTest {
 		assertTrue(TrackPlaceKeepout.blocked(x, y, z, 0, 64, 0, r));
 		assertTrue(TrackPlaceKeepout.blocked(x, y, z, 1, 64, 0, r));
 		assertTrue(TrackPlaceKeepout.blocked(x, y, z, 0, 65, 0, r));
+		assertTrue(TrackPlaceKeepout.blocked(x, y, z, 0, 66, 0, r));
+		assertFalse(TrackPlaceKeepout.blocked(x, y, z, 0, 67, 0, r));
+		assertFalse(TrackPlaceKeepout.blocked(x, y, z, 0, 90, 0, r));
 		assertFalse(TrackPlaceKeepout.blocked(x, y, z, 0, 63, 0, r));
 		assertFalse(TrackPlaceKeepout.blocked(x, y, z, 3, 64, 0, r));
 	}
@@ -31,5 +34,9 @@ class TrackPlaceKeepoutTest {
 		assertTrue(TrackPlaceKeepout.blocked(samples, 0, 64, 0, 1.5));
 		assertTrue(TrackPlaceKeepout.blocked(samples, 8, 70, 0, 1.5));
 		assertFalse(TrackPlaceKeepout.blocked(samples, 8, 69, 0, 1.5));
+		assertTrue(TrackPlaceKeepout.blocked(samples, 0, 66, 0, 1.5));
+		assertFalse(TrackPlaceKeepout.blocked(samples, 0, 67, 0, 1.5));
+		assertTrue(TrackPlaceKeepout.blocked(samples, 8, 72, 0, 1.5));
+		assertFalse(TrackPlaceKeepout.blocked(samples, 8, 73, 0, 1.5));
 	}
 }

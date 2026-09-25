@@ -22,7 +22,8 @@ public final class TrackPlaceKeepout {
 		if (radius <= 0) {
 			return false;
 		}
-		if (blockY < (int) Math.floor(sampleY)) {
+		int floorY = (int) Math.floor(sampleY);
+		if (blockY < floorY || blockY >= floorY + TrackClearance.HEADROOM_BLOCKS) {
 			return false;
 		}
 		double dx = (blockX + 0.5) - sampleX;
@@ -39,14 +40,17 @@ public final class TrackPlaceKeepout {
 		double minZ = Double.POSITIVE_INFINITY;
 		double maxZ = Double.NEGATIVE_INFINITY;
 		int minFloorY = Integer.MAX_VALUE;
+		int maxFloorY = Integer.MIN_VALUE;
 		for (TrackSample sample : samples) {
 			minX = Math.min(minX, sample.x);
 			maxX = Math.max(maxX, sample.x);
 			minZ = Math.min(minZ, sample.z);
 			maxZ = Math.max(maxZ, sample.z);
-			minFloorY = Math.min(minFloorY, (int) Math.floor(sample.y));
+			int floorY = (int) Math.floor(sample.y);
+			minFloorY = Math.min(minFloorY, floorY);
+			maxFloorY = Math.max(maxFloorY, floorY);
 		}
-		if (blockY < minFloorY) {
+		if (blockY < minFloorY || blockY >= maxFloorY + TrackClearance.HEADROOM_BLOCKS) {
 			return false;
 		}
 		double cx = blockX + 0.5;

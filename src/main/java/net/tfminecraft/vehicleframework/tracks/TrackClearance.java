@@ -14,6 +14,8 @@ public final class TrackClearance {
 	public static final double OVERLAP_HORIZ = 1.0;
 	public static final double OVERLAP_VERT = 1.5;
 	public static final double FROG_S = 4.0;
+	/** Blocks kept clear from the rail block upwards, when laying and afterwards. */
+	public static final int HEADROOM_BLOCKS = 3;
 
 	public static final class FrogIgnore {
 		public final UUID splineId;
@@ -63,7 +65,7 @@ public final class TrackClearance {
 			for (int side = -1; side <= 1; side++) {
 				int x = (int) Math.floor(p[0] + rx * side);
 				int z = (int) Math.floor(p[2] + rz * side);
-				for (int h = 0; h <= 2; h++) {
+				for (int h = 0; h < HEADROOM_BLOCKS; h++) {
 					int y = y0 + h;
 					Block block = world.getBlockAt(x, y, z);
 					if (TrackSupport.blocksRail(block, p[1])) {
