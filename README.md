@@ -23,9 +23,9 @@ Originally created by [Drefvelin](https://github.com/Drefvelin).
 
 ## Documentation
 
-[Project documentation](https://github.com/TF-Minecraft/Docs/blob/main/projects/VehicleFramework/README.md)
+[User guide](https://github.com/TF-Minecraft/Docs/blob/main/projects/VehicleFramework/docs/playing.md): commands, models, vehicle YAML, weapons, and trains.
 
-Technical documentation is maintained in [TF-Minecraft/Docs](https://github.com/TF-Minecraft/Docs).
+[Project documentation](https://github.com/TF-Minecraft/Docs/blob/main/projects/VehicleFramework/README.md) in [TF-Minecraft/Docs](https://github.com/TF-Minecraft/Docs) also holds the architecture notes.
 
 ## License
 
