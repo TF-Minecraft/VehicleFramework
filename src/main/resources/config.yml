@@ -26,7 +26,7 @@ convert-explosion:
     - STONE.COBBLESTONE
 ## Falling debris will not rest on these
 ignore-ground:
-    - GRASS
+    - SHORT_GRASS
     - TALL_GRASS
     - FERN
     - LARGE_FERN
@@ -55,7 +55,22 @@ ignore-ground:
     - FLOWERING_AZALEA_LEAVES
     - WATER
     - LAVA
-    - CARPET
+    - WHITE_CARPET
+    - ORANGE_CARPET
+    - MAGENTA_CARPET
+    - LIGHT_BLUE_CARPET
+    - YELLOW_CARPET
+    - LIME_CARPET
+    - PINK_CARPET
+    - GRAY_CARPET
+    - LIGHT_GRAY_CARPET
+    - CYAN_CARPET
+    - PURPLE_CARPET
+    - BLUE_CARPET
+    - BROWN_CARPET
+    - GREEN_CARPET
+    - RED_CARPET
+    - BLACK_CARPET
     - SNOW
     - TORCH
     - SOUL_TORCH
