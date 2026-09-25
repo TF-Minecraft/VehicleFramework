@@ -13,6 +13,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 import net.tfminecraft.vehicleframework.cache.Cache;
+import net.tfminecraft.vehicleframework.managers.VehicleManager;
 import net.tfminecraft.vehicleframework.permissions.Permissions;
 import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
@@ -343,8 +344,33 @@ public final class TrackCommands {
 		if (loc.getWorld() == null) {
 			return;
 		}
-		applyDig(player, registry().dig(
-				loc.getWorld().getName(), loc.getX(), loc.getY(), loc.getZ(), loc.getWorld()), loc);
+		Optional<TrackRegistry.DigTarget> target = registry().digTarget(
+				loc.getWorld().getName(), loc.getX(), loc.getY(), loc.getZ());
+		if (target.isEmpty()) {
+			applyDig(player, DigResult.none(), loc);
+			return;
+		}
+		if (trainOn(target.get())) {
+			lastToolMs.put(player.getUniqueId(), System.currentTimeMillis());
+			player.sendMessage("§cA train is on this track. Move it before removing the rail.");
+			return;
+		}
+		applyDig(player, registry().digAt(target.get().spline(), target.get().index(), loc.getWorld()), loc);
+	}
+
+	private static boolean trainOn(TrackRegistry.DigTarget target) {
+		VehicleManager vehicles = VehicleFramework.getVehicleManager();
+		if (vehicles == null) {
+			return false;
+		}
+		UUID trackId = target.spline().getId();
+		for (ActiveVehicle vehicle : vehicles.get().values()) {
+			if (vehicle.isTrain() && !vehicle.hasParent()
+					&& vehicle.getTrainHandler().occupies(trackId, target.centreS(), target.halfSpan())) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static boolean delete(Player player, String[] args) {

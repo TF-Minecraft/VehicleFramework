@@ -35,6 +35,7 @@ import net.tfminecraft.vehicleframework.tracks.RecorderLog;
 import net.tfminecraft.vehicleframework.tracks.TrackRegistry;
 import net.tfminecraft.vehicleframework.tracks.TrackToolListener;
 import net.tfminecraft.vehicleframework.vehicles.controller.GroundEngineLog;
+import net.tfminecraft.vehicleframework.vehicles.handlers.TrainHandler;
 
 public class VehicleFramework extends JavaPlugin{
 	
@@ -63,6 +64,7 @@ public class VehicleFramework extends JavaPlugin{
 		printBanner();
 		plugin = this;
 		trackRegistry = new TrackRegistry(getDataFolder());
+		trackRegistry.onRebuilt(TrainHandler::retrackTrains);
 		log = new LogWriter(getDataFolder());
 		VFLogger.info("Running checks...");
 		createFolders();
