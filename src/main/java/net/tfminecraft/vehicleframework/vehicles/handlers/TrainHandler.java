@@ -2,7 +2,9 @@ package net.tfminecraft.vehicleframework.vehicles.handlers;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
@@ -12,6 +14,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import org.joml.Quaternionf;
 import org.json.simple.JSONObject;
@@ -32,6 +35,9 @@ import net.tfminecraft.vehicleframework.tracks.ThrottleTape;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTapeItems;
 import net.tfminecraft.vehicleframework.tracks.TrackAdvance;
 import net.tfminecraft.vehicleframework.tracks.TrainBlockCollision;
+import net.tfminecraft.vehicleframework.tracks.TrainSpaceHighlight;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.tfminecraft.vehicleframework.tracks.TrackClearance;
 import net.tfminecraft.vehicleframework.tracks.TrackFx;
 import net.tfminecraft.vehicleframework.tracks.TrackJunction;
@@ -1028,6 +1034,9 @@ public class TrainHandler {
 				.orElse(false);
 	}
 
+	private static final long STOPPED_SHOW_MS = 2000;
+	private long stoppedShownMs;
+
 	private record StepState(UUID splineId, double s, int travelSign, UUID routeJunctionId,
 			boolean takeBranch, UUID armedJunctionId, TrackJunction.Side armedSide) {
 	}
@@ -1056,6 +1065,8 @@ public class TrainHandler {
 		// blocked carriage cannot leave the locomotive moving independently.
 		List<CarPlacement> accepted = planCars();
 		List<Runnable> afterMove = new ArrayList<>();
+		// Block shapes looked up for this tick only; blocks can change between ticks.
+		Map<Long, List<BoundingBox>> shapes = new HashMap<>();
 		int steps = Math.max(1, (int) Math.ceil(Math.abs(ds) / 0.25));
 		double step = ds / steps;
 		double moved = 0;
@@ -1071,7 +1082,7 @@ public class TrainHandler {
 				s = advance.s;
 			}
 			List<CarPlacement> next = planCars();
-			if (!clearStep(accepted, next)) {
+			if (!clearStep(accepted, next, shapes)) {
 				restoreStep(before);
 				blocked = true;
 				trackEnd = compressesConsist(accepted, next);
@@ -1133,18 +1144,51 @@ public class TrainHandler {
 		return false;
 	}
 
-	private boolean clearStep(List<CarPlacement> previous, List<CarPlacement> next) {
+	private boolean clearStep(List<CarPlacement> previous, List<CarPlacement> next,
+			Map<Long, List<BoundingBox>> shapes) {
 		if (next.isEmpty() || previous.size() != next.size() || compressesConsist(previous, next)) {
 			return false;
 		}
 		for (int i = 0; i < next.size(); i++) {
 			CarPlacement from = previous.get(i);
 			CarPlacement to = next.get(i);
-			if (TrainBlockCollision.blocked(to.vehicle.getEntity(), from.pose(), to.pose())) {
+			if (TrainBlockCollision.blocked(to.vehicle.getEntity(), from.spline, from.s,
+					to.spline, to.s, reach(to.vehicle.getTrainHandler()), shapes)) {
+				showWhatStopped(from, to, shapes);
 				return false;
 			}
 		}
 		return true;
+	}
+
+	// Outlines the blocks that stopped the train for the players riding the locomotive.
+	private void showWhatStopped(CarPlacement from, CarPlacement to, Map<Long, List<BoundingBox>> shapes) {
+		long now = System.currentTimeMillis();
+		if (now - stoppedShownMs < STOPPED_SHOW_MS || v.getSeatHandler() == null) {
+			return;
+		}
+		List<Player> riders = new ArrayList<>();
+		for (Entity passenger : v.getSeatHandler().getPassengers()) {
+			if (passenger instanceof Player player) {
+				riders.add(player);
+			}
+		}
+		if (riders.isEmpty()) {
+			return;
+		}
+		stoppedShownMs = now;
+		List<TrainBlockCollision.Obstruction> found = TrainBlockCollision.blockers(to.vehicle.getEntity(),
+				from.spline, from.s, to.spline, to.s, reach(to.vehicle.getTrainHandler()), shapes);
+		if (found.isEmpty()) {
+			return;
+		}
+		TrainBlockCollision.Obstruction first = found.get(0);
+		String message = "Blocked at " + first.x() + ", " + first.y() + ", " + first.z()
+				+ (found.size() > 1 ? " and " + (found.size() - 1) + " more" : "");
+		for (Player rider : riders) {
+			TrainSpaceHighlight.show(rider, found);
+			rider.sendActionBar(Component.text(message, NamedTextColor.RED));
+		}
 	}
 
 	private boolean compressesConsist(List<CarPlacement> previous, List<CarPlacement> next) {

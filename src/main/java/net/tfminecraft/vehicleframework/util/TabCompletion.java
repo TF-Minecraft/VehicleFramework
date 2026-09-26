@@ -50,6 +50,7 @@ public class TabCompletion implements TabCompleter {
                     completions.add("list");
                     completions.add("info");
                     completions.add("particles");
+                    completions.add("clearance");
                     completions.add("dump");
                     completions.add("delete");
                     completions.add("bind");
@@ -57,8 +58,8 @@ public class TabCompletion implements TabCompleter {
                     completions.add("resync");
                     return completions;
                 }
-                if (args.length == 3 && args[1].equalsIgnoreCase("delete")) {
-                    Player player = (Player) sender;
+                if (args.length == 3 && sender instanceof Player player
+                        && (args[1].equalsIgnoreCase("delete") || args[1].equalsIgnoreCase("clearance"))) {
                     var registry = net.tfminecraft.vehicleframework.VehicleFramework.getTrackRegistry();
                     if (registry != null) {
                         for (net.tfminecraft.vehicleframework.tracks.TrackSpline spline

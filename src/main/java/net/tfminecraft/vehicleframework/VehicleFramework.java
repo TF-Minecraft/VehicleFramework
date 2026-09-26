@@ -29,6 +29,7 @@ import net.tfminecraft.vehicleframework.util.Metrics;
 import net.tfminecraft.vehicleframework.util.MythicMobsIntegration;
 import net.tfminecraft.vehicleframework.util.TabCompletion;
 import net.tfminecraft.vehicleframework.tracks.TrackBuildAnimator;
+import net.tfminecraft.vehicleframework.tracks.TrainSpaceHighlight;
 import net.tfminecraft.vehicleframework.tracks.TrackDisplayManager;
 import net.tfminecraft.vehicleframework.tracks.TrackLog;
 import net.tfminecraft.vehicleframework.tracks.RecorderLog;
@@ -94,6 +95,7 @@ public class VehicleFramework extends JavaPlugin{
 		if (trackDisplayManager != null) {
 			TrackBuildAnimator.finishAll();
 			trackDisplayManager.despawnAll();
+			TrainSpaceHighlight.clearAll();
 		}
 		vehicleManager.unloadAll();
 		VehiclePersistence persistence = VehiclePersistence.current();

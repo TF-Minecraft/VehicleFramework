@@ -53,6 +53,9 @@ public class Cache {
 	public static double trackSnapDistance = 3;
 	public static double trackDisplayYOffset = 0.5;
 	public static double trackVehicleYOffset = 0.5;
+	public static double trainClearanceWidth = 3;
+	public static double trainClearanceHeight = 2.5;
+	public static long trackLayRetryMs = 3000;
 	public static double trackMaxTurnDegrees = 25;
 	public static double trackMinLayDistance = 8;
 	public static double trackJoinDistance = 1.5;

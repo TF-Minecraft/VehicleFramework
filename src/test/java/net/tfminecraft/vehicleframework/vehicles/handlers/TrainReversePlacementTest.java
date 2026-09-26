@@ -199,7 +199,8 @@ class TrainReversePlacementTest {
     void wallAtLastCarStopsEntireReversingTrain(double speed) {
         TrackSpline track = straightTrack(false);
         TrainHandler loco = consist(track, 60.5);
-        wall(loco, new BoundingBox(-1, 64, 39, 1, 68, 40));
+        // The last car's back coupler is at 35.5.
+        wall(loco, new BoundingBox(-1, 64, 34.5, 1, 68, 35.5));
         loco.v.getAccessPanel().setSpeed(speed);
         loco.splineTick();
         assertPositions(loco, track, 60.5);
@@ -216,7 +217,7 @@ class TrainReversePlacementTest {
     void forwardLocomotiveWallStopsAllCarsAndAllowsReverse() {
         TrackSpline track = straightTrack(false);
         TrainHandler loco = consist(track, 60.5);
-        wall(loco, new BoundingBox(-1, 64, 61, 1, 68, 62));
+        wall(loco, new BoundingBox(-1, 64, 65.5, 1, 68, 66.5));
         loco.v.getAccessPanel().setSpeed(0.1);
         loco.splineTick();
         assertPositions(loco, track, 60.5);
@@ -229,22 +230,23 @@ class TrainReversePlacementTest {
     void fastReverseCannotTunnelThroughWallBetweenTickPositions() {
         TrackSpline track = straightTrack(false);
         TrainHandler loco = consist(track, 60.5);
-        BoundingBox obstacle = new BoundingBox(-1, 64, 36.45, 1, 68, 36.55);
-        wall(loco, obstacle);
+        wall(loco, new BoundingBox(-1, 64, 30.45, 1, 68, 30.55));
         loco.v.getAccessPanel().setSpeed(-8);
         loco.splineTick();
         TrainHandler last = loco.getChild().getTrainHandler().getChild().getTrainHandler();
-        assertTrue(last.getS() >= 37.05 - 1e-8, "Last car must stop before the thin wall");
-        assertFalse(last.v.getEntity().getBoundingBox().overlaps(obstacle));
+        assertTrue(last.getS() - 5 >= 30.55 - 1e-8, "Last car must stop before the thin wall");
         assertPositions(loco, track, loco.getS());
     }
 
     @Test
-    void wallAtMiddleCarAlsoStopsWholeTrain() {
+    void blockAlreadyInsideTrainDoesNotTrapIt() {
         TrackSpline track = straightTrack(false);
         TrainHandler loco = consist(track, 60.5);
         wall(loco, new BoundingBox(-1, 64, 49, 1, 68, 50));
         loco.v.getAccessPanel().setSpeed(-0.1);
+        loco.splineTick();
+        assertPositions(loco, track, 60.4);
+        loco.v.getAccessPanel().setSpeed(0.1);
         loco.splineTick();
         assertPositions(loco, track, 60.5);
     }
@@ -316,7 +318,7 @@ class TrainReversePlacementTest {
     void wallStopKeepsThrottleSetting() {
         TrackSpline track = straightTrack(false);
         TrainHandler loco = consist(track, 60.5);
-        wall(loco, new BoundingBox(-1, 64, 61, 1, 68, 62));
+        wall(loco, new BoundingBox(-1, 64, 65.5, 1, 68, 66.5));
         loco.v.getThrottle().setThrottle(100);
         loco.v.getAccessPanel().setSpeed(0.1);
         loco.splineTick();
@@ -388,7 +390,8 @@ class TrainReversePlacementTest {
         store.saveJunction("world", junction);
         registry.loadFromDisk();
         TrainHandler loco = consist(stem, 49.9);
-        wall(loco, new BoundingBox(-1, 64, 50.45, 1, 68, 50.6));
+        // Entering the branch puts the locomotive at its start, front coupler at x 5.
+        wall(loco, new BoundingBox(4.9, 64, 49, 5.2, 68, 51));
         loco.v.getAccessPanel().setSpeed(0.2);
         loco.splineTick();
         assertPositions(loco, stem, 49.9);
@@ -417,9 +420,8 @@ class TrainReversePlacementTest {
         loco.placeLoadedCars();
         TrainHandler tail = loco.getChild().getTrainHandler().getChild().getTrainHandler();
         Location tailBefore = tail.v.getEntity().getLocation();
-        // At this sharp junction the tail swings toward +z as the locomotive backs up.
-        wall(loco, new BoundingBox(tailBefore.getX() - 1, 64, tailBefore.getZ() + 0.5,
-                tailBefore.getX() + 1, 68, tailBefore.getZ() + 1.5));
+        // The tail sits at s 33 on the stem, so its back coupler is at z 28.
+        wall(loco, new BoundingBox(-1, 64, 27, 1, 68, 28));
         loco.v.getAccessPanel().setSpeed(-0.1);
         loco.splineTick();
         assertEquals(branch.getId(), loco.getSplineId());

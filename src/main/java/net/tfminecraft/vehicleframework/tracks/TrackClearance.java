@@ -1,5 +1,6 @@
 package net.tfminecraft.vehicleframework.tracks;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -48,7 +49,14 @@ public final class TrackClearance {
 			return;
 		}
 		Set<UUID> ignore = ignoreSplineIds == null ? Set.of() : ignoreSplineIds;
-		liftOneBlockSteps(world, points);
+		try {
+			liftOneBlockSteps(world, points);
+		} catch (TrackLayException e) {
+			throw withTrainSpace(world, points, e);
+		}
+		// Before the rail check, so a refusal lists every block in the way of trains
+		// rather than only the first one found.
+		checkTrainSpace(world, points);
 		for (int i = 0; i < points.size(); i++) {
 			double[] p = points.get(i);
 			double[] dir = step(points, i);
@@ -70,9 +78,9 @@ public final class TrackClearance {
 					Block block = world.getBlockAt(x, y, z);
 					if (TrackSupport.blocksRail(block, p[1])) {
 						String name = block.getType().name().toLowerCase(Locale.US);
-						throw new TrackLayException(
+						throw withTrainSpace(world, points, new TrackLayException(
 								"Cannot lay track: " + name + " in the way at " + x + ", " + y + ", " + z + ".",
-								x, y, z);
+								x, y, z));
 					}
 				}
 			}
@@ -81,6 +89,55 @@ public final class TrackClearance {
 			return;
 		}
 		checkOverlap(world.getName(), points, registry, ignore, frog);
+	}
+
+	/** Refuses track that trains could not run along, using the same space as moving trains. */
+	static void checkTrainSpace(World world, List<double[]> points) throws TrackLayException {
+		TrackSpline stroke = TrackSpline.fromPoints(UUID.randomUUID(), world.getName(), false, points);
+		List<TrainBlockCollision.Obstruction> inWay =
+				TrainBlockCollision.obstructions(world, stroke, 0, stroke.length());
+		if (inWay.isEmpty()) {
+			return;
+		}
+		TrainBlockCollision.Obstruction first = inWay.get(0);
+		String name = world.getBlockAt(first.x(), first.y(), first.z()).getType().name().toLowerCase(Locale.US);
+		String more = inWay.size() == 1 ? "" : " and " + (inWay.size() - 1) + " more";
+		throw new TrackLayException(
+				"Cannot lay track: trains need " + format(Cache.trainClearanceWidth) + " wide by "
+						+ format(Cache.trainClearanceHeight) + " high above the rail. " + name + " at "
+						+ first.x() + ", " + first.y() + ", " + first.z() + more + " in the way.",
+				inWay);
+	}
+
+	/**
+	 * A refusal naming one block, such as a step too high to climb, also lists every
+	 * block in the way of trains along the stroke, so all of them can be shown.
+	 */
+	static TrackLayException withTrainSpace(World world, List<double[]> points, TrackLayException refused) {
+		if (!refused.hasBlock()) {
+			return refused;
+		}
+		TrackSpline stroke = TrackSpline.fromPoints(UUID.randomUUID(), world.getName(), false, points);
+		List<TrainBlockCollision.Obstruction> inWay = new ArrayList<>();
+		inWay.add(new TrainBlockCollision.Obstruction(refused.blockX, refused.blockY, refused.blockZ, 0));
+		for (TrainBlockCollision.Obstruction o : TrainBlockCollision.obstructions(world, stroke, 0, stroke.length())) {
+			if (o.x() != refused.blockX || o.y() != refused.blockY || o.z() != refused.blockZ) {
+				inWay.add(o);
+			}
+		}
+		if (inWay.size() == 1) {
+			return refused;
+		}
+		String message = refused.getMessage();
+		if (message.endsWith(".")) {
+			message = message.substring(0, message.length() - 1);
+		}
+		return new TrackLayException(message + ", and " + (inWay.size() - 1)
+				+ " more blocks in the way of trains.", inWay);
+	}
+
+	static String format(double value) {
+		return value == Math.rint(value) ? String.valueOf((long) value) : String.valueOf(value);
 	}
 
 	static void checkOverlap(

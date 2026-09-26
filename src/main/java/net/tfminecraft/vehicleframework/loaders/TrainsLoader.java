@@ -43,6 +43,10 @@ public class TrainsLoader {
 		Cache.trackSnapDistance = Math.max(0.5, config.getDouble("snap-distance", 3.0));
 		Cache.trackDisplayYOffset = config.getDouble("display-y-offset", 0.5);
 		Cache.trackVehicleYOffset = config.getDouble("vehicle-y-offset", 0.5);
+		Cache.trainClearanceWidth = Math.max(0.5, config.getDouble("clearance.width", 3.0));
+		Cache.trackLayRetryMs = Math.round(Math.max(0.0, config.getDouble("lay-retry-seconds", 3.0)) * 1000);
+		Cache.trainClearanceHeight = clearanceHeight(
+				config.getDouble("clearance.height", 2.5), Cache.trackVehicleYOffset);
 		Cache.trackMaxTurnDegrees = Math.max(1.0, config.getDouble("max-turn-degrees", 25.0));
 		Cache.trackMinLayDistance = Math.max(1.0, config.getDouble("min-lay-distance", 8.0));
 		Cache.trackJoinDistance = Math.max(0.25, config.getDouble("join-distance", 1.5));
@@ -60,6 +64,11 @@ public class TrainsLoader {
 		Cache.debugLogging = config.getBoolean("debug-logging", false);
 		loadFx(config);
 		loadBuild(config);
+	}
+
+	// The train box starts at vehicle-y-offset, so it needs some height above that.
+	static double clearanceHeight(double configured, double vehicleYOffset) {
+		return Math.max(vehicleYOffset + 0.5, configured);
 	}
 
 	private void loadBuild(FileConfiguration config) {

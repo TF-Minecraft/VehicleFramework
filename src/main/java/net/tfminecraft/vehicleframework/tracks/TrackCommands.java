@@ -12,6 +12,8 @@ import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.managers.VehicleManager;
 import net.tfminecraft.vehicleframework.permissions.Permissions;
@@ -20,6 +22,7 @@ import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 
 public final class TrackCommands {
 	private static final Map<UUID, Long> lastToolMs = new ConcurrentHashMap<>();
+	private static final LayRetryCooldown retry = new LayRetryCooldown();
 
 	private TrackCommands() {
 	}
@@ -37,7 +40,7 @@ public final class TrackCommands {
 			return true;
 		}
 		if (args.length < 2) {
-			player.sendMessage("§e/vf track start|end|list|info|particles|dump|delete|bind|unbind|resync");
+			player.sendMessage("§e/vf track start|end|list|info|particles|clearance|dump|delete|bind|unbind|resync");
 			return true;
 		}
 		String sub = args[1];
@@ -87,6 +90,9 @@ public final class TrackCommands {
 			player.sendMessage("§aShowed " + spline.get().getSamples().size() + " samples.");
 			return true;
 		}
+		if (sub.equalsIgnoreCase("clearance")) {
+			return clearance(player, args);
+		}
 		if (sub.equalsIgnoreCase("dump")) {
 			return dump(player);
 		}
@@ -99,7 +105,7 @@ public final class TrackCommands {
 		if (sub.equalsIgnoreCase("unbind")) {
 			return unbindTrain(player);
 		}
-		player.sendMessage("§e/vf track start|end|list|info|particles|dump|delete|bind|unbind|resync");
+		player.sendMessage("§e/vf track start|end|list|info|particles|clearance|dump|delete|bind|unbind|resync");
 		return true;
 	}
 
@@ -111,6 +117,78 @@ public final class TrackCommands {
 		}
 		displays.startRailResync(sender);
 		return true;
+	}
+
+	private static boolean clearance(Player player, String[] args) {
+		Optional<TrackSpline> spline = resolveSpline(player, args);
+		if (spline.isEmpty()) {
+			player.sendMessage("§cNo track nearby (8 blocks) or unknown id.");
+			return true;
+		}
+		if (!player.getWorld().getName().equals(spline.get().getWorld())) {
+			player.sendMessage("§cThat track is in " + spline.get().getWorld() + ". Run this from that world.");
+			return true;
+		}
+		TrainBlockCollision.Scan scan = TrainBlockCollision.scanLoaded(player.getWorld(), spline.get());
+		List<TrainBlockCollision.Obstruction> found = scan.obstructions();
+		String space = TrackClearance.format(Cache.trainClearanceWidth) + " wide by "
+				+ TrackClearance.format(Cache.trainClearanceHeight) + " high";
+		if (found.isEmpty()) {
+			player.sendMessage("§aNothing in the way of trains (" + space + " above the rail).");
+		} else {
+			int shown = TrainSpaceHighlight.show(player, found);
+			player.sendMessage("§c" + found.size() + " blocks in the way of trains (" + space
+					+ " above the rail). Outlined the nearest " + shown + " for a minute.");
+			List<List<TrainBlockCollision.Obstruction>> stretches = stretches(found);
+			stretches.sort((a, b) -> Integer.compare(b.size(), a.size()));
+			for (List<TrainBlockCollision.Obstruction> stretch : stretches.subList(0, Math.min(5, stretches.size()))) {
+				TrainBlockCollision.Obstruction first = stretch.get(0);
+				TrainBlockCollision.Obstruction last = stretch.get(stretch.size() - 1);
+				player.sendMessage(String.format("§7 %d blocks from %d, %d, %d (%.0f to %.0f along the track)",
+						stretch.size(), first.x(), first.y(), first.z(), first.s(), last.s()));
+			}
+			if (stretches.size() > 5) {
+				player.sendMessage("§7 and " + (stretches.size() - 5) + " smaller stretches.");
+			}
+		}
+		if (scan.skipped() > 0) {
+			player.sendMessage(String.format("§7Did not check %.0f blocks of track in unloaded chunks.", scan.skipped()));
+		}
+		return true;
+	}
+
+	// Obstructions within a few blocks of each other along the track, as one stretch.
+	private static List<List<TrainBlockCollision.Obstruction>> stretches(List<TrainBlockCollision.Obstruction> found) {
+		List<List<TrainBlockCollision.Obstruction>> stretches = new java.util.ArrayList<>();
+		List<TrainBlockCollision.Obstruction> current = null;
+		for (TrainBlockCollision.Obstruction o : found) {
+			if (current == null || o.s() - current.get(current.size() - 1).s() > 3) {
+				current = new java.util.ArrayList<>();
+				stretches.add(current);
+			}
+			current.add(o);
+		}
+		return stretches;
+	}
+
+	private static boolean waitingAfterRefusal(Player player) {
+		long left = retry.remainingMs(player.getUniqueId(), System.currentTimeMillis());
+		if (left <= 0) {
+			return false;
+		}
+		player.sendActionBar(Component.text(
+				"Wait " + (long) Math.ceil(left / 1000.0) + "s before laying again", NamedTextColor.RED));
+		return true;
+	}
+
+	private static void showRefused(Player player, TrackLayException e) {
+		retry.start(player.getUniqueId(), System.currentTimeMillis(), Cache.trackLayRetryMs);
+		if (!e.inTrainSpace.isEmpty()) {
+			TrainSpaceHighlight.show(player, e.inTrainSpace);
+		} else if (e.hasBlock()) {
+			TrainSpaceHighlight.show(player, List.of(
+					new TrainBlockCollision.Obstruction(e.blockX, e.blockY, e.blockZ, 0)));
+		}
 	}
 
 	private static boolean dump(Player player) {
@@ -208,6 +286,9 @@ public final class TrackCommands {
 	}
 
 	public static void markEnd(Player player, Location at, Block hitBlock) {
+		if (waitingAfterRefusal(player)) {
+			return;
+		}
 		TrackJunctionSession.Pending pending = TrackJunctionSession.get(player);
 		if (pending != null) {
 			Location snapped = snapClick(player, at);
@@ -240,6 +321,9 @@ public final class TrackCommands {
 	}
 
 	public static void startJunction(Player player, Location at) {
+		if (waitingAfterRefusal(player)) {
+			return;
+		}
 		if (at == null || at.getWorld() == null) {
 			player.sendMessage("§cClick existing track to start a junction.");
 			return;
@@ -264,6 +348,7 @@ public final class TrackCommands {
 			TrackLog.junctionStart(player.getName(), stem.getId(), s);
 		} catch (TrackLayException e) {
 			player.sendMessage("§c" + e.getMessage());
+			showRefused(player, e);
 			TrackLog.layFail(e.getMessage(), e);
 		}
 	}
@@ -291,10 +376,7 @@ public final class TrackCommands {
 			announceLay(player, result, presented, true);
 		} catch (TrackLayException e) {
 			player.sendMessage("§c" + e.getMessage());
-			if (e.hasBlock()) {
-				Location hit = new Location(at.getWorld(), e.blockX + 0.5, e.blockY + 0.5, e.blockZ + 0.5);
-				player.spawnParticle(Particle.END_ROD, hit, 8, 0.2, 0.2, 0.2, 0);
-			}
+			showRefused(player, e);
 		}
 	}
 
@@ -333,10 +415,7 @@ public final class TrackCommands {
 			announceLay(player, result, presentLay(player, result), false);
 		} catch (TrackLayException e) {
 			player.sendMessage("§c" + e.getMessage());
-			if (e.hasBlock()) {
-				Location hit = new Location(a.getWorld(), e.blockX + 0.5, e.blockY + 0.5, e.blockZ + 0.5);
-				player.spawnParticle(Particle.END_ROD, hit, 8, 0.2, 0.2, 0.2, 0);
-			}
+			showRefused(player, e);
 		}
 	}
 

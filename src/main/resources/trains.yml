@@ -14,6 +14,15 @@ snap-distance: 3
 display-y-offset: 0.51
 vehicle-y-offset: 0.51
 max-turn-degrees: 35
+# Space a moving train needs free of blocks, along each car out to its couplers.
+# Width is across the rails, height is from the rail up. Laying track keeps 3 x 3 clear.
+# 2.5 high lets trains through stepped 4-high tunnels, where the rail rides up to about
+# a block above the floor before each step. Taller parts of the model can show through the roof.
+clearance:
+  width: 3
+  height: 2.5
+# After a refused lay, seconds before the same player can try again (0 = no wait).
+lay-retry-seconds: 3
 min-lay-distance: 8
 join-distance: 1.5
 min-junction-spacing: 16
