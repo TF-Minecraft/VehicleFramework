@@ -10,7 +10,7 @@ passenger_car:
         template: explode_small
     behaviour:
         rotator: body
-        vector: body.body
+        vector: connector_back.connector_front
         tracked: true
         train:
             front-connector: connector_front
