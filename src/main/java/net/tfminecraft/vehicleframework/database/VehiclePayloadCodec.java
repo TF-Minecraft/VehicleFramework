@@ -192,6 +192,9 @@ public final class VehiclePayloadCodec {
 					whitelist,
 					consist);
 			incomplete.setThrottleTape(tape);
+			if (json.get("locomotiveOverdrive") instanceof JSONObject state) {
+				incomplete.setLocomotiveOverdrive(state);
+			}
 			incomplete.setTicketId(ticketId);
 			incomplete.setTicketsEnabled(ticketsEnabled);
 			return Optional.of(incomplete);
@@ -309,6 +312,9 @@ public final class VehiclePayloadCodec {
 		}
 		if (vehicle.getThrottleTape() != null && !vehicle.getThrottleTape().isEmpty()) {
 			json.put("throttleTape", vehicle.getThrottleTape().toJson());
+		}
+		if (vehicle.getLocomotiveOverdrive() != null) {
+			json.put("locomotiveOverdrive", vehicle.getLocomotiveOverdrive());
 		}
 
 		TreeMap<String, Object> treeMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);

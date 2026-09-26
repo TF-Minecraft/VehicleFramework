@@ -931,11 +931,20 @@ public class VehicleManager implements Listener{
 			}
 			for(Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
 				if(entry.getValue().isPassenger(p, false)) {
-					double finalDamage = Math.min(e.getDamage()/2, 18);
+					double finalDamage = passengerDamage(entry.getValue(), e.getDamage());
 					e.setDamage(finalDamage);
+					break;
 				}
 			}
 		}
+	}
+
+	static double passengerDamage(ActiveVehicle vehicle, double damage) {
+		ActiveVehicle root = vehicle;
+		if (vehicle.isTrain()) {
+			while (root.hasParent()) root = root.getParent();
+		}
+		return Math.min(damage * (root.isLocomotive() ? 0.25 : 0.5), 18);
 	}
 	
 	@EventHandler

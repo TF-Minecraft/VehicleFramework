@@ -10,6 +10,17 @@ import org.junit.jupiter.api.Test;
 import net.tfminecraft.vehicleframework.vehicles.component.propulsion.Throttle;
 
 class FuelTankTest {
+    @Test
+    void locomotiveFuelBurnUsesReducedBaseAndOverdriveCurve() {
+        for (int power : new int[] {100, 110, 120}) {
+            FuelTank tank = new FuelTank(100, 100, 1.25, new ArrayList<>(), null);
+            Throttle throttle = new Throttle("Throttle", 120, -100, null);
+            throttle.setThrottle(power);
+            tank.tick(throttle, net.tfminecraft.vehicleframework.vehicles.handlers.train.LocomotiveOverdrive.fuelMultiplier(power));
+            double expected = power == 100 ? 1.25 : power == 110 ? 1.5625 : 2.5;
+            assertEquals(100 - expected, tank.getCurrent(), 0.00001);
+        }
+    }
 
     @Test
     void tick_reverseGear_doesNotInstantlyDrainFuel() {

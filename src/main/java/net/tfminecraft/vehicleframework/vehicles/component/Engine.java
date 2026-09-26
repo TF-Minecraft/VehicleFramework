@@ -30,6 +30,7 @@ import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.component.fuel.FuelTank;
 import net.tfminecraft.vehicleframework.vehicles.component.propulsion.Throttle;
 import net.tfminecraft.vehicleframework.vehicles.util.AccessPanel;
+import net.tfminecraft.vehicleframework.vehicles.handlers.train.LocomotiveOverdrive;
 
 public class Engine extends VehicleComponent{
 	
@@ -189,7 +190,11 @@ public class Engine extends VehicleComponent{
 		if (v != null && v.isTrain() && !v.hasParent()) {
 			v.getTrainHandler().drainFromChild(tank);
 		}
-		if(started) tank.tick(throttle);
+		if(started) {
+			double multiplier = v != null && v.isLocomotive() && !v.hasParent()
+					? LocomotiveOverdrive.fuelMultiplier(throttle.getCurrent()) : 1.0;
+			tank.tick(throttle, multiplier);
+		}
 		playSound(nearby);
 	}
 	
@@ -206,6 +211,13 @@ public class Engine extends VehicleComponent{
 				setStarted(true);
 			}
 		}
+		boolean locomotive = v.isLocomotive() && !v.hasParent();
+		int healthLimit = healthData.getHealthPercentage();
+		if (locomotive) {
+			// Preserve the damaged-engine limit; a healthy locomotive can overdrive forward.
+			int requested = Math.clamp(throttle.getCurrent(), -healthLimit, healthLimit == 100 ? 120 : healthLimit);
+			throttle.setThrottle(v.getTrainHandler().getOverdrive().update(requested, System.currentTimeMillis()));
+		}
 		int current = throttle.getCurrent();
 		AccessPanel panel = v.getAccessPanel();
 		panel.setSpeed(getSpeed());
@@ -215,7 +227,7 @@ public class Engine extends VehicleComponent{
 			current = current*-1;
 			reverse = true;
 		}
-		if(current > healthData.getHealthPercentage()) {
+		if(!locomotive && current > healthData.getHealthPercentage()) {
 			current = healthData.getHealthPercentage();
 			if(reverse) {
 				current = current*-1;

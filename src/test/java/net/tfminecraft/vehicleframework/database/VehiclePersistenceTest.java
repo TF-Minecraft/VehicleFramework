@@ -40,6 +40,34 @@ class VehiclePersistenceTest {
 	Path tempDir;
 
 	@Test
+	void overdriveSurvivesPayloadReencodingAndSqliteRestart() {
+		var boost = new net.tfminecraft.vehicleframework.vehicles.handlers.train.LocomotiveOverdrive();
+		boost.update(120, 1_000);
+		boost.update(120, 6_000);
+		IncompleteVehicle vehicle = VehiclePayloadCodec.decode(PAYLOAD, UUID).orElseThrow();
+		vehicle.setLocomotiveOverdrive(boost.toJson());
+		String encoded = VehiclePayloadCodec.encode(vehicle);
+		Path db = tempDir.resolve("overdrive.db");
+		VehicleRepository repository = VehicleRepository.open(db.toFile());
+		try {
+			assertTrue(new VehiclePersistence(repository).saveLive(snapshot(encoded, 1)));
+		} finally {
+			repository.close();
+		}
+		repository = VehicleRepository.open(db.toFile());
+		try {
+			IncompleteVehicle loaded = new VehiclePersistence(repository).loadIncomplete(UUID).orElseThrow();
+			var restored = new net.tfminecraft.vehicleframework.vehicles.handlers.train.LocomotiveOverdrive();
+			restored.restore(loaded.getLocomotiveOverdrive());
+			assertEquals(120, restored.update(120, 10_999));
+			assertEquals(100, restored.update(120, 11_000));
+			assertEquals(300, restored.cooldownSeconds(11_000));
+		} finally {
+			repository.close();
+		}
+	}
+
+	@Test
 	void legacyPayloadRetainsIdentitySkinAndSeatAssignmentsAcrossSqliteRestart() {
 		String legacy = """
 				{"id":"horse_cart","name":"Cart","skin":"winter_cart","owner":"player_Alice",

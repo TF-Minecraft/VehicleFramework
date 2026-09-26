@@ -198,6 +198,9 @@ public final class ActiveVehicleSnapshotFactory {
 
 		if (v.isTrain()) {
 			v.getTrainHandler().toConsistData().put(vehicleData);
+			if (v.isLocomotive()) {
+				vehicleData.put("locomotiveOverdrive", v.getTrainHandler().getOverdrive().toJson());
+			}
 			if (!v.hasParent()) {
 				ThrottleTape tape = v.getTrainHandler().getInstalledTape();
 				if (tape != null && !tape.isEmpty()) {

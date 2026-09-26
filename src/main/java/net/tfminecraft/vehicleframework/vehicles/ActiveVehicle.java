@@ -387,6 +387,7 @@ public class ActiveVehicle {
 		}
 		if (isTrain()) {
 			getTrainHandler().applyConsist(inc.getConsist());
+			getTrainHandler().getOverdrive().restore(inc.getLocomotiveOverdrive());
 			if (inc.getThrottleTape() != null) {
 				getTrainHandler().setInstalledTape(inc.getThrottleTape());
 			}
@@ -758,6 +759,9 @@ public class ActiveVehicle {
 
 	public boolean isTrain() {
 		return getBehaviourHandler().isTrain();
+	}
+	public boolean isLocomotive() {
+		return isTrain() && getTrainHandler().isLocomotive();
 	}
 	public TrainHandler getTrainHandler() {
 		return getBehaviourHandler().getTrainHandler();
