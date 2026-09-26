@@ -788,6 +788,20 @@ public class TrainHandler {
 		}
 	}
 
+	/** Whether any train car is bound to the given track. */
+	public static boolean anyTrainOn(UUID splineId) {
+		VehicleManager vehicles = VehicleFramework.getVehicleManager();
+		if (vehicles == null || splineId == null) {
+			return false;
+		}
+		for (ActiveVehicle vehicle : vehicles.get().values()) {
+			if (vehicle.isTrain() && splineId.equals(vehicle.getTrainHandler().getSplineId())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/**
 	 * Keeps this car where it physically was after its track is rebuilt.
 	 * Digging splits or trims a spline, which re-ids the far piece and shifts

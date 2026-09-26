@@ -487,6 +487,26 @@ class TrainReversePlacementTest {
     }
 
     @Test
+    void joiningAnotherTrackToTrainTracksStartKeepsTrainFacingTheSameWay() throws Exception {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        TrainHandler first = loco.getChild().getTrainHandler();
+        TrainHandler last = first.getChild().getTrainHandler();
+        registry.occupiedBy(id -> List.of(loco, first, last).stream()
+                .anyMatch(car -> id.equals(car.getSplineId())));
+        registry.lay("world", 0, 64, -20, 0, 64, -30);
+        // Start to start: one of the two tracks has to be reversed.
+        registry.lay("world", 0, 64, 0, 0, 64, -20);
+        loco.splineTick();
+        assertEquals(60, loco.v.getEntity().getLocation().getZ(), 1e-6);
+        assertEquals(50, first.v.getEntity().getLocation().getZ(), 1e-6);
+        assertEquals(40, last.v.getEntity().getLocation().getZ(), 1e-6);
+        loco.v.getAccessPanel().setSpeed(0.2);
+        loco.splineTick();
+        assertEquals(60.2, loco.v.getEntity().getLocation().getZ(), 1e-6);
+    }
+
+    @Test
     void deletingTrackDoesNotMoveTrainOntoCrossingTrack() {
         TrackSpline track = denseTrack();
         crossingAt(60);
@@ -519,8 +539,9 @@ class TrainReversePlacementTest {
         TrackSpline track = denseTrack();
         TrackRegistry.DigTarget target = registry.digTarget("world", 0, 64, 20.2).orElseThrow();
         assertEquals(20, target.index());
-        assertEquals(20, target.centreS(), 1e-8);
-        assertEquals(1, target.halfSpan(), 1e-8);
+        assertEquals(1, target.spans().size());
+        assertEquals(20, target.spans().get(0).centreS(), 1e-8);
+        assertEquals(1, target.spans().get(0).halfSpan(), 1e-8);
         assertEquals(track.getId(), target.spline().getId());
     }
 

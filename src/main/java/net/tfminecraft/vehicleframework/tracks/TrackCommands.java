@@ -363,11 +363,14 @@ public final class TrackCommands {
 		if (vehicles == null) {
 			return false;
 		}
-		UUID trackId = target.spline().getId();
 		for (ActiveVehicle vehicle : vehicles.get().values()) {
-			if (vehicle.isTrain() && !vehicle.hasParent()
-					&& vehicle.getTrainHandler().occupies(trackId, target.centreS(), target.halfSpan())) {
-				return true;
+			if (!vehicle.isTrain() || vehicle.hasParent()) {
+				continue;
+			}
+			for (TrackRegistry.Span span : target.spans()) {
+				if (vehicle.getTrainHandler().occupies(span.trackId(), span.centreS(), span.halfSpan())) {
+					return true;
+				}
 			}
 		}
 		return false;
