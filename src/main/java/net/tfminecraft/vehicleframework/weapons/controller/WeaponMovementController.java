@@ -1,6 +1,5 @@
 package net.tfminecraft.vehicleframework.weapons.controller;
 
-import java.util.HashMap;
 import java.util.List;
 
 import org.bukkit.Location;
@@ -20,6 +19,7 @@ import net.tfminecraft.vehicleframework.enums.Input;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.seat.Seat;
 import net.tfminecraft.vehicleframework.weapons.ActiveWeapon;
+import net.tfminecraft.vehicleframework.weapons.NoticeCooldown;
 import net.tfminecraft.vehicleframework.weapons.Weapon;
 import net.tfminecraft.vehicleframework.weapons.WeaponAimAligner;
 import net.tfminecraft.vehicleframework.weapons.WeaponAimMode;
@@ -29,7 +29,10 @@ import net.tfminecraft.vehicleframework.weapons.WeaponTargetResolver;
 
 public class WeaponMovementController{
 	
-	protected HashMap<Player, Long> cooldown = new HashMap<>();
+	private static final long BROKEN_NOTICE_COOLDOWN_MS = 10_000L;
+	private static final float BROKEN_NOTICE_AIM_ERROR = 5f;
+
+	private final NoticeCooldown brokenNotice = new NoticeCooldown(BROKEN_NOTICE_COOLDOWN_MS);
 	
 	protected ActiveVehicle v; 
 	
@@ -155,16 +158,16 @@ public class WeaponMovementController{
 	public void input(List<Player> nearby, Input i, Player p) {
 		switch(i) {
 			case WEAPON_UP:
-				if (aimMode != WeaponAimMode.CURSOR) inputUp();
+				if (aimMode != WeaponAimMode.CURSOR && canTurn(p)) inputUp();
 				break;
 			case WEAPON_LEFT:
-				if (aimMode != WeaponAimMode.CURSOR) inputLeft();
+				if (aimMode != WeaponAimMode.CURSOR && canTurn(p)) inputLeft();
 				break;
 			case WEAPON_DOWN:
-				if (aimMode != WeaponAimMode.CURSOR) inputDown();
+				if (aimMode != WeaponAimMode.CURSOR && canTurn(p)) inputDown();
 				break;
 			case WEAPON_RIGHT:
-				if (aimMode != WeaponAimMode.CURSOR) inputRight();
+				if (aimMode != WeaponAimMode.CURSOR && canTurn(p)) inputRight();
 				break;
 			case WEAPON_SHOOT:
 				inputShoot(p, nearby);
@@ -233,6 +236,10 @@ public class WeaponMovementController{
 		float rate = effectiveTurnRate();
 		float yawErr = WeaponAimAligner.yawError(current, desiredAngles);
 		float elevErr = WeaponAimAligner.elevationError(current, desiredAngles, axis);
+		if (rate <= 0f && (Math.abs(yawErr) > BROKEN_NOTICE_AIM_ERROR
+				|| Math.abs(elevErr) > BROKEN_NOTICE_AIM_ERROR)) {
+			notifyBroken(player);
+		}
 		float boneYawErr = WeaponAimAligner.toBoneYawStep(yawErr);
 		float bodyStep = WeaponAimAligner.followStep(boneYawErr, rate, yawSettled);
 		if (bodyStep != 0f) {
@@ -318,6 +325,25 @@ public class WeaponMovementController{
 		} else {
 			headRotator.rotate(0, headStep, 0);
 		}
+	}
+
+	/**
+	 * A weapon at 0% health has no turn rate. Tell the gunner why it will not move
+	 * instead of silently ignoring the input.
+	 */
+	private boolean canTurn(Player p) {
+		if (fixed || effectiveTurnRate() > 0f) {
+			return true;
+		}
+		notifyBroken(p);
+		return false;
+	}
+
+	private void notifyBroken(Player p) {
+		if (p == null || !brokenNotice.tryAcquire(p.getUniqueId(), System.currentTimeMillis())) {
+			return;
+		}
+		p.sendMessage("§cThe " + w.getName() + "§c is broken and won't move. A mechanic needs to repair it.");
 	}
 
 	private float effectiveTurnRate() {
