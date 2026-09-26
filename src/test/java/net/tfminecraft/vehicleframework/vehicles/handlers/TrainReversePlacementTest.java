@@ -459,6 +459,34 @@ class TrainReversePlacementTest {
     }
 
     @Test
+    void splittingStemKeepsRouteOfTrainLeavingBranch() {
+        TrackSpline stem = denseTrack();
+        TrackSpline branch = TrackSpline.fromPoints(UUID.randomUUID(), "world", false,
+                List.of(new double[]{0, 64, 50}, new double[]{100, 64, 50}));
+        store.save(branch);
+        TrackJunction junction = new TrackJunction(UUID.randomUUID(), stem.getId(), 50,
+                -1, TrackJunction.Side.LEFT, branch.getId(), true);
+        store.saveJunction("world", junction);
+        registry.loadFromDisk();
+        TrainHandler loco = consist(registry.get(stem.getId()).orElseThrow(), 55);
+        loco.applyConsist(new ConsistData(null, null, stem.getId().toString(), 55d,
+                1, junction.id.toString(), true));
+        loco.placeLoadedCars();
+        TrainHandler first = loco.getChild().getTrainHandler();
+        assertEquals(branch.getId(), first.getSplineId(), "Setup: first car trails onto the branch");
+        Location before = first.v.getEntity().getLocation();
+
+        registry.digAt(registry.get(stem.getId()).orElseThrow(), 10);
+        loco.splineTick();
+
+        assertNotEquals(stem.getId(), loco.getSplineId());
+        assertEquals(junction.id.toString(), loco.toConsistData().getJunctionId());
+        assertEquals(branch.getId(), first.getSplineId());
+        assertEquals(before.getX(), first.v.getEntity().getLocation().getX(), 1e-8);
+        assertEquals(before.getZ(), first.v.getEntity().getLocation().getZ(), 1e-8);
+    }
+
+    @Test
     void deletingTrackDoesNotMoveTrainOntoCrossingTrack() {
         TrackSpline track = denseTrack();
         crossingAt(60);

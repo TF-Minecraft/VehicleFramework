@@ -261,8 +261,8 @@ public final class TrackRegistry {
 		if (rest != null) {
 			pieces.add(rest);
 		}
-		rebuilt.accept(spline, pieces);
 		rehomeJunctions(saved, spline, false, start, rest);
+		rebuilt.accept(spline, pieces);
 		if (start != null && rest != null) {
 			return finishDig(DigResult.split(start, rest));
 		}
@@ -374,10 +374,12 @@ public final class TrackRegistry {
 				from.spline.getWorld(),
 				TrackSpline.shouldLoop(merged, Cache.trackJoinDistance),
 				merged);
-		TrackSpline stored = replace(next);
-		rebuilt.accept(oldDrop, List.of(stored));
+		TrackSpline stored = replaceQuietly(next);
 		rehomeJunctions(keepSaved, oldKeep, from.prepend, stored);
 		rehomeJunctions(dropSaved, oldDrop, !to.prepend, stored);
+		// Retrack only once junctions sit on the joined spline, so train routes survive.
+		rebuilt.accept(oldKeep, List.of(stored));
+		rebuilt.accept(oldDrop, List.of(stored));
 		return new StrokeLay(stored, extra, 0);
 	}
 
@@ -412,13 +414,19 @@ public final class TrackRegistry {
 	}
 
 	public TrackSpline replace(TrackSpline spline) {
-		TrackSpline next = spline.promotedLoop(Cache.trackJoinDistance);
-		next.invalidateVisuals();
-		TrackSpline previous = splines.put(next.getId(), next);
-		store.save(next);
+		TrackSpline previous = splines.get(spline.getId());
+		TrackSpline next = replaceQuietly(spline);
 		if (previous != null && previous != next) {
 			rebuilt.accept(previous, List.of(next));
 		}
+		return next;
+	}
+
+	private TrackSpline replaceQuietly(TrackSpline spline) {
+		TrackSpline next = spline.promotedLoop(Cache.trackJoinDistance);
+		next.invalidateVisuals();
+		splines.put(next.getId(), next);
+		store.save(next);
 		return next;
 	}
 
