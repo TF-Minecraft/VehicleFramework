@@ -192,10 +192,11 @@ public final class TrainBlockCollision {
                 continue;
             }
             Slice slice = span(spline, a, b);
+            // Blocks in unloaded chunks are skipped one by one, so a slice reaching into a
+            // loaded chunk is still checked there. Report the track itself as unchecked
+            // where it runs through an unloaded chunk; every point is in two slices.
             if (loadedOnly && !world.isChunkLoaded((int) Math.floor(slice.x) >> 4, (int) Math.floor(slice.z) >> 4)) {
-                // Every point is in two slices, so each counts for half its length.
                 skipped += (b - a) / 2;
-                continue;
             }
             for (long key : touched(world, List.of(slice), shapes, seen, false, loadedOnly)) {
                 seen.add(key);

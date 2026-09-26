@@ -201,6 +201,18 @@ class TrainBlockCollisionTest {
     }
 
     @Test
+    void scanChecksLoadedBlocksNextToTrackInUnloadedChunks() {
+        // Track along x = 15.5, in chunk 0; the wall at x 16 to 17 is in loaded chunk 1.
+        TrackSpline edge = TrackSpline.fromPoints(UUID.randomUUID(), "world", false,
+                List.of(new double[]{14.9, 64, 0}, new double[]{14.9, 64, 40}));
+        World world = world((x, y, z) -> y == 64 && x == 16 && z == 20);
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenAnswer(call -> (int) call.getArgument(0) == 1);
+        TrainBlockCollision.Scan scan = TrainBlockCollision.scanLoaded(world, edge);
+        assertEquals(1, scan.obstructions().size());
+        assertEquals(40, scan.skipped(), 1e-6);
+    }
+
+    @Test
     void scanChecksLoadedChunks() {
         World world = world(tunnel(2));
         when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
