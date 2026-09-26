@@ -135,6 +135,26 @@ class TrainBlockCollisionTest {
     }
 
     @Test
+    void blockSharedByBothTracksStillBlocksOnBentBranch() {
+        TrackSpline stem = TrackSpline.fromPoints(UUID.randomUUID(), "world", false,
+                List.of(new double[]{0.5, 64, 0}, new double[]{0.5, 64, 20}));
+        List<double[]> bend = new java.util.ArrayList<>();
+        for (int i = 0; i <= 20; i++) {
+            double a = Math.toRadians(i * 3);
+            bend.add(new double[]{0.5 + 20 * (1 - Math.cos(a)), 64, 20 + 20 * Math.sin(a)});
+        }
+        TrackSpline branch = TrackSpline.fromPoints(UUID.randomUUID(), "world", false, bend);
+        // At x 1 to 2 the block sits on the edge of the stem's space, so the car already
+        // overlaps it. The branch bends towards +x and runs further into it.
+        Solid solid = (x, y, z) -> y == 64 && x == 1 && z == 23;
+        Entity entity = mock(Entity.class);
+        World world = world(solid);
+        when(entity.getWorld()).thenReturn(world);
+        assertFalse(TrainBlockCollision.blocked(entity, stem, 19.9, stem, 19.95, REACH));
+        assertTrue(TrainBlockCollision.blocked(entity, stem, 19.9, branch, 0.15, REACH));
+    }
+
+    @Test
     void obstructionsAreListedOnceInTrackOrder() {
         World world = world((x, y, z) -> tunnel(3).at(x, y, z)
                 || (x == 1 && y == 65 && z == 40) || (x == -1 && y == 64 && z == 12));

@@ -28,6 +28,8 @@ public final class TrainBlockCollision {
     private static final double SLICE = 0.5;
     // Touching a block face is not a collision.
     private static final double EPS = 1e-6;
+    // After a track change, how close a slice must be to the old space to count as it.
+    private static final double NEAR = 0.3;
 
     private TrainBlockCollision() {
     }
@@ -50,11 +52,11 @@ public final class TrainBlockCollision {
             return false;
         }
         World world = entity.getWorld();
-        Set<Long> inside = fromSpline == null
-                ? Set.of()
-                : touched(world, slices(fromSpline, fromS, reach, 0), shapes, Set.of(), false);
+        List<Slice> before = fromSpline == null ? List.of() : slices(fromSpline, fromS, reach, 0);
+        Set<Long> inside = touched(world, before, shapes, Set.of(), false);
+        boolean sameTrack = fromSpline != null && fromSpline.getId().equals(toSpline.getId());
         double moved = 0;
-        if (fromSpline != null && fromSpline.getId().equals(toSpline.getId())) {
+        if (sameTrack) {
             moved = toS - fromS;
             if (toSpline.isLoop()) {
                 double length = toSpline.length();
@@ -67,13 +69,38 @@ public final class TrainBlockCollision {
             double yaw = Math.toRadians(to.yaw);
             moved = (to.x - from.x) * -Math.sin(yaw) + (to.z - from.z) * Math.cos(yaw);
         }
+        List<Slice> after = slices(toSpline, toS, reach, moved);
+        if (!sameTrack) {
+            // On one track the car's space behind its leading end is the same stretch of
+            // track as before. A new track can curve away, so only space close to where
+            // the car was counts as old.
+            List<Slice> marked = new ArrayList<>();
+            for (Slice slice : after) {
+                marked.add(slice.leading() || near(before, slice) ? slice : slice.asLeading());
+            }
+            after = marked;
+        }
         // Steps are much shorter than a car, so the car's space at the end of a step
         // also covers the blocks it passed, even on fast ticks.
-        return !touched(world, slices(toSpline, toS, reach, moved), shapes, inside, true).isEmpty();
+        return !touched(world, after, shapes, inside, true).isEmpty();
+    }
+
+    private static boolean near(List<Slice> slices, Slice slice) {
+        for (Slice other : slices) {
+            double dx = other.x - slice.x;
+            double dz = other.z - slice.z;
+            if (dx * dx + dz * dz <= NEAR * NEAR && Math.abs(other.minY - slice.minY) <= NEAR) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private record Slice(double x, double z, double fx, double fz, double halfLength,
             double minY, double maxY, boolean leading) {
+        Slice asLeading() {
+            return new Slice(x, z, fx, fz, halfLength, minY, maxY, true);
+        }
     }
 
     private static List<Slice> slices(TrackSpline spline, double s, double reach, double moved) {
