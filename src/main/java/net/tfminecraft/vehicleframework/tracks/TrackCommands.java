@@ -122,6 +122,10 @@ public final class TrackCommands {
 			player.sendMessage("§cNo track nearby (8 blocks) or unknown id.");
 			return true;
 		}
+		if (!player.getWorld().getName().equals(spline.get().getWorld())) {
+			player.sendMessage("§cThat track is in " + spline.get().getWorld() + ". Run this from that world.");
+			return true;
+		}
 		TrainBlockCollision.Scan scan = TrainBlockCollision.scanLoaded(player.getWorld(), spline.get());
 		List<TrainBlockCollision.Obstruction> found = scan.obstructions();
 		String space = TrackClearance.format(Cache.trainClearanceWidth) + " wide by "
