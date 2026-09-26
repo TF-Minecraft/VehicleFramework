@@ -136,6 +136,32 @@ class TrainReversePlacementTest {
         assertSequence(loco, track, new double[]{60.2, 60.2, 60.19, 60.19, 60.39});
     }
 
+    @ParameterizedTest
+    @CsvSource({"true, false", "false, true", "true, true"})
+    void missingConnectorBlueprintKeepsSampledPoseAndRecovers(boolean missingBack, boolean missingFront) {
+        TrackSpline track = straightTrack(false);
+        TrainHandler loco = consist(track, 60);
+        TrainHandler car = loco.getChild().getTrainHandler();
+        ModelBone back = loco.v.getModel().getBone("back").orElseThrow();
+        ModelBone front = car.v.getModel().getBone("front").orElseThrow();
+        BlueprintBone backBlueprint = back.getBlueprintBone();
+        BlueprintBone frontBlueprint = front.getBlueprintBone();
+        if (missingBack) when(back.getBlueprintBone()).thenReturn(null);
+        if (missingFront) when(front.getBlueprintBone()).thenReturn(null);
+
+        loco.placeLoadedCars();
+        loco.splineTick();
+        double expected = 60 - (missingBack ? 0 : 5) - (missingFront ? 0 : 5);
+        assertEquals(expected, car.getS(), 1e-8);
+        assertEquals(track.sampleAt(expected).x, car.v.getEntity().getLocation().getX(), 1e-8);
+        assertEquals(track.sampleAt(expected).z, car.v.getEntity().getLocation().getZ(), 1e-8);
+
+        when(back.getBlueprintBone()).thenReturn(backBlueprint);
+        when(front.getBlueprintBone()).thenReturn(frontBlueprint);
+        loco.placeLoadedCars();
+        assertPositions(loco, track, 60);
+    }
+
     @Test
     void reversalAcrossLoopSeamKeepsSpacingAndOrder() {
         TrackSpline track = straightTrack(true);

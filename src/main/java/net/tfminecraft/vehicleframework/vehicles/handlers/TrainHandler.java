@@ -810,7 +810,11 @@ public class TrainHandler {
 					// Arc spacing locates the car on the route; rigid couplers must meet
 					// in world space. A separate tangent at each centre opens a gap on bends.
 					TrackPose parentPose = placements.get(placements.size() - 1).pose();
-					carPose = carTrain.getFront().coupledPose(carPose, parentTrain.getBack().positionAt(parentPose));
+					try {
+						carPose = carTrain.getFront().coupledPose(carPose, parentTrain.getBack().positionAt(parentPose));
+					} catch (RuntimeException ignored) {
+						// Keep the sampled pose until connector blueprints and model transforms load.
+					}
 				}
 				placements.add(new CarPlacement(car, carSpline, pose.s, carTravelSign, pose.missingSpacing, carPose));
 			} else {
