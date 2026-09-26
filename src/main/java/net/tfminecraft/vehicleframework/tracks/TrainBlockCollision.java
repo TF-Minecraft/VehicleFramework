@@ -48,8 +48,24 @@ public final class TrainBlockCollision {
     /** As above, reusing block shapes already looked up during the same movement tick. */
     public static boolean blocked(Entity entity, TrackSpline fromSpline, double fromS,
             TrackSpline toSpline, double toS, double reach, Map<Long, List<BoundingBox>> shapes) {
+        return !hits(entity, fromSpline, fromS, toSpline, toS, reach, shapes, true).isEmpty();
+    }
+
+    /** Every block that stops a car making this step, for showing to its riders. */
+    public static List<Obstruction> blockers(Entity entity, TrackSpline fromSpline, double fromS,
+            TrackSpline toSpline, double toS, double reach, Map<Long, List<BoundingBox>> shapes) {
+        List<Obstruction> found = new ArrayList<>();
+        for (long key : hits(entity, fromSpline, fromS, toSpline, toS, reach, shapes, false)) {
+            found.add(new Obstruction(keyX(key), keyY(key), keyZ(key), toS));
+        }
+        return found;
+    }
+
+    private static Set<Long> hits(Entity entity, TrackSpline fromSpline, double fromS,
+            TrackSpline toSpline, double toS, double reach, Map<Long, List<BoundingBox>> shapes,
+            boolean firstOnly) {
         if (entity == null || entity.getWorld() == null || toSpline == null) {
-            return false;
+            return Set.of();
         }
         World world = entity.getWorld();
         List<Slice> before = fromSpline == null ? List.of() : slices(fromSpline, fromS, reach, 0);
@@ -82,7 +98,7 @@ public final class TrainBlockCollision {
         }
         // Steps are much shorter than a car, so the car's space at the end of a step
         // also covers the blocks it passed, even on fast ticks.
-        return !touched(world, after, shapes, inside, true).isEmpty();
+        return touched(world, after, shapes, inside, firstOnly);
     }
 
     private static boolean near(List<Slice> slices, Slice slice) {
@@ -164,19 +180,42 @@ public final class TrainBlockCollision {
         int count = (int) Math.ceil((toS - fromS) / SLICE);
         double step = (toS - fromS) / count;
         double skipped = 0;
-        for (int i = 0; i < count; i++) {
-            double at = fromS + (i + 0.5) * step;
-            Slice slice = slice(spline, at, step / 2, false);
+        // A moving car's slices can fall anywhere along the track. Scan two sets of
+        // slices half a slice apart, each spanning the rail's full height over its
+        // length, so the scan finds every block a car could touch, even on grades.
+        for (int k = 0; k <= 2 * count; k++) {
+            // Slices one step long, starting every half step, clipped to the range.
+            double start = fromS + (k - 1) * step / 2;
+            double a = Math.max(fromS, start);
+            double b = Math.min(toS, start + step);
+            if (b - a <= EPS) {
+                continue;
+            }
+            Slice slice = span(spline, a, b);
             if (loadedOnly && !world.isChunkLoaded((int) Math.floor(slice.x) >> 4, (int) Math.floor(slice.z) >> 4)) {
-                skipped += step;
+                // Every point is in two slices, so each counts for half its length.
+                skipped += (b - a) / 2;
                 continue;
             }
             for (long key : touched(world, List.of(slice), shapes, seen, false, loadedOnly)) {
                 seen.add(key);
-                found.add(new Obstruction(keyX(key), keyY(key), keyZ(key), at));
+                found.add(new Obstruction(keyX(key), keyY(key), keyZ(key), (a + b) / 2));
             }
         }
         return new Scan(found, skipped);
+    }
+
+    // A slice from a to b along the track, as high and low as the rail goes between them.
+    private static Slice span(TrackSpline spline, double a, double b) {
+        Slice mid = slice(spline, (a + b) / 2, (b - a) / 2, false);
+        double low = Double.MAX_VALUE;
+        double high = -Double.MAX_VALUE;
+        for (int i = 0; i <= 4; i++) {
+            Slice at = slice(spline, a + (b - a) * i / 4, 0, false);
+            low = Math.min(low, at.minY);
+            high = Math.max(high, at.maxY);
+        }
+        return new Slice(mid.x, mid.z, mid.fx, mid.fz, mid.halfLength, low, high, false);
     }
 
     private static Set<Long> touched(World world, List<Slice> slices, Map<Long, List<BoundingBox>> shapes,

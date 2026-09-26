@@ -167,6 +167,32 @@ class TrainBlockCollisionTest {
     }
 
     @Test
+    void scanFindsEveryBlockAMovingCarCanHitOnAGrade() {
+        Cache.trainClearanceHeight = 2.5;
+        TrackSpline ramp = TrackSpline.fromPoints(UUID.randomUUID(), "world", false,
+                List.of(new double[]{0.5, 64, 0}, new double[]{0.5, 80, 100}));
+        // A stepped roof, one block up every six, just low enough to clip in places.
+        Solid solid = (x, y, z) -> y >= 66 + Math.floorDiv(z, 6) || y <= 63 + Math.floorDiv(z, 7);
+        World world = world(solid);
+        Entity entity = mock(Entity.class);
+        when(entity.getWorld()).thenReturn(world);
+        java.util.Set<String> scanned = new java.util.HashSet<>();
+        for (TrainBlockCollision.Obstruction o : TrainBlockCollision.obstructions(world, ramp, 0, ramp.length())) {
+            scanned.add(o.x() + "," + o.y() + "," + o.z());
+        }
+        int checked = 0;
+        for (double s = REACH; s < ramp.length() - REACH - 0.3; s += 0.07) {
+            for (TrainBlockCollision.Obstruction o : TrainBlockCollision.blockers(
+                    entity, ramp, s, ramp, s + 0.25, REACH, new java.util.HashMap<>())) {
+                checked++;
+                assertTrue(scanned.contains(o.x() + "," + o.y() + "," + o.z()),
+                        "Scan missed " + o.x() + "," + o.y() + "," + o.z() + " that stops a car at s " + s);
+            }
+        }
+        assertTrue(checked > 0, "The roof should stop the car somewhere");
+    }
+
+    @Test
     void scanSkipsUnloadedChunks() {
         World world = world(tunnel(2));
         TrainBlockCollision.Scan scan = TrainBlockCollision.scanLoaded(world, northTrack());

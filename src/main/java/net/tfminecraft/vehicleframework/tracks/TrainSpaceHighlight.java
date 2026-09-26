@@ -3,7 +3,9 @@ package net.tfminecraft.vehicleframework.tracks;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,7 +38,7 @@ public final class TrainSpaceHighlight {
 	private static final Material MARKER = Material.RED_STAINED_GLASS;
 	private static final Map<UUID, Shown> shown = new ConcurrentHashMap<>();
 
-	private record Shown(List<BlockDisplay> displays, BukkitTask refresh) {
+	private record Shown(List<BlockDisplay> displays, Set<BlockDisplay> markers, BukkitTask refresh) {
 		void remove() {
 			refresh.cancel();
 			displays.forEach(BlockDisplay::remove);
@@ -55,6 +57,7 @@ public final class TrainSpaceHighlight {
 		nearest.sort(Comparator.comparingDouble(o -> at.distanceSquared(
 				new Location(world, o.x() + 0.5, o.y() + 0.5, o.z() + 0.5))));
 		List<BlockDisplay> displays = new ArrayList<>();
+		Set<BlockDisplay> markers = new HashSet<>();
 		for (TrainBlockCollision.Obstruction o : nearest.subList(0, Math.min(MAX_SHOWN, nearest.size()))) {
 			Block block = world.getBlockAt(o.x(), o.y(), o.z());
 			// Some refusals point at open space, such as another track. Mark it with glass.
@@ -73,10 +76,13 @@ public final class TrainSpaceHighlight {
 			});
 			player.showEntity(VehicleFramework.plugin, display);
 			displays.add(display);
+			if (block.isPassable()) {
+				markers.add(display);
+			}
 		}
 		BukkitTask refresh = Bukkit.getScheduler().runTaskTimer(
-				VehicleFramework.plugin, () -> refresh(displays), REFRESH_TICKS, REFRESH_TICKS);
-		Shown set = new Shown(displays, refresh);
+				VehicleFramework.plugin, () -> refresh(displays, markers), REFRESH_TICKS, REFRESH_TICKS);
+		Shown set = new Shown(displays, markers, refresh);
 		shown.put(player.getUniqueId(), set);
 		Bukkit.getScheduler().runTaskLater(VehicleFramework.plugin, () -> {
 			// Only clear this set; a later command may have replaced it.
@@ -91,7 +97,7 @@ public final class TrainSpaceHighlight {
 	 * Drops outlines of blocks that are gone or no longer solid, such as mined ones, and
 	 * redraws outlines of blocks replaced by another solid block.
 	 */
-	static void refresh(List<BlockDisplay> displays) {
+	static void refresh(List<BlockDisplay> displays, Set<BlockDisplay> markers) {
 		Iterator<BlockDisplay> it = displays.iterator();
 		while (it.hasNext()) {
 			BlockDisplay display = it.next();
@@ -99,7 +105,7 @@ public final class TrainSpaceHighlight {
 				it.remove();
 				continue;
 			}
-			if (display.getBlock().getMaterial() == MARKER) {
+			if (markers.contains(display)) {
 				// A marker for open space stays until the outlines expire.
 				continue;
 			}

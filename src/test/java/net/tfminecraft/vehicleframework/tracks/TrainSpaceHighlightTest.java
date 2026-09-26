@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -21,7 +22,7 @@ class TrainSpaceHighlightTest {
     void minedBlockLosesItsOutline() {
         BlockDisplay display = display(true, mock(BlockData.class), shown(Material.STONE));
         List<BlockDisplay> displays = new ArrayList<>(List.of(display));
-        TrainSpaceHighlight.refresh(displays);
+        TrainSpaceHighlight.refresh(displays, Set.of());
         assertEquals(0, displays.size());
         verify(display).remove();
     }
@@ -31,7 +32,7 @@ class TrainSpaceHighlightTest {
         BlockData data = shown(Material.STONE);
         BlockDisplay display = display(false, data, data);
         List<BlockDisplay> displays = new ArrayList<>(List.of(display));
-        TrainSpaceHighlight.refresh(displays);
+        TrainSpaceHighlight.refresh(displays, Set.of());
         assertEquals(1, displays.size());
         verify(display, never()).remove();
         verify(display, never()).setBlock(data);
@@ -42,7 +43,7 @@ class TrainSpaceHighlightTest {
         BlockData now = mock(BlockData.class);
         BlockDisplay display = display(false, now, shown(Material.STONE));
         List<BlockDisplay> displays = new ArrayList<>(List.of(display));
-        TrainSpaceHighlight.refresh(displays);
+        TrainSpaceHighlight.refresh(displays, Set.of());
         assertEquals(1, displays.size());
         verify(display).setBlock(now);
     }
@@ -51,9 +52,18 @@ class TrainSpaceHighlightTest {
     void openSpaceMarkerStays() {
         BlockDisplay display = display(true, mock(BlockData.class), shown(Material.RED_STAINED_GLASS));
         List<BlockDisplay> displays = new ArrayList<>(List.of(display));
-        TrainSpaceHighlight.refresh(displays);
+        TrainSpaceHighlight.refresh(displays, Set.of(display));
         assertEquals(1, displays.size());
         verify(display, never()).remove();
+    }
+
+    @Test
+    void realRedGlassInTheWayIsStillRefreshed() {
+        BlockDisplay display = display(true, mock(BlockData.class), shown(Material.RED_STAINED_GLASS));
+        List<BlockDisplay> displays = new ArrayList<>(List.of(display));
+        TrainSpaceHighlight.refresh(displays, Set.of());
+        assertEquals(0, displays.size());
+        verify(display).remove();
     }
 
     @Test
@@ -61,7 +71,7 @@ class TrainSpaceHighlightTest {
         BlockDisplay display = mock(BlockDisplay.class);
         when(display.isValid()).thenReturn(false);
         List<BlockDisplay> displays = new ArrayList<>(List.of(display));
-        TrainSpaceHighlight.refresh(displays);
+        TrainSpaceHighlight.refresh(displays, Set.of());
         assertEquals(0, displays.size());
     }
 
