@@ -736,10 +736,8 @@ public class TrainHandler {
 		moveTo(registry, match);
 	}
 
-	private record CarPlacement(ActiveVehicle vehicle, TrackSpline spline, double s, int sign, double missingSpacing) {
-		TrackPose pose() {
-			return spline.sampleAt(s);
-		}
+	private record CarPlacement(ActiveVehicle vehicle, TrackSpline spline, double s, int sign,
+			double missingSpacing, TrackPose pose) {
 	}
 
 	private void applyPlacements(List<CarPlacement> placements) {
@@ -758,7 +756,7 @@ public class TrainHandler {
 		if (spline == null) {
 			return placements;
 		}
-		placements.add(new CarPlacement(v, spline, s, travelSign, 0));
+		placements.add(new CarPlacement(v, spline, s, travelSign, 0, spline.sampleAt(s)));
 		TrackRegistry registry = VehicleFramework.getTrackRegistry();
 		if (registry == null) {
 			return placements;
@@ -810,7 +808,18 @@ public class TrainHandler {
 			}
 			TrackSpline carSpline = pose.splineId == null ? null : registry.get(pose.splineId).orElse(null);
 			if (carSpline != null) {
-				placements.add(new CarPlacement(car, carSpline, pose.s, carTravelSign, pose.missingSpacing));
+				TrackPose carPose = carSpline.sampleAt(pose.s);
+				if (parentTrain.canHaveAttached() && carTrain.isAttachable() && pose.missingSpacing <= 1e-9) {
+					// Arc spacing locates the car on the route; rigid couplers must meet
+					// in world space. A separate tangent at each centre opens a gap on bends.
+					TrackPose parentPose = placements.get(placements.size() - 1).pose();
+					try {
+						carPose = carTrain.getFront().coupledPose(carPose, parentTrain.getBack().positionAt(parentPose));
+					} catch (RuntimeException ignored) {
+						// Keep the sampled pose until connector blueprints and model transforms load.
+					}
+				}
+				placements.add(new CarPlacement(car, carSpline, pose.s, carTravelSign, pose.missingSpacing, carPose));
 			} else {
 				return List.of();
 			}
@@ -1366,9 +1375,9 @@ public class TrainHandler {
 
 	private static double offsetLength(Connector connector) {
 		try {
-			return connector.getOffset().length();
+			return connector.getTrackReach();
 		} catch (Exception ignored) {
-			// Offsets come from the live model and are unavailable until it loads.
+			// Connector blueprints are unavailable until the model loads.
 			return 0;
 		}
 	}

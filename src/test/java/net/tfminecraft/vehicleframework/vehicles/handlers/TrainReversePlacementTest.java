@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.Optional;
 
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -26,6 +28,7 @@ import org.bukkit.util.Vector;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.VoxelShape;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +38,9 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import com.ticxo.modelengine.api.model.bone.SimpleManualAnimator;
+import com.ticxo.modelengine.api.model.bone.ModelBone;
+import com.ticxo.modelengine.api.model.ActiveModel;
+import com.ticxo.modelengine.api.generator.blueprint.BlueprintBone;
 
 import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.bones.BoneRotator;
@@ -59,6 +65,55 @@ class TrainReversePlacementTest {
     private TrackRegistry registry;
     private TrackStore store;
 
+    @ParameterizedTest
+    @ValueSource(doubles = {10, 20, 40})
+    void couplersStayTogetherThroughBendsStopsAndReverse(double radius) {
+        List<double[]> points = new ArrayList<>();
+        for (int i = 0; i <= 180; i++) {
+            double angle = Math.toRadians(i);
+            points.add(new double[]{radius * Math.cos(angle), 64, radius * Math.sin(angle)});
+        }
+        TrackSpline track = TrackSpline.fromPoints(UUID.randomUUID(), "world", false, points);
+        store.save(track);
+        registry.loadFromDisk();
+        TrainHandler loco = consist(track, track.length() * 0.75);
+        List<float[]> rotations = new ArrayList<>();
+        for (TrainHandler car = loco; car != null; car = car.hasChild() ? car.getChild().getTrainHandler() : null) {
+            float[] rotation = new float[2];
+            rotations.add(rotation);
+            BoneRotator rotator = stub(BoneRotator.class);
+            doAnswer(call -> {
+                rotation[0] = call.getArgument(0);
+                rotation[1] = call.getArgument(1);
+                return true;
+            }).when(rotator).rotateToTarget(org.mockito.ArgumentMatchers.anyFloat(),
+                    org.mockito.ArgumentMatchers.anyFloat(), org.mockito.ArgumentMatchers.anyFloat(),
+                    org.mockito.ArgumentMatchers.anyFloat(), org.mockito.ArgumentMatchers.anyBoolean(),
+                    org.mockito.ArgumentMatchers.anyBoolean(), org.mockito.ArgumentMatchers.anyBoolean());
+            BehaviourHandler behaviour = stub(BehaviourHandler.class);
+            when(behaviour.getRotator()).thenReturn(rotator);
+            when(car.v.getBehaviourHandler()).thenReturn(behaviour);
+        }
+        for (double speed : new double[]{0, 0.72, 0.72, 0, -0.72, -0.72, 0}) {
+            loco.v.getAccessPanel().setSpeed(speed);
+            loco.splineTick();
+            TrainHandler parent = loco;
+            for (int i = 0; i < 2; i++) {
+                TrainHandler child = parent.getChild().getTrainHandler();
+                Vector back = modelAnchor(parent, rotations.get(i), -5);
+                Vector front = modelAnchor(child, rotations.get(i + 1), 5);
+                assertEquals(0, back.distance(front), 1e-5, "Couplers separated on a bend");
+                parent = child;
+            }
+        }
+    }
+
+    private static Vector modelAnchor(TrainHandler car, float[] rotation, double z) {
+        return new Vector(0, 0, z).rotateAroundX(Math.toRadians(rotation[1]))
+                .rotateAroundY(Math.toRadians(rotation[0]))
+                .add(car.v.getEntity().getLocation().toVector());
+    }
+
     @BeforeEach
     void setUp() throws Exception {
         registryField = VehicleFramework.class.getDeclaredField("trackRegistry");
@@ -79,6 +134,32 @@ class TrainReversePlacementTest {
         TrackSpline track = straightTrack(false);
         TrainHandler loco = consist(track, 60);
         assertSequence(loco, track, new double[]{60.2, 60.2, 60.19, 60.19, 60.39});
+    }
+
+    @ParameterizedTest
+    @CsvSource({"true, false", "false, true", "true, true"})
+    void missingConnectorBlueprintKeepsSampledPoseAndRecovers(boolean missingBack, boolean missingFront) {
+        TrackSpline track = straightTrack(false);
+        TrainHandler loco = consist(track, 60);
+        TrainHandler car = loco.getChild().getTrainHandler();
+        ModelBone back = loco.v.getModel().getBone("back").orElseThrow();
+        ModelBone front = car.v.getModel().getBone("front").orElseThrow();
+        BlueprintBone backBlueprint = back.getBlueprintBone();
+        BlueprintBone frontBlueprint = front.getBlueprintBone();
+        if (missingBack) when(back.getBlueprintBone()).thenReturn(null);
+        if (missingFront) when(front.getBlueprintBone()).thenReturn(null);
+
+        loco.placeLoadedCars();
+        loco.splineTick();
+        double expected = 60 - (missingBack ? 0 : 5) - (missingFront ? 0 : 5);
+        assertEquals(expected, car.getS(), 1e-8);
+        assertEquals(track.sampleAt(expected).x, car.v.getEntity().getLocation().getX(), 1e-8);
+        assertEquals(track.sampleAt(expected).z, car.v.getEntity().getLocation().getZ(), 1e-8);
+
+        when(back.getBlueprintBone()).thenReturn(backBlueprint);
+        when(front.getBlueprintBone()).thenReturn(frontBlueprint);
+        loco.placeLoadedCars();
+        assertPositions(loco, track, 60);
     }
 
     @Test
@@ -287,11 +368,14 @@ class TrainReversePlacementTest {
         store.save(track);
         registry.loadFromDisk();
         TrainHandler loco = consist(track, 80);
-        wall(loco, new BoundingBox(10, 64, 39, 11, 68, 41));
+        wall(loco, new BoundingBox(10, 64, 20, 11, 68, 60));
         loco.v.getAccessPanel().setSpeed(-30);
         loco.splineTick();
-        assertTrue(loco.getS() >= 71.5 - 1e-8);
+        assertTrue(loco.getS() > 50);
         assertTrue(loco.getS() < 80);
+        for (TrainHandler car = loco; car != null; car = car.hasChild() ? car.getChild().getTrainHandler() : null) {
+            assertTrue(car.v.getEntity().getBoundingBox().getMinX() >= 11 - 1e-8);
+        }
         assertPositions(loco, track, loco.getS());
     }
 
@@ -334,6 +418,9 @@ class TrainReversePlacementTest {
         loco.applyConsist(new ConsistData(null, null, branch.getId().toString(), 3d,
                 1, junction.id.toString(), true));
         loco.placeLoadedCars();
+        TrainHandler tail = loco.getChild().getTrainHandler().getChild().getTrainHandler();
+        Location tailBefore = tail.v.getEntity().getLocation();
+        // The tail sits at s 33 on the stem, so its back coupler is at z 28.
         wall(loco, new BoundingBox(-1, 64, 27, 1, 68, 28));
         loco.v.getAccessPanel().setSpeed(-0.1);
         loco.splineTick();
@@ -346,7 +433,7 @@ class TrainReversePlacementTest {
         assertEquals(43, first.getS(), 1e-8);
         assertEquals(33, last.getS(), 1e-8);
         assertEquals(3, loco.v.getEntity().getLocation().getX(), 1e-8);
-        assertEquals(33, last.v.getEntity().getLocation().getZ(), 1e-8);
+        assertEquals(tailBefore, last.v.getEntity().getLocation());
     }
 
     @Test
@@ -662,8 +749,12 @@ class TrainReversePlacementTest {
             if (track.isLoop()) expected = (expected % track.length() + track.length()) % track.length();
             assertEquals(track.getId(), car.getSplineId());
             assertEquals(expected, car.getS(), 1e-8, "Car " + i + " changed its coupled position");
-            assertEquals(track.sampleAt(expected).x, car.v.getEntity().getLocation().getX(), 1e-8);
-            assertEquals(track.sampleAt(expected).z, car.v.getEntity().getLocation().getZ(), 1e-8);
+            // On curves a rigid carriage's centre shifts to close the coupling;
+            // its route coordinate stays fixed. Straight consists still sit on the spline.
+            if (i == 0 || track.getSamples().stream().allMatch(sample -> sample.yaw == track.first().yaw)) {
+                assertEquals(track.sampleAt(expected).x, car.v.getEntity().getLocation().getX(), 1e-8);
+                assertEquals(track.sampleAt(expected).z, car.v.getEntity().getLocation().getZ(), 1e-8);
+            }
             if (i < 2) car = car.getChild().getTrainHandler();
         }
     }
@@ -726,17 +817,29 @@ class TrainReversePlacementTest {
         when(vehicle.getAccessPanel()).thenReturn(new AccessPanel());
         when(vehicle.getThrottle()).thenReturn(new Throttle("Throttle", 100, -100, null));
         when(vehicle.getMoveControls()).thenReturn(stub(VehicleMovementController.class));
-        Connector connector = stub(Connector.class);
-        when(connector.getOffset()).thenAnswer(call -> new Vector(0, 0, 5));
+        ActiveModel model = stub(ActiveModel.class);
+        when(model.getScale()).thenReturn(new Vector3f(1));
+        when(vehicle.getModel()).thenReturn(model);
+        Connector front = connector(vehicle, model, "front", 5);
+        Connector back = connector(vehicle, model, "back", -5);
         TrainHandler handler = new TrainHandler(new YamlConfiguration()) {
             @Override public boolean isAttachable() { return true; }
             @Override public boolean canHaveAttached() { return true; }
-            @Override public Connector getFront() { return connector; }
-            @Override public Connector getBack() { return connector; }
+            @Override public Connector getFront() { return front; }
+            @Override public Connector getBack() { return back; }
         };
         handler.v = vehicle;
         when(vehicle.getTrainHandler()).thenReturn(handler);
         return handler;
+    }
+
+    private Connector connector(ActiveVehicle vehicle, ActiveModel model, String name, float z) {
+        ModelBone bone = stub(ModelBone.class);
+        BlueprintBone blueprint = new BlueprintBone();
+        blueprint.setRotatedGlobalPosition(new Vector3f(0, 0, z));
+        when(bone.getBlueprintBone()).thenReturn(blueprint);
+        when(model.getBone(name)).thenReturn(Optional.of(bone));
+        return new Connector(vehicle, new Connector(name));
     }
 
     private void wall(TrainHandler loco, BoundingBox obstacle) {
