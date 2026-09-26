@@ -49,6 +49,9 @@ public final class TrackClearance {
 		}
 		Set<UUID> ignore = ignoreSplineIds == null ? Set.of() : ignoreSplineIds;
 		liftOneBlockSteps(world, points);
+		// Before the rail check, so a refusal lists every block in the way of trains
+		// rather than only the first one found.
+		checkTrainSpace(world, points);
 		for (int i = 0; i < points.size(); i++) {
 			double[] p = points.get(i);
 			double[] dir = step(points, i);
@@ -77,7 +80,6 @@ public final class TrackClearance {
 				}
 			}
 		}
-		checkTrainSpace(world, points);
 		if (registry == null) {
 			return;
 		}

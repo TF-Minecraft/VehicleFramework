@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.BlockDisplay;
@@ -18,7 +19,7 @@ import org.junit.jupiter.api.Test;
 class TrainSpaceHighlightTest {
     @Test
     void minedBlockLosesItsOutline() {
-        BlockDisplay display = display(true, mock(BlockData.class), null);
+        BlockDisplay display = display(true, mock(BlockData.class), shown(Material.STONE));
         List<BlockDisplay> displays = new ArrayList<>(List.of(display));
         TrainSpaceHighlight.refresh(displays);
         assertEquals(0, displays.size());
@@ -27,7 +28,7 @@ class TrainSpaceHighlightTest {
 
     @Test
     void unchangedBlockKeepsItsOutline() {
-        BlockData data = mock(BlockData.class);
+        BlockData data = shown(Material.STONE);
         BlockDisplay display = display(false, data, data);
         List<BlockDisplay> displays = new ArrayList<>(List.of(display));
         TrainSpaceHighlight.refresh(displays);
@@ -39,11 +40,20 @@ class TrainSpaceHighlightTest {
     @Test
     void replacedBlockRedrawsItsOutline() {
         BlockData now = mock(BlockData.class);
-        BlockDisplay display = display(false, now, mock(BlockData.class));
+        BlockDisplay display = display(false, now, shown(Material.STONE));
         List<BlockDisplay> displays = new ArrayList<>(List.of(display));
         TrainSpaceHighlight.refresh(displays);
         assertEquals(1, displays.size());
         verify(display).setBlock(now);
+    }
+
+    @Test
+    void openSpaceMarkerStays() {
+        BlockDisplay display = display(true, mock(BlockData.class), shown(Material.RED_STAINED_GLASS));
+        List<BlockDisplay> displays = new ArrayList<>(List.of(display));
+        TrainSpaceHighlight.refresh(displays);
+        assertEquals(1, displays.size());
+        verify(display, never()).remove();
     }
 
     @Test
@@ -53,6 +63,12 @@ class TrainSpaceHighlightTest {
         List<BlockDisplay> displays = new ArrayList<>(List.of(display));
         TrainSpaceHighlight.refresh(displays);
         assertEquals(0, displays.size());
+    }
+
+    private static BlockData shown(Material material) {
+        BlockData data = mock(BlockData.class);
+        when(data.getMaterial()).thenReturn(material);
+        return data;
     }
 
     private static BlockDisplay display(boolean passable, BlockData blockNow, BlockData shown) {

@@ -168,14 +168,12 @@ public final class TrackCommands {
 		return stretches;
 	}
 
-	private static void showRefused(Player player, Location at, TrackLayException e) {
+	private static void showRefused(Player player, TrackLayException e) {
 		if (!e.inTrainSpace.isEmpty()) {
 			TrainSpaceHighlight.show(player, e.inTrainSpace);
-			return;
-		}
-		if (e.hasBlock()) {
-			Location hit = new Location(at.getWorld(), e.blockX + 0.5, e.blockY + 0.5, e.blockZ + 0.5);
-			player.spawnParticle(Particle.END_ROD, hit, 8, 0.2, 0.2, 0.2, 0);
+		} else if (e.hasBlock()) {
+			TrainSpaceHighlight.show(player, List.of(
+					new TrainBlockCollision.Obstruction(e.blockX, e.blockY, e.blockZ, 0)));
 		}
 	}
 
@@ -330,6 +328,7 @@ public final class TrackCommands {
 			TrackLog.junctionStart(player.getName(), stem.getId(), s);
 		} catch (TrackLayException e) {
 			player.sendMessage("§c" + e.getMessage());
+			showRefused(player, e);
 			TrackLog.layFail(e.getMessage(), e);
 		}
 	}
@@ -357,7 +356,7 @@ public final class TrackCommands {
 			announceLay(player, result, presented, true);
 		} catch (TrackLayException e) {
 			player.sendMessage("§c" + e.getMessage());
-			showRefused(player, at, e);
+			showRefused(player, e);
 		}
 	}
 
@@ -396,7 +395,7 @@ public final class TrackCommands {
 			announceLay(player, result, presentLay(player, result), false);
 		} catch (TrackLayException e) {
 			player.sendMessage("§c" + e.getMessage());
-			showRefused(player, a, e);
+			showRefused(player, e);
 		}
 	}
 

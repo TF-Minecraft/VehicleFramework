@@ -11,8 +11,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
@@ -31,6 +33,7 @@ public final class TrainSpaceHighlight {
 	public static final int MAX_SHOWN = 300;
 	private static final long SHOW_TICKS = 20L * 60;
 	private static final long REFRESH_TICKS = 5;
+	private static final Material MARKER = Material.RED_STAINED_GLASS;
 	private static final Map<UUID, Shown> shown = new ConcurrentHashMap<>();
 
 	private record Shown(List<BlockDisplay> displays, BukkitTask refresh) {
@@ -54,8 +57,10 @@ public final class TrainSpaceHighlight {
 		List<BlockDisplay> displays = new ArrayList<>();
 		for (TrainBlockCollision.Obstruction o : nearest.subList(0, Math.min(MAX_SHOWN, nearest.size()))) {
 			Block block = world.getBlockAt(o.x(), o.y(), o.z());
+			// Some refusals point at open space, such as another track. Mark it with glass.
+			BlockData shape = block.isPassable() ? MARKER.createBlockData() : block.getBlockData();
 			BlockDisplay display = world.spawn(block.getLocation(), BlockDisplay.class, d -> {
-				d.setBlock(block.getBlockData());
+				d.setBlock(shape);
 				d.setPersistent(false);
 				d.setVisibleByDefault(false);
 				d.setGlowing(true);
@@ -92,6 +97,10 @@ public final class TrainSpaceHighlight {
 			BlockDisplay display = it.next();
 			if (!display.isValid()) {
 				it.remove();
+				continue;
+			}
+			if (display.getBlock().getMaterial() == MARKER) {
+				// A marker for open space stays until the outlines expire.
 				continue;
 			}
 			Block block = display.getLocation().getBlock();
