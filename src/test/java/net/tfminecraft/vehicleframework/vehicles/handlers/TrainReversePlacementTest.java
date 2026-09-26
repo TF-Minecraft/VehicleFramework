@@ -34,6 +34,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.database.ConsistData;
+import net.tfminecraft.vehicleframework.database.VehicleRepository;
+import net.tfminecraft.vehicleframework.database.VehicleSnapshot;
 import net.tfminecraft.vehicleframework.tracks.TrackJunction;
 import net.tfminecraft.vehicleframework.tracks.TrackRegistry;
 import net.tfminecraft.vehicleframework.tracks.TrackSpline;
@@ -507,6 +509,56 @@ class TrainReversePlacementTest {
     }
 
     @Test
+    void loadingTrainAfterTrackWasSplitWhileUnloadedKeepsItsPosition() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        inWorld(loco, "world");
+        registry.onRebuilt(null);
+        registry.digAt(track, 20);
+        // Loading restores the (spline, s) saved before the edit.
+        loco.applyConsist(new ConsistData(null, null, track.getId().toString(), 60d, 1));
+        loco.placeLoadedCars();
+        assertNotEquals(track.getId(), loco.getSplineId());
+        assertEquals(39, loco.getS(), 1e-8);
+        assertEquals(60, loco.v.getEntity().getLocation().getZ(), 1e-8);
+        assertEquals(40, loco.getChild().getTrainHandler().getChild().getTrainHandler()
+                .v.getEntity().getLocation().getZ(), 1e-8);
+    }
+
+    @Test
+    void loadingTrainWhoseTrackWasRemovedWhileUnloadedUnbindsIt() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        inWorld(loco, "world");
+        registry.onRebuilt(null);
+        registry.delete(track.getId());
+        loco.applyConsist(new ConsistData(null, null, track.getId().toString(), 60d, 1));
+        loco.placeLoadedCars();
+        assertFalse(loco.isBound());
+    }
+
+    @Test
+    void savedTrainOnTrackCountsAsOccupyingItWhileUnloaded() throws Exception {
+        TrackSpline track = denseTrack();
+        Field repositoryField = VehicleFramework.class.getDeclaredField("vehicleRepository");
+        repositoryField.setAccessible(true);
+        Object previous = repositoryField.get(null);
+        VehicleRepository repository = VehicleRepository.open(directory.resolve("vehicles.db").toFile());
+        try {
+            repositoryField.set(null, repository);
+            assertFalse(TrainHandler.anyTrainOn(track.getId()));
+            String payload = "{\"splineId\":\"" + track.getId() + "\",\"s\":60.0,\"travelSign\":1}";
+            repository.upsert(new VehicleSnapshot(UUID.randomUUID().toString(), "loco", "world",
+                    0, 64.5, 60, 0f, 0, 3, payload, VehicleRepository.SCHEMA_VERSION, 1, false, 1L));
+            assertTrue(TrainHandler.anyTrainOn(track.getId()));
+            assertFalse(TrainHandler.anyTrainOn(UUID.randomUUID()));
+        } finally {
+            repositoryField.set(null, previous);
+            repository.close();
+        }
+    }
+
+    @Test
     void deletingTrackDoesNotMoveTrainOntoCrossingTrack() {
         TrackSpline track = denseTrack();
         crossingAt(60);
@@ -531,7 +583,7 @@ class TrainReversePlacementTest {
     void consistOccupiesTrackOutToItsCouplers(double at, double halfSpan, boolean occupied) {
         TrackSpline track = denseTrack();
         TrainHandler loco = consist(track, 60);
-        assertEquals(occupied, loco.occupies(track.getId(), at, halfSpan));
+        assertEquals(occupied, loco.occupies(List.of(new TrackRegistry.Span(track.getId(), at, halfSpan))));
     }
 
     @Test
@@ -662,6 +714,12 @@ class TrainReversePlacementTest {
                 car = car.hasChild() ? car.getChild().getTrainHandler() : null) {
             when(car.v.getEntity().getWorld()).thenReturn(world);
         }
+    }
+
+    private static void inWorld(TrainHandler loco, String name) {
+        World world = stub(World.class);
+        when(world.getName()).thenReturn(name);
+        when(loco.v.getEntity().getWorld()).thenReturn(world);
     }
 
     private static <T> T stub(Class<T> type) {

@@ -99,6 +99,22 @@ class TrackRegistryDirectionTest {
 		assertTrue(registry.getJunction(placed.id).isEmpty(), "The dig must really drop that turnout");
 	}
 
+	@Test
+	void digTargetSkipsTurnoutWhenFrogStaysOnLongPiece(@TempDir Path dir) throws Exception {
+		TrackRegistry registry = new TrackRegistry(dir.toFile());
+		TrackSpline stem = registry.lay("world", 0, 64, 0, 0, 64, 40).spline();
+		TrackJunction placed = registry.putJunction(new TrackJunction(
+				UUID.randomUUID(), stem.getId(), 34, 1, TrackJunction.Side.RIGHT, null));
+		registry.layBranch(placed.id, "world", null, 2, 64, 52);
+		stem = registry.get(stem.getId()).orElseThrow();
+		// Digging next to the end leaves a one-sample stub; the frog stays on the 38-block piece.
+		int nearEnd = stem.getSamples().size() - 2;
+		TrackSample cut = stem.getSamples().get(nearEnd);
+		assertEquals(1, registry.digTarget("world", cut.x, cut.y, cut.z).orElseThrow().spans().size());
+		registry.digAt(stem, nearEnd);
+		assertTrue(registry.getJunction(placed.id).isPresent());
+	}
+
 	private static int indexAt(TrackSpline spline, double s) {
 		List<TrackSample> samples = spline.getSamples();
 		for (int i = 0; i < samples.size(); i++) {

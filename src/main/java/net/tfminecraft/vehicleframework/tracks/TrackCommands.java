@@ -364,13 +364,9 @@ public final class TrackCommands {
 			return false;
 		}
 		for (ActiveVehicle vehicle : vehicles.get().values()) {
-			if (!vehicle.isTrain() || vehicle.hasParent()) {
-				continue;
-			}
-			for (TrackRegistry.Span span : target.spans()) {
-				if (vehicle.getTrainHandler().occupies(span.trackId(), span.centreS(), span.halfSpan())) {
-					return true;
-				}
+			if (vehicle.isTrain() && !vehicle.hasParent()
+					&& vehicle.getTrainHandler().occupies(target.spans())) {
+				return true;
 			}
 		}
 		return false;
