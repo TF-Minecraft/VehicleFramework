@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -24,6 +25,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.util.Vector;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.VoxelShape;
+import org.joml.Quaternionf;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,9 +34,15 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import com.ticxo.modelengine.api.model.bone.SimpleManualAnimator;
+
 import net.tfminecraft.vehicleframework.VehicleFramework;
+import net.tfminecraft.vehicleframework.bones.BoneRotator;
 import net.tfminecraft.vehicleframework.database.ConsistData;
+import net.tfminecraft.vehicleframework.database.VehicleRepository;
+import net.tfminecraft.vehicleframework.database.VehicleSnapshot;
 import net.tfminecraft.vehicleframework.tracks.TrackJunction;
+import net.tfminecraft.vehicleframework.tracks.TrackPose;
 import net.tfminecraft.vehicleframework.tracks.TrackRegistry;
 import net.tfminecraft.vehicleframework.tracks.TrackSpline;
 import net.tfminecraft.vehicleframework.tracks.TrackStore;
@@ -487,6 +495,115 @@ class TrainReversePlacementTest {
     }
 
     @Test
+    void joiningAnotherTrackToTrainTracksStartKeepsTrainFacingTheSameWay() throws Exception {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        TrainHandler first = loco.getChild().getTrainHandler();
+        TrainHandler last = first.getChild().getTrainHandler();
+        registry.occupiedBy(id -> List.of(loco, first, last).stream()
+                .anyMatch(car -> id.equals(car.getSplineId())));
+        registry.lay("world", 0, 64, -20, 0, 64, -30);
+        // Start to start: one of the two tracks has to be reversed.
+        registry.lay("world", 0, 64, 0, 0, 64, -20);
+        loco.splineTick();
+        assertEquals(60, loco.v.getEntity().getLocation().getZ(), 1e-6);
+        assertEquals(50, first.v.getEntity().getLocation().getZ(), 1e-6);
+        assertEquals(40, last.v.getEntity().getLocation().getZ(), 1e-6);
+        loco.v.getAccessPanel().setSpeed(0.2);
+        loco.splineTick();
+        assertEquals(60.2, loco.v.getEntity().getLocation().getZ(), 1e-6);
+    }
+
+    @Test
+    void loadingTrainAfterTrackWasSplitWhileUnloadedKeepsItsPosition() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        inWorld(loco, "world");
+        savedBoneYaw(loco, 0);
+        registry.onRebuilt(null);
+        registry.digAt(track, 20);
+        // Loading restores the (spline, s) saved before the edit.
+        loco.applyConsist(new ConsistData(null, null, track.getId().toString(), 60d, 1));
+        loco.placeLoadedCars();
+        assertNotEquals(track.getId(), loco.getSplineId());
+        assertEquals(39, loco.getS(), 1e-8);
+        assertEquals(60, loco.v.getEntity().getLocation().getZ(), 1e-8);
+        assertEquals(40, loco.getChild().getTrainHandler().getChild().getTrainHandler()
+                .v.getEntity().getLocation().getZ(), 1e-8);
+    }
+
+    @Test
+    void loadingTrainOntoTrackReversedWhileUnloadedUnbindsIt() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        inWorld(loco, "world");
+        // Entity yaw 0 and bone yaw 0: the model faces +z, the track's +s.
+        savedBoneYaw(loco, 0);
+        registry.onRebuilt(null);
+        List<double[]> reversed = new ArrayList<>(track.xyz());
+        Collections.reverse(reversed);
+        registry.replace(TrackSpline.fromPoints(track.getId(), "world", false, reversed));
+        loco.applyConsist(new ConsistData(null, null, track.getId().toString(), 60d, 1));
+        loco.placeLoadedCars();
+        assertFalse(loco.isBound(), "A train must not come back facing the other way");
+    }
+
+    @Test
+    void loadingTrainAtMiddleOfTrackReversedWhileUnloadedUnbindsIt() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 50);
+        inWorld(loco, "world");
+        savedBoneYaw(loco, 0);
+        registry.onRebuilt(null);
+        List<double[]> reversed = new ArrayList<>(track.xyz());
+        Collections.reverse(reversed);
+        // s=50 still lands on the same spot, but the track now runs the other way.
+        registry.replace(TrackSpline.fromPoints(track.getId(), "world", false, reversed));
+        loco.applyConsist(new ConsistData(null, null, track.getId().toString(), 50d, 1));
+        loco.placeLoadedCars();
+        assertFalse(loco.isBound());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0, true", "45, true", "-45, true", "90, false", "180, false", "-120, false"})
+    void modelMustFaceAlongTrackToRebind(float modelYaw, boolean along) {
+        assertEquals(along, TrainHandler.facesAlong(modelYaw, new TrackPose(0, 64, 0, 0f, 0f)));
+    }
+
+    @Test
+    void loadingTrainWhoseTrackWasRemovedWhileUnloadedUnbindsIt() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        inWorld(loco, "world");
+        registry.onRebuilt(null);
+        registry.delete(track.getId());
+        loco.applyConsist(new ConsistData(null, null, track.getId().toString(), 60d, 1));
+        loco.placeLoadedCars();
+        assertFalse(loco.isBound());
+    }
+
+    @Test
+    void savedTrainOnTrackCountsAsOccupyingItWhileUnloaded() throws Exception {
+        TrackSpline track = denseTrack();
+        Field repositoryField = VehicleFramework.class.getDeclaredField("vehicleRepository");
+        repositoryField.setAccessible(true);
+        Object previous = repositoryField.get(null);
+        VehicleRepository repository = VehicleRepository.open(directory.resolve("vehicles.db").toFile());
+        try {
+            repositoryField.set(null, repository);
+            assertFalse(TrainHandler.anyTrainOn(track.getId()));
+            String payload = "{\"splineId\":\"" + track.getId() + "\",\"s\":60.0,\"travelSign\":1}";
+            repository.upsert(new VehicleSnapshot(UUID.randomUUID().toString(), "loco", "world",
+                    0, 64.5, 60, 0f, 0, 3, payload, VehicleRepository.SCHEMA_VERSION, 1, false, 1L));
+            assertTrue(TrainHandler.anyTrainOn(track.getId()));
+            assertFalse(TrainHandler.anyTrainOn(UUID.randomUUID()));
+        } finally {
+            repositoryField.set(null, previous);
+            repository.close();
+        }
+    }
+
+    @Test
     void deletingTrackDoesNotMoveTrainOntoCrossingTrack() {
         TrackSpline track = denseTrack();
         crossingAt(60);
@@ -511,7 +628,7 @@ class TrainReversePlacementTest {
     void consistOccupiesTrackOutToItsCouplers(double at, double halfSpan, boolean occupied) {
         TrackSpline track = denseTrack();
         TrainHandler loco = consist(track, 60);
-        assertEquals(occupied, loco.occupies(track.getId(), at, halfSpan));
+        assertEquals(occupied, loco.occupies(List.of(new TrackRegistry.Span(track.getId(), at, halfSpan))));
     }
 
     @Test
@@ -519,8 +636,9 @@ class TrainReversePlacementTest {
         TrackSpline track = denseTrack();
         TrackRegistry.DigTarget target = registry.digTarget("world", 0, 64, 20.2).orElseThrow();
         assertEquals(20, target.index());
-        assertEquals(20, target.centreS(), 1e-8);
-        assertEquals(1, target.halfSpan(), 1e-8);
+        assertEquals(1, target.spans().size());
+        assertEquals(20, target.spans().get(0).centreS(), 1e-8);
+        assertEquals(1, target.spans().get(0).halfSpan(), 1e-8);
         assertEquals(track.getId(), target.spline().getId());
     }
 
@@ -641,6 +759,22 @@ class TrainReversePlacementTest {
                 car = car.hasChild() ? car.getChild().getTrainHandler() : null) {
             when(car.v.getEntity().getWorld()).thenReturn(world);
         }
+    }
+
+    private static void savedBoneYaw(TrainHandler loco, float yaw) {
+        SimpleManualAnimator animator = stub(SimpleManualAnimator.class);
+        when(animator.getRotation()).thenReturn(new Quaternionf().rotateYXZ((float) Math.toRadians(yaw), 0, 0));
+        BoneRotator rotator = stub(BoneRotator.class);
+        when(rotator.getAnimator()).thenReturn(animator);
+        BehaviourHandler behaviour = stub(BehaviourHandler.class);
+        when(behaviour.getRotator()).thenReturn(rotator);
+        when(loco.v.getBehaviourHandler()).thenReturn(behaviour);
+    }
+
+    private static void inWorld(TrainHandler loco, String name) {
+        World world = stub(World.class);
+        when(world.getName()).thenReturn(name);
+        when(loco.v.getEntity().getWorld()).thenReturn(world);
     }
 
     private static <T> T stub(Class<T> type) {

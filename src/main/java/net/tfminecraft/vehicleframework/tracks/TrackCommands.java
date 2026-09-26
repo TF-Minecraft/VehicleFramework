@@ -363,10 +363,9 @@ public final class TrackCommands {
 		if (vehicles == null) {
 			return false;
 		}
-		UUID trackId = target.spline().getId();
 		for (ActiveVehicle vehicle : vehicles.get().values()) {
 			if (vehicle.isTrain() && !vehicle.hasParent()
-					&& vehicle.getTrainHandler().occupies(trackId, target.centreS(), target.halfSpan())) {
+					&& vehicle.getTrainHandler().occupies(target.spans())) {
 				return true;
 			}
 		}

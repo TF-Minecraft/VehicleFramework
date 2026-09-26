@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
+import java.util.function.Predicate;
 
 import org.bukkit.World;
 
@@ -20,12 +21,15 @@ import net.tfminecraft.vehicleframework.VehicleFramework;
 
 public final class TrackRegistry {
 	private static final double PRUNE_NESTED_MAX_LENGTH = 16.0;
+	private static final double REHOME_REACH = 2.5;
+	private static final double DROP_MARGIN = 0.5;
 
 	private final TrackStore store;
 	private final Map<UUID, TrackSpline> splines = new ConcurrentHashMap<>();
 	private final Map<UUID, TrackJunction> junctions = new ConcurrentHashMap<>();
 	private BiConsumer<TrackSpline, List<TrackSpline>> rebuilt = (old, next) -> {
 	};
+	private Predicate<UUID> occupied = id -> false;
 
 	public TrackRegistry(File dataFolder) {
 		this.store = new TrackStore(dataFolder);
@@ -39,6 +43,11 @@ public final class TrackRegistry {
 	public void onRebuilt(BiConsumer<TrackSpline, List<TrackSpline>> listener) {
 		rebuilt = listener == null ? (old, next) -> {
 		} : listener;
+	}
+
+	/** Tells the registry which splines have a train bound to them. */
+	public void occupiedBy(Predicate<UUID> test) {
+		occupied = test == null ? id -> false : test;
 	}
 
 	public void loadFromDisk() {
@@ -161,10 +170,14 @@ public final class TrackRegistry {
 	}
 
 	/**
-	 * The sample a dig at this point would remove, and the arc span of track
-	 * it takes with it: {@code centreS} plus or minus {@code halfSpan}.
+	 * The sample a dig at this point would remove, and every stretch of track
+	 * the dig may take with it, including turnouts it would drop.
 	 */
-	public record DigTarget(TrackSpline spline, int index, double centreS, double halfSpan) {
+	public record DigTarget(TrackSpline spline, int index, List<Span> spans) {
+	}
+
+	/** Track from {@code centreS - halfSpan} to {@code centreS + halfSpan} on {@code trackId}. */
+	public record Span(UUID trackId, double centreS, double halfSpan) {
 	}
 
 	public Optional<DigTarget> digTarget(String world, double x, double y, double z) {
@@ -190,9 +203,7 @@ public final class TrackRegistry {
 		Optional<TrackJunction> turnout = turnoutDug(spline, digS);
 		if (turnout.isPresent()) {
 			// Digging a turnout removes the branch all the way back to the stem.
-			double turnoutEnd = turnout.get().turnoutEndS;
-			return Optional.of(new DigTarget(spline, index, turnoutEnd / 2,
-					turnoutEnd / 2 + TrackGenerate.STEP));
+			return Optional.of(new DigTarget(spline, index, List.of(turnoutSpan(turnout.get(), spline))));
 		}
 		double before = index > 0 ? digS - samples.get(index - 1).s : 0;
 		double after = index < samples.size() - 1 ? samples.get(index + 1).s - digS : 0;
@@ -201,7 +212,61 @@ public final class TrackRegistry {
 			before = index == 0 ? seam : before;
 			after = index == 0 ? after : seam;
 		}
-		return Optional.of(new DigTarget(spline, index, digS, Math.max(before, after)));
+		List<Span> spans = new ArrayList<>();
+		spans.add(new Span(spline.getId(), digS, Math.max(before, after)));
+		// A junction whose frog ends up on a piece too short for it loses its
+		// turnout when rehomed (see rehomeJunctions), so that turnout goes too.
+		for (TrackJunction junction : junctionsOn(spline.getId())) {
+			TrackSpline branch = junction.branchSplineId == null ? null : splines.get(junction.branchSplineId);
+			// Resettling can change piece length slightly, so err towards protecting the turnout.
+			if (branch != null
+					&& frogPieceLength(spline, index, junction.s) < Cache.trackMinLayDistance + DROP_MARGIN) {
+				spans.add(turnoutSpan(junction, branch));
+			}
+		}
+		return Optional.of(new DigTarget(spline, index, spans));
+	}
+
+	private static Span turnoutSpan(TrackJunction junction, TrackSpline branch) {
+		double cutoff = turnoutCutoff(junction, branch);
+		return new Span(branch.getId(), cutoff / 2, cutoff / 2 + TrackGenerate.STEP);
+	}
+
+	/**
+	 * Length of the piece a frog at {@code frogS} is rehomed onto after digging
+	 * {@code index}, following digAt and rehomeJunctions. Infinite when the
+	 * turnout survives: the whole track is deleted (only the junction record
+	 * goes), or no piece is near enough and just the junction is deleted.
+	 */
+	private static double frogPieceLength(TrackSpline spline, int index, double frogS) {
+		List<TrackSample> samples = spline.getSamples();
+		int n = samples.size();
+		if (n <= 2) {
+			return Double.POSITIVE_INFINITY;
+		}
+		List<double[]> pieces = new ArrayList<>();
+		if (index == 0 || index == n - 1) {
+			int first = index == 0 ? 1 : 0;
+			int last = index == 0 ? n - 1 : n - 2;
+			pieces.add(new double[] {samples.get(first).s, samples.get(last).s});
+		} else {
+			// A piece needs two samples; a one-sample stub is dropped.
+			if (index >= 2) {
+				pieces.add(new double[] {0, samples.get(index - 1).s});
+			}
+			if (index <= n - 3) {
+				pieces.add(new double[] {samples.get(index + 1).s, samples.get(n - 1).s});
+			}
+		}
+		double length = Double.POSITIVE_INFINITY;
+		for (double[] piece : pieces) {
+			// rehomeJunctions matches within 2.5 blocks, so a frog in the gap
+			// can land on the end of either piece.
+			if (frogS >= piece[0] - REHOME_REACH && frogS <= piece[1] + REHOME_REACH) {
+				length = Math.min(length, piece[1] - piece[0]);
+			}
+		}
+		return length;
 	}
 
 	public DigResult digAt(TrackSpline spline, int index) {
@@ -322,10 +387,18 @@ public final class TrackRegistry {
 				Cache.trackMinLayDistance, Cache.trackMaxTurnDegrees,
 				Cache.trackDesiredGradeDegrees, Cache.trackMaxGradeDegrees, TrackGenerate.STEP);
 		TrackClearance.check(bukkitWorld, extra, this, Set.of(spline.getId()));
-		List<double[]> merged = orientedToJoin(spline, from.prepend);
+		// Close the loop in the track's own direction. Reversing it would turn
+		// round any train on it and leave its junctions facing the wrong way.
+		List<double[]> merged = spline.xyz();
 		int last = extra.size() - 1;
-		for (int i = 1; i < last; i++) {
-			merged.add(extra.get(i));
+		if (from.prepend) {
+			for (int i = last - 1; i >= 1; i--) {
+				merged.add(extra.get(i));
+			}
+		} else {
+			for (int i = 1; i < last; i++) {
+				merged.add(extra.get(i));
+			}
 		}
 		TrackDisplayManager displays = VehicleFramework.getTrackDisplayManager();
 		if (displays != null) {
@@ -336,6 +409,26 @@ public final class TrackRegistry {
 	}
 
 	private StrokeLay connect(TrackEnd from, TrackEnd to, World bukkitWorld) throws TrackLayException {
+		// Laid from `from` to `to`, joining from a start reverses `from` and
+		// joining to an end reverses `to`. Building the joined track the other
+		// way round flips both. Trains face +s, so a track with a train on it
+		// must keep its direction; a kept branch must still start at its frog.
+		boolean fromReversedAsLaid = from.prepend;
+		boolean toReversedAsLaid = !to.prepend;
+		boolean fromOccupied = occupied.test(from.spline.getId());
+		boolean toOccupied = occupied.test(to.spline.getId());
+		boolean asLaidOk = !(fromReversedAsLaid && fromOccupied) && !(toReversedAsLaid && toOccupied);
+		boolean flippedOk = !(!fromReversedAsLaid && fromOccupied) && !(!toReversedAsLaid && toOccupied);
+		if (!asLaidOk && !flippedOk) {
+			throw new TrackLayException("A train is on this track. Move it before joining here.");
+		}
+		// The dropped track's junction refs are cleared anyway, so only the kept track's branch matters.
+		int fromBranchCost = junctionByBranch(from.spline.getId()).isPresent() ? 5 : 1;
+		int asLaidCost = (fromReversedAsLaid ? fromBranchCost : 0) + (toReversedAsLaid ? 1 : 0);
+		int flippedCost = (fromReversedAsLaid ? 0 : fromBranchCost) + (toReversedAsLaid ? 0 : 1);
+		boolean flip = !asLaidOk || (flippedOk && flippedCost < asLaidCost);
+		boolean keepReversed = flip != fromReversedAsLaid;
+		boolean dropReversed = flip != toReversedAsLaid;
 		TrackSample originA = from.prepend ? from.spline.first() : from.spline.last();
 		float yaw = originA.yaw;
 		if (from.prepend) {
@@ -348,14 +441,16 @@ public final class TrackRegistry {
 				Cache.trackDesiredGradeDegrees, Cache.trackMaxGradeDegrees, TrackGenerate.STEP);
 		TrackClearance.check(
 				bukkitWorld, extra, this, Set.of(from.spline.getId(), to.spline.getId()));
-		List<double[]> merged = orientedToJoin(from.spline, from.prepend);
-		for (int i = 1; i < extra.size(); i++) {
-			merged.add(extra.get(i));
+		List<double[]> fromPart = points(from.spline, keepReversed);
+		List<double[]> toPart = points(to.spline, dropReversed);
+		List<double[]> stroke = new ArrayList<>(extra);
+		if (flip) {
+			Collections.reverse(stroke);
 		}
-		List<double[]> rest = orientedFromJoin(to.spline, to.prepend);
-		for (int i = 1; i < rest.size(); i++) {
-			merged.add(rest.get(i));
-		}
+		List<double[]> merged = new ArrayList<>(flip ? toPart : fromPart);
+		merged.addAll(stroke.subList(1, stroke.size()));
+		List<double[]> tail = flip ? fromPart : toPart;
+		merged.addAll(tail.subList(1, tail.size()));
 		UUID drop = to.spline.getId();
 		UUID keep = from.spline.getId();
 		List<TrackJunction> keepSaved = List.copyOf(junctionsOn(keep));
@@ -375,8 +470,8 @@ public final class TrackRegistry {
 				TrackSpline.shouldLoop(merged, Cache.trackJoinDistance),
 				merged);
 		TrackSpline stored = replaceQuietly(next);
-		rehomeJunctions(keepSaved, oldKeep, from.prepend, stored);
-		rehomeJunctions(dropSaved, oldDrop, !to.prepend, stored);
+		rehomeJunctions(keepSaved, oldKeep, keepReversed, stored);
+		rehomeJunctions(dropSaved, oldDrop, dropReversed, stored);
 		// Retrack only once junctions sit on the joined spline, so train routes survive.
 		rebuilt.accept(oldKeep, List.of(stored));
 		rebuilt.accept(oldDrop, List.of(stored));
@@ -386,17 +481,9 @@ public final class TrackRegistry {
 	private record StrokeLay(TrackSpline spline, List<double[]> stroke, int previousCount) {
 	}
 
-	private static List<double[]> orientedToJoin(TrackSpline spline, boolean joinAtFirst) {
+	private static List<double[]> points(TrackSpline spline, boolean reversed) {
 		List<double[]> xyz = spline.xyz();
-		if (joinAtFirst) {
-			Collections.reverse(xyz);
-		}
-		return xyz;
-	}
-
-	private static List<double[]> orientedFromJoin(TrackSpline spline, boolean joinAtFirst) {
-		List<double[]> xyz = spline.xyz();
-		if (!joinAtFirst) {
+		if (reversed) {
 			Collections.reverse(xyz);
 		}
 		return xyz;
@@ -635,7 +722,7 @@ public final class TrackRegistry {
 		for (TrackJunction junction : saved) {
 			TrackPose pose = from.sampleAt(junction.s);
 			TrackSpline best = null;
-			double bestD = 2.5;
+			double bestD = REHOME_REACH;
 			double bestS = 0;
 			for (TrackSpline target : onto) {
 				if (target == null) {

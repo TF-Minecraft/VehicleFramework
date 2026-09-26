@@ -1,6 +1,7 @@
 package net.tfminecraft.vehicleframework.vehicles.handlers;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -12,6 +13,9 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.Vector;
+import org.joml.Quaternionf;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
 
 import com.ticxo.modelengine.api.model.ActiveModel;
 
@@ -20,6 +24,8 @@ import net.tfminecraft.vehicleframework.bones.ConvertedAngle;
 import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.database.ConsistData;
 import net.tfminecraft.vehicleframework.database.PersistenceLog;
+import net.tfminecraft.vehicleframework.database.VehicleRepository;
+import net.tfminecraft.vehicleframework.database.VehicleSnapshot;
 import net.tfminecraft.vehicleframework.enums.Direction;
 import net.tfminecraft.vehicleframework.managers.VehicleManager;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTape;
@@ -54,6 +60,8 @@ public class TrainHandler {
 	private String pendingChild;
 	private UUID splineId;
 	private double s;
+	// Track may have been edited while this train was unloaded.
+	private boolean checkLoadedPosition;
 	private int travelSign = 1;
 	private UUID armedJunctionId;
 	private TrackJunction.Side armedSide;
@@ -216,6 +224,7 @@ public class TrainHandler {
 			splineId = null;
 		}
 		s = consist.getS() == null ? 0 : consist.getS();
+		checkLoadedPosition = splineId != null;
 		travelSign = consist.getTravelSign();
 		routeJunctionId = null;
 		takeBranch = consist.isDiverge();
@@ -674,7 +683,41 @@ public class TrainHandler {
 
 	public void placeLoadedCars() {
 		PersistenceLog.placeCars(v);
+		if (checkLoadedPosition && !v.hasParent()) {
+			checkLoadedPosition = false;
+			followTrackUnderEntity();
+		}
 		applyPlacements(planCars());
+	}
+
+	/**
+	 * Saved {@code (spline, s)} is only valid if the track was not edited while
+	 * the train was unloaded. The entity respawns where it was saved, so check
+	 * that point and re-find the track under it if they disagree.
+	 */
+	private void followTrackUnderEntity() {
+		TrackRegistry registry = VehicleFramework.getTrackRegistry();
+		if (registry == null || splineId == null || v == null || v.getEntity() == null
+				|| v.getEntity().getWorld() == null) {
+			return;
+		}
+		Location loc = v.getEntity().getLocation();
+		TrackPose at = new TrackPose(loc.getX(), loc.getY() - Cache.trackVehicleYOffset, loc.getZ(), 0, 0);
+		TrackSpline current = boundSpline();
+		Float facing = savedModelYaw();
+		if (current != null) {
+			TrackPose saved = current.sampleAt(s);
+			if (onTrack(saved, at) && (facing == null || facesAlong(facing, saved))) {
+				return;
+			}
+		}
+		TrackMatch match = nearestTrack(registry.inWorld(v.getEntity().getWorld().getName()), at, facing);
+		if (match == null) {
+			PersistenceLog.append("RETRACK_LOAD none " + PersistenceLog.vehicle(v));
+			unbind();
+			return;
+		}
+		moveTo(registry, match);
 	}
 
 	private record CarPlacement(ActiveVehicle vehicle, TrackSpline spline, double s, int sign, double missingSpacing) {
@@ -789,6 +832,46 @@ public class TrainHandler {
 	}
 
 	/**
+	 * Whether any train car is bound to the given track, loaded or not. A
+	 * long track can reach chunks with trains parked in them. This reads every
+	 * saved vehicle, so keep it to rare edits such as joins.
+	 */
+	public static boolean anyTrainOn(UUID splineId) {
+		if (splineId == null) {
+			return false;
+		}
+		VehicleManager vehicles = VehicleFramework.getVehicleManager();
+		if (vehicles != null) {
+			for (ActiveVehicle vehicle : vehicles.get().values()) {
+				if (vehicle.isTrain() && splineId.equals(vehicle.getTrainHandler().getSplineId())) {
+					return true;
+				}
+			}
+		}
+		VehicleRepository repository = VehicleFramework.getVehicleRepository();
+		if (repository == null) {
+			return false;
+		}
+		String id = splineId.toString();
+		JSONParser parser = new JSONParser();
+		for (VehicleSnapshot snapshot : repository.listAllLive()) {
+			String payload = snapshot.getPayloadJson();
+			if (payload == null || !payload.contains(id)) {
+				continue;
+			}
+			try {
+				if (parser.parse(payload) instanceof JSONObject json
+						&& id.equals(ConsistData.fromJson(json).getSplineId())) {
+					return true;
+				}
+			} catch (Exception ignored) {
+				// An unreadable row cannot be loaded either, so it holds no train.
+			}
+		}
+		return false;
+	}
+
+	/**
 	 * Keeps this car where it physically was after its track is rebuilt.
 	 * Digging splits or trims a spline, which re-ids the far piece and shifts
 	 * arc lengths; the stale {@code s} would otherwise teleport the train.
@@ -799,37 +882,76 @@ public class TrainHandler {
 		if (splineId == null || old == null || rebuilt == null || !splineId.equals(old.getId())) {
 			return;
 		}
-		TrackPose was = old.sampleAt(s);
-		TrackSpline best = null;
-		double bestS = 0;
+		TrackMatch match = nearestTrack(rebuilt, old.sampleAt(s), null);
+		if (match != null) {
+			moveTo(VehicleFramework.getTrackRegistry(), match);
+		}
+	}
+
+	private record TrackMatch(TrackSpline spline, double s) {
+	}
+
+	/**
+	 * The closest point on these tracks that counts as the same place,
+	 * preferring the current track. With {@code facing}, only track whose +s
+	 * runs the way the model faces qualifies; the consist cannot face -s.
+	 */
+	private TrackMatch nearestTrack(Collection<TrackSpline> candidates, TrackPose was, Float facing) {
+		TrackMatch best = null;
 		double bestD = Double.POSITIVE_INFINITY;
-		for (TrackSpline candidate : rebuilt) {
+		for (TrackSpline candidate : candidates) {
 			double candidateS = candidate.nearestS(was.x, was.y, was.z);
 			TrackPose at = candidate.sampleAt(candidateS);
-			double horiz = Math.hypot(at.x - was.x, at.z - was.z);
-			double vert = Math.abs(at.y - was.y);
-			if (horiz > TrackClearance.OVERLAP_HORIZ || vert > TrackClearance.OVERLAP_VERT) {
+			if (!onTrack(at, was) || (facing != null && !facesAlong(facing, at))) {
 				continue;
 			}
-			double d = horiz * horiz + vert * vert;
-			if (d < bestD) {
-				best = candidate;
-				bestS = candidateS;
+			double d = Math.pow(at.x - was.x, 2) + Math.pow(at.y - was.y, 2) + Math.pow(at.z - was.z, 2);
+			boolean tie = Math.abs(d - bestD) <= 1e-9;
+			if (d < bestD - 1e-9 || (tie && candidate.getId().equals(splineId))) {
+				best = new TrackMatch(candidate, candidateS);
 				bestD = d;
 			}
 		}
-		if (best == null) {
-			return;
+		return best;
+	}
+
+	/**
+	 * World yaw the model faced when saved. applyPose turns the bone to the
+	 * track's +s heading relative to the entity, so undo that. Null without a rotator.
+	 */
+	private Float savedModelYaw() {
+		if (v == null || v.getEntity() == null || v.getBehaviourHandler() == null) {
+			return null;
 		}
-		TrackRegistry registry = VehicleFramework.getTrackRegistry();
-		if (!best.getId().equals(splineId) && registry != null && !routeTouches(registry, best.getId())) {
+		BoneRotator rotator = v.getBehaviourHandler().getRotator();
+		if (rotator == null || rotator.getAnimator() == null || rotator.getAnimator().getRotation() == null) {
+			return null;
+		}
+		float boneYaw = new ConvertedAngle(new Quaternionf(rotator.getAnimator().getRotation())).getYaw();
+		return ConvertedAngle.wrapDegrees(v.getEntity().getLocation().getYaw() - boneYaw);
+	}
+
+	// Loose enough for curves and turnouts, tight enough to reject crossings and reversed track.
+	static boolean facesAlong(float modelYaw, TrackPose pose) {
+		float trackYaw = TrackSplineMotion.worldHeading(null, pose, 1).getYaw();
+		return Math.abs(ConvertedAngle.wrapDegrees(trackYaw - modelYaw)) <= 60f;
+	}
+
+	private static boolean onTrack(TrackPose at, TrackPose was) {
+		return Math.hypot(at.x - was.x, at.z - was.z) <= TrackClearance.OVERLAP_HORIZ
+				&& Math.abs(at.y - was.y) <= TrackClearance.OVERLAP_VERT;
+	}
+
+	private void moveTo(TrackRegistry registry, TrackMatch match) {
+		UUID target = match.spline().getId();
+		if (!target.equals(splineId) && registry != null && !routeTouches(registry, target)) {
 			routeJunctionId = null;
 			takeBranch = false;
 		}
 		PersistenceLog.append("RETRACK " + PersistenceLog.vehicle(v)
-				+ " from=" + splineId + "@" + s + " to=" + best.getId() + "@" + bestS);
-		splineId = best.getId();
-		s = bestS;
+				+ " from=" + splineId + "@" + s + " to=" + target + "@" + match.s());
+		splineId = target;
+		s = match.s();
 	}
 
 	private boolean routeTouches(TrackRegistry registry, UUID trackId) {
@@ -842,23 +964,26 @@ public class TrainHandler {
 	}
 
 	/**
-	 * Whether any car of this consist sits within {@code halfSpan} of arc
-	 * length {@code at} on the given track, counting each car out to its couplers.
+	 * Whether any car of this consist sits on any of these spans, counting
+	 * each car out to its couplers.
 	 */
-	public boolean occupies(UUID trackId, double at, double halfSpan) {
-		if (trackId == null || v == null || v.hasParent() || boundSpline() == null) {
+	public boolean occupies(List<TrackRegistry.Span> spans) {
+		if (spans == null || spans.isEmpty() || v == null || v.hasParent() || boundSpline() == null) {
 			return false;
 		}
 		for (CarPlacement car : planCars()) {
-			if (!car.spline.getId().equals(trackId)) {
-				continue;
-			}
-			double d = Math.abs(car.s - at);
-			if (car.spline.isLoop()) {
-				d = Math.min(d, car.spline.length() - d);
-			}
-			if (d <= reach(car.vehicle.getTrainHandler()) + halfSpan) {
-				return true;
+			double reach = reach(car.vehicle.getTrainHandler());
+			for (TrackRegistry.Span span : spans) {
+				if (!car.spline.getId().equals(span.trackId())) {
+					continue;
+				}
+				double d = Math.abs(car.s - span.centreS());
+				if (car.spline.isLoop()) {
+					d = Math.min(d, car.spline.length() - d);
+				}
+				if (d <= reach + span.halfSpan()) {
+					return true;
+				}
 			}
 		}
 		return false;
