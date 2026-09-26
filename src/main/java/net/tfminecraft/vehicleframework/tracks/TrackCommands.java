@@ -12,6 +12,8 @@ import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.managers.VehicleManager;
 import net.tfminecraft.vehicleframework.permissions.Permissions;
@@ -20,6 +22,7 @@ import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 
 public final class TrackCommands {
 	private static final Map<UUID, Long> lastToolMs = new ConcurrentHashMap<>();
+	private static final LayRetryCooldown retry = new LayRetryCooldown();
 
 	private TrackCommands() {
 	}
@@ -168,7 +171,18 @@ public final class TrackCommands {
 		return stretches;
 	}
 
+	private static boolean waitingAfterRefusal(Player player) {
+		long left = retry.remainingMs(player.getUniqueId(), System.currentTimeMillis());
+		if (left <= 0) {
+			return false;
+		}
+		player.sendActionBar(Component.text(
+				"Wait " + (long) Math.ceil(left / 1000.0) + "s before laying again", NamedTextColor.RED));
+		return true;
+	}
+
 	private static void showRefused(Player player, TrackLayException e) {
+		retry.start(player.getUniqueId(), System.currentTimeMillis(), Cache.trackLayRetryMs);
 		if (!e.inTrainSpace.isEmpty()) {
 			TrainSpaceHighlight.show(player, e.inTrainSpace);
 		} else if (e.hasBlock()) {
@@ -272,6 +286,9 @@ public final class TrackCommands {
 	}
 
 	public static void markEnd(Player player, Location at, Block hitBlock) {
+		if (waitingAfterRefusal(player)) {
+			return;
+		}
 		TrackJunctionSession.Pending pending = TrackJunctionSession.get(player);
 		if (pending != null) {
 			Location snapped = snapClick(player, at);
@@ -304,6 +321,9 @@ public final class TrackCommands {
 	}
 
 	public static void startJunction(Player player, Location at) {
+		if (waitingAfterRefusal(player)) {
+			return;
+		}
 		if (at == null || at.getWorld() == null) {
 			player.sendMessage("§cClick existing track to start a junction.");
 			return;

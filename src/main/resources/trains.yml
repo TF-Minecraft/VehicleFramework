@@ -21,6 +21,8 @@ max-turn-degrees: 35
 clearance:
   width: 3
   height: 2.5
+# After a refused lay, seconds before the same player can try again (0 = no wait).
+lay-retry-seconds: 3
 min-lay-distance: 8
 join-distance: 1.5
 min-junction-spacing: 16

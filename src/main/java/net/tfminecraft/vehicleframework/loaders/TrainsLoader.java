@@ -44,6 +44,7 @@ public class TrainsLoader {
 		Cache.trackDisplayYOffset = config.getDouble("display-y-offset", 0.5);
 		Cache.trackVehicleYOffset = config.getDouble("vehicle-y-offset", 0.5);
 		Cache.trainClearanceWidth = Math.max(0.5, config.getDouble("clearance.width", 3.0));
+		Cache.trackLayRetryMs = Math.round(Math.max(0.0, config.getDouble("lay-retry-seconds", 3.0)) * 1000);
 		Cache.trainClearanceHeight = clearanceHeight(
 				config.getDouble("clearance.height", 2.5), Cache.trackVehicleYOffset);
 		Cache.trackMaxTurnDegrees = Math.max(1.0, config.getDouble("max-turn-degrees", 25.0));
