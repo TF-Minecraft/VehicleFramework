@@ -21,10 +21,12 @@ import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.database.ConsistData;
 import net.tfminecraft.vehicleframework.database.PersistenceLog;
 import net.tfminecraft.vehicleframework.enums.Direction;
+import net.tfminecraft.vehicleframework.managers.VehicleManager;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTape;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTapeItems;
 import net.tfminecraft.vehicleframework.tracks.TrackAdvance;
 import net.tfminecraft.vehicleframework.tracks.TrainBlockCollision;
+import net.tfminecraft.vehicleframework.tracks.TrackClearance;
 import net.tfminecraft.vehicleframework.tracks.TrackFx;
 import net.tfminecraft.vehicleframework.tracks.TrackJunction;
 import net.tfminecraft.vehicleframework.tracks.TrackJunctionTravel;
@@ -773,6 +775,95 @@ public class TrainHandler {
 		return true;
 	}
 
+	/** Moves every train on {@code old} onto the track that replaced it. */
+	public static void retrackTrains(TrackSpline old, List<TrackSpline> rebuilt) {
+		VehicleManager vehicles = VehicleFramework.getVehicleManager();
+		if (vehicles == null) {
+			return;
+		}
+		for (ActiveVehicle vehicle : vehicles.get().values()) {
+			if (vehicle.isTrain()) {
+				vehicle.getTrainHandler().retrack(old, rebuilt);
+			}
+		}
+	}
+
+	/**
+	 * Keeps this car where it physically was after its track is rebuilt.
+	 * Digging splits or trims a spline, which re-ids the far piece and shifts
+	 * arc lengths; the stale {@code s} would otherwise teleport the train.
+	 * If none of the rebuilt splines passes under the car it is left alone,
+	 * and unbinds on its next tick if its spline is gone.
+	 */
+	public void retrack(TrackSpline old, List<TrackSpline> rebuilt) {
+		if (splineId == null || old == null || rebuilt == null || !splineId.equals(old.getId())) {
+			return;
+		}
+		TrackPose was = old.sampleAt(s);
+		TrackSpline best = null;
+		double bestS = 0;
+		double bestD = Double.POSITIVE_INFINITY;
+		for (TrackSpline candidate : rebuilt) {
+			double candidateS = candidate.nearestS(was.x, was.y, was.z);
+			TrackPose at = candidate.sampleAt(candidateS);
+			double horiz = Math.hypot(at.x - was.x, at.z - was.z);
+			double vert = Math.abs(at.y - was.y);
+			if (horiz > TrackClearance.OVERLAP_HORIZ || vert > TrackClearance.OVERLAP_VERT) {
+				continue;
+			}
+			double d = horiz * horiz + vert * vert;
+			if (d < bestD) {
+				best = candidate;
+				bestS = candidateS;
+				bestD = d;
+			}
+		}
+		if (best == null) {
+			return;
+		}
+		TrackRegistry registry = VehicleFramework.getTrackRegistry();
+		if (!best.getId().equals(splineId) && registry != null && !routeTouches(registry, best.getId())) {
+			routeJunctionId = null;
+			takeBranch = false;
+		}
+		PersistenceLog.append("RETRACK " + PersistenceLog.vehicle(v)
+				+ " from=" + splineId + "@" + s + " to=" + best.getId() + "@" + bestS);
+		splineId = best.getId();
+		s = bestS;
+	}
+
+	private boolean routeTouches(TrackRegistry registry, UUID trackId) {
+		if (routeJunctionId == null) {
+			return false;
+		}
+		TrackJunction route = registry.getJunction(routeJunctionId).orElse(null);
+		return route != null
+				&& (trackId.equals(route.stemSplineId) || trackId.equals(route.branchSplineId));
+	}
+
+	/**
+	 * Whether any car of this consist sits within {@code halfSpan} of arc
+	 * length {@code at} on the given track, counting each car out to its couplers.
+	 */
+	public boolean occupies(UUID trackId, double at, double halfSpan) {
+		if (trackId == null || v == null || v.hasParent() || boundSpline() == null) {
+			return false;
+		}
+		for (CarPlacement car : planCars()) {
+			if (!car.spline.getId().equals(trackId)) {
+				continue;
+			}
+			double d = Math.abs(car.s - at);
+			if (car.spline.isLoop()) {
+				d = Math.min(d, car.spline.length() - d);
+			}
+			if (d <= reach(car.vehicle.getTrainHandler()) + halfSpan) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private boolean tryBindOrKeep() {
 		if (keepBound()) {
 			return true;
@@ -1116,18 +1207,24 @@ public class TrainHandler {
 	}
 
 	private static double spacing(TrainHandler parent, TrainHandler child) {
-		double back = 0;
-		double front = 0;
-		try {
-			if (parent != null && parent.canHaveAttached()) {
-				back = parent.getBack().getOffset().length();
-			}
-			if (child != null && child.isAttachable()) {
-				front = child.getFront().getOffset().length();
-			}
-		} catch (Exception ignored) {
-			return TrackConsistMath.connectorSpacing(back, front);
-		}
+		double back = parent != null && parent.canHaveAttached() ? offsetLength(parent.getBack()) : 0;
+		double front = child != null && child.isAttachable() ? offsetLength(child.getFront()) : 0;
 		return TrackConsistMath.connectorSpacing(back, front);
+	}
+
+	// How far along the track a car extends from its centre to its couplers.
+	private static double reach(TrainHandler car) {
+		double front = car.isAttachable() ? offsetLength(car.getFront()) : 0;
+		double back = car.canHaveAttached() ? offsetLength(car.getBack()) : 0;
+		return Math.max(1.0, Math.max(front, back));
+	}
+
+	private static double offsetLength(Connector connector) {
+		try {
+			return connector.getOffset().length();
+		} catch (Exception ignored) {
+			// Offsets come from the live model and are unavailable until it loads.
+			return 0;
+		}
 	}
 }

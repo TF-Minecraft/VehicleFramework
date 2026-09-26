@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 
 import org.bukkit.World;
 
@@ -23,9 +24,21 @@ public final class TrackRegistry {
 	private final TrackStore store;
 	private final Map<UUID, TrackSpline> splines = new ConcurrentHashMap<>();
 	private final Map<UUID, TrackJunction> junctions = new ConcurrentHashMap<>();
+	private BiConsumer<TrackSpline, List<TrackSpline>> rebuilt = (old, next) -> {
+	};
 
 	public TrackRegistry(File dataFolder) {
 		this.store = new TrackStore(dataFolder);
+	}
+
+	/**
+	 * Called when a spline's geometry is rebuilt, with the old spline and the
+	 * splines that now carry its track. Arc lengths are not preserved, so
+	 * anything bound to the old spline must re-find its position.
+	 */
+	public void onRebuilt(BiConsumer<TrackSpline, List<TrackSpline>> listener) {
+		rebuilt = listener == null ? (old, next) -> {
+		} : listener;
 	}
 
 	public void loadFromDisk() {
@@ -147,11 +160,14 @@ public final class TrackRegistry {
 		return Optional.ofNullable(best);
 	}
 
-	public DigResult dig(String world, double x, double y, double z) {
-		return dig(world, x, y, z, null);
+	/**
+	 * The sample a dig at this point would remove, and the arc span of track
+	 * it takes with it: {@code centreS} plus or minus {@code halfSpan}.
+	 */
+	public record DigTarget(TrackSpline spline, int index, double centreS, double halfSpan) {
 	}
 
-	public DigResult dig(String world, double x, double y, double z, World bukkitWorld) {
+	public Optional<DigTarget> digTarget(String world, double x, double y, double z) {
 		TrackSpline spline = null;
 		int index = -1;
 		double best = Math.max(Cache.trackJoinDistance, 2.0);
@@ -167,9 +183,25 @@ public final class TrackRegistry {
 			}
 		}
 		if (spline == null) {
-			return DigResult.none();
+			return Optional.empty();
 		}
-		return digAt(spline, index, bukkitWorld);
+		List<TrackSample> samples = spline.getSamples();
+		double digS = samples.get(index).s;
+		Optional<TrackJunction> turnout = turnoutDug(spline, digS);
+		if (turnout.isPresent()) {
+			// Digging a turnout removes the branch all the way back to the stem.
+			double turnoutEnd = turnout.get().turnoutEndS;
+			return Optional.of(new DigTarget(spline, index, turnoutEnd / 2,
+					turnoutEnd / 2 + TrackGenerate.STEP));
+		}
+		double before = index > 0 ? digS - samples.get(index - 1).s : 0;
+		double after = index < samples.size() - 1 ? samples.get(index + 1).s - digS : 0;
+		if (spline.isLoop() && (index == 0 || index == samples.size() - 1)) {
+			double seam = spline.length() - samples.get(samples.size() - 1).s;
+			before = index == 0 ? seam : before;
+			after = index == 0 ? after : seam;
+		}
+		return Optional.of(new DigTarget(spline, index, digS, Math.max(before, after)));
 	}
 
 	public DigResult digAt(TrackSpline spline, int index) {
@@ -182,14 +214,9 @@ public final class TrackRegistry {
 			return DigResult.none();
 		}
 		UUID id = spline.getId();
-		Optional<TrackJunction> asBranch = junctionByBranch(id);
-		if (asBranch.isPresent()) {
-			TrackJunction junction = asBranch.get();
-			double digS = spline.getSamples().get(index).s;
-			double turnoutEnd = junction.turnoutEndS;
-			if (turnoutEnd > 0 && digS <= turnoutEnd + 1e-9) {
-				return finishDig(removeJunctionTurnout(junction, bukkitWorld));
-			}
+		Optional<TrackJunction> turnout = turnoutDug(spline, spline.getSamples().get(index).s);
+		if (turnout.isPresent()) {
+			return finishDig(removeJunctionTurnout(turnout.get(), bukkitWorld));
 		}
 		List<TrackJunction> saved = List.copyOf(junctionsOn(id));
 		if (xyz.size() <= 2) {
@@ -227,7 +254,15 @@ public final class TrackRegistry {
 			dropJunctionsForSpline(id, spline.getWorld());
 			return finishDig(DigResult.deleted(id));
 		}
+		List<TrackSpline> pieces = new ArrayList<>();
+		if (start != null) {
+			pieces.add(start);
+		}
+		if (rest != null) {
+			pieces.add(rest);
+		}
 		rehomeJunctions(saved, spline, false, start, rest);
+		rebuilt.accept(spline, pieces);
 		if (start != null && rest != null) {
 			return finishDig(DigResult.split(start, rest));
 		}
@@ -339,9 +374,12 @@ public final class TrackRegistry {
 				from.spline.getWorld(),
 				TrackSpline.shouldLoop(merged, Cache.trackJoinDistance),
 				merged);
-		TrackSpline stored = replace(next);
+		TrackSpline stored = replaceQuietly(next);
 		rehomeJunctions(keepSaved, oldKeep, from.prepend, stored);
 		rehomeJunctions(dropSaved, oldDrop, !to.prepend, stored);
+		// Retrack only once junctions sit on the joined spline, so train routes survive.
+		rebuilt.accept(oldKeep, List.of(stored));
+		rebuilt.accept(oldDrop, List.of(stored));
 		return new StrokeLay(stored, extra, 0);
 	}
 
@@ -376,6 +414,15 @@ public final class TrackRegistry {
 	}
 
 	public TrackSpline replace(TrackSpline spline) {
+		TrackSpline previous = splines.get(spline.getId());
+		TrackSpline next = replaceQuietly(spline);
+		if (previous != null && previous != next) {
+			rebuilt.accept(previous, List.of(next));
+		}
+		return next;
+	}
+
+	private TrackSpline replaceQuietly(TrackSpline spline) {
 		TrackSpline next = spline.promotedLoop(Cache.trackJoinDistance);
 		next.invalidateVisuals();
 		splines.put(next.getId(), next);
@@ -923,6 +970,11 @@ public final class TrackRegistry {
 	private TrackLayResult finishLay(TrackLayResult result) {
 		pruneNestedShortTracks();
 		return result;
+	}
+
+	private Optional<TrackJunction> turnoutDug(TrackSpline spline, double digS) {
+		return junctionByBranch(spline.getId())
+				.filter(junction -> junction.turnoutEndS > 0 && digS <= junction.turnoutEndS + 1e-9);
 	}
 
 	private DigResult finishDig(DigResult result) {

@@ -2,6 +2,7 @@ package net.tfminecraft.vehicleframework.vehicles.handlers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -11,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -390,6 +392,138 @@ class TrainReversePlacementTest {
         }
     }
 
+    @Test
+    void splittingTrackBehindTrainKeepsItWhereItWas() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        registry.digAt(track, 20);
+        loco.splineTick();
+        assertNotEquals(track.getId(), loco.getSplineId(), "Train must move onto the far piece");
+        assertPositions(loco, registry.get(loco.getSplineId()).orElseThrow(), 39);
+        assertEquals(60, loco.v.getEntity().getLocation().getZ(), 1e-8);
+        assertEquals(40, loco.getChild().getTrainHandler().getChild().getTrainHandler()
+                .v.getEntity().getLocation().getZ(), 1e-8);
+    }
+
+    @Test
+    void trainOnSplitTrackCanDriveOn() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        registry.digAt(track, 20);
+        loco.v.getAccessPanel().setSpeed(0.2);
+        loco.splineTick();
+        assertEquals(60.2, loco.v.getEntity().getLocation().getZ(), 1e-8);
+        assertEquals(40.2, loco.getChild().getTrainHandler().getChild().getTrainHandler()
+                .v.getEntity().getLocation().getZ(), 1e-8);
+    }
+
+    @Test
+    void trimmingTrackStartDoesNotShiftTrain() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        registry.digAt(track, 0);
+        loco.splineTick();
+        assertEquals(track.getId(), loco.getSplineId());
+        assertPositions(loco, registry.get(track.getId()).orElseThrow(), 59);
+        assertEquals(60, loco.v.getEntity().getLocation().getZ(), 1e-8);
+    }
+
+    @Test
+    void savingParkedTrainAfterSplitStoresItsRealPosition() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        registry.digAt(track, 20);
+        ConsistData saved = loco.toConsistData();
+        assertNotEquals(track.getId().toString(), saved.getSplineId());
+        assertEquals(39, saved.getS(), 1e-8);
+    }
+
+    @Test
+    void removingTrackUnderParkedTrainUnbindsIt() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        registry.delete(track.getId());
+        loco.splineTick();
+        assertFalse(loco.isBound());
+    }
+
+    @Test
+    void splittingTrackAtCrossingKeepsTrainOnItsOwnLine() {
+        TrackSpline track = denseTrack();
+        TrackSpline crossing = crossingAt(60);
+        TrainHandler loco = consist(registry.get(track.getId()).orElseThrow(), 60);
+        registry.digAt(registry.get(track.getId()).orElseThrow(), 20);
+        assertNotEquals(crossing.getId(), loco.getSplineId());
+        assertNotEquals(track.getId(), loco.getSplineId());
+        assertEquals(39, loco.getS(), 1e-8);
+    }
+
+    @Test
+    void splittingStemKeepsRouteOfTrainLeavingBranch() {
+        TrackSpline stem = denseTrack();
+        TrackSpline branch = TrackSpline.fromPoints(UUID.randomUUID(), "world", false,
+                List.of(new double[]{0, 64, 50}, new double[]{100, 64, 50}));
+        store.save(branch);
+        TrackJunction junction = new TrackJunction(UUID.randomUUID(), stem.getId(), 50,
+                -1, TrackJunction.Side.LEFT, branch.getId(), true);
+        store.saveJunction("world", junction);
+        registry.loadFromDisk();
+        TrainHandler loco = consist(registry.get(stem.getId()).orElseThrow(), 55);
+        loco.applyConsist(new ConsistData(null, null, stem.getId().toString(), 55d,
+                1, junction.id.toString(), true));
+        loco.placeLoadedCars();
+        TrainHandler first = loco.getChild().getTrainHandler();
+        assertEquals(branch.getId(), first.getSplineId(), "Setup: first car trails onto the branch");
+        Location before = first.v.getEntity().getLocation();
+
+        registry.digAt(registry.get(stem.getId()).orElseThrow(), 10);
+        loco.splineTick();
+
+        assertNotEquals(stem.getId(), loco.getSplineId());
+        assertEquals(junction.id.toString(), loco.toConsistData().getJunctionId());
+        assertEquals(branch.getId(), first.getSplineId());
+        assertEquals(before.getX(), first.v.getEntity().getLocation().getX(), 1e-8);
+        assertEquals(before.getZ(), first.v.getEntity().getLocation().getZ(), 1e-8);
+    }
+
+    @Test
+    void deletingTrackDoesNotMoveTrainOntoCrossingTrack() {
+        TrackSpline track = denseTrack();
+        crossingAt(60);
+        TrainHandler loco = consist(registry.get(track.getId()).orElseThrow(), 60);
+        registry.delete(track.getId());
+        loco.splineTick();
+        assertFalse(loco.isBound());
+    }
+
+    @Test
+    void breakingTrackPieceElsewhereKeepsTrainPosition() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        registry.replace(track.withSegment(80, track.segment(80).withBroken(true)));
+        loco.splineTick();
+        assertPositions(loco, track, 60);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"45, 1, true", "66, 1, true", "34, 1, true", "33.5, 1, false",
+            "67.5, 1, false", "20, 1, false"})
+    void consistOccupiesTrackOutToItsCouplers(double at, double halfSpan, boolean occupied) {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        assertEquals(occupied, loco.occupies(track.getId(), at, halfSpan));
+    }
+
+    @Test
+    void digTargetCoversTheEdgesItRemoves() {
+        TrackSpline track = denseTrack();
+        TrackRegistry.DigTarget target = registry.digTarget("world", 0, 64, 20.2).orElseThrow();
+        assertEquals(20, target.index());
+        assertEquals(20, target.centreS(), 1e-8);
+        assertEquals(1, target.halfSpan(), 1e-8);
+        assertEquals(track.getId(), target.spline().getId());
+    }
+
     private void assertSequence(TrainHandler loco, TrackSpline track, double[] expected) {
         double[] speeds = {0.2, 0, -0.01, 0, 0.2};
         for (int i = 0; i < speeds.length; i++) {
@@ -413,6 +547,25 @@ class TrainReversePlacementTest {
         }
     }
 
+    private TrackSpline denseTrack() {
+        List<double[]> points = new ArrayList<>();
+        for (int z = 0; z <= 100; z++) {
+            points.add(new double[]{0, 64, z});
+        }
+        TrackSpline track = TrackSpline.fromPoints(UUID.randomUUID(), "world", false, points);
+        store.save(track);
+        registry.loadFromDisk();
+        return registry.get(track.getId()).orElseThrow();
+    }
+
+    private TrackSpline crossingAt(double z) {
+        TrackSpline crossing = TrackSpline.fromPoints(UUID.randomUUID(), "world", false,
+                List.of(new double[]{-20, 64, z}, new double[]{20, 64, z}));
+        store.save(crossing);
+        registry.loadFromDisk();
+        return crossing;
+    }
+
     private TrackSpline straightTrack(boolean loop) {
         TrackSpline track = TrackSpline.fromPoints(UUID.randomUUID(), "world", loop,
                 List.of(new double[]{0, 64, 0}, new double[]{0, 64, 100}));
@@ -427,6 +580,8 @@ class TrainReversePlacementTest {
         TrainHandler second = car();
         loco.setChild(first.v);
         first.setChild(second.v);
+        registry.onRebuilt((old, rebuilt) -> List.of(loco, first, second)
+                .forEach(car -> car.retrack(old, rebuilt)));
         loco.setSplineId(track.getId());
         loco.setS(s);
         loco.placeLoadedCars();
