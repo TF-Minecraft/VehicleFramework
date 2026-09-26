@@ -21,6 +21,32 @@ Fuel, damage, ownership, and repairs make vehicles persistent parts of the world
 
 Originally created by [Drefvelin](https://github.com/Drefvelin).
 
+## Locomotive overdrive
+
+The simple locomotive runs 20% faster (`speed: 0.72`) and burns `1.25` fuel units
+per cycle. Its riders, including those in attached cars, take 75% less incoming
+damage, retaining the existing damage cap. Other vehicles keep their existing balance.
+
+Use W/S to set forward throttle up to 120%. A shared boost budget lasts about
+20 seconds at 110% or 10 seconds at 120%; changing throttle above 100% spends
+the same budget. Fuel consumption follows a quadratic curve:
+
+| Throttle | Fuel per cycle | Extra fuel |
+| --- | --- | --- |
+| 100% | 1.25 | 0% |
+| 110% | 1.5625 | 25% |
+| 120% | 2.5 | 100% |
+
+Exhausting boost or returning to 100% starts a five-minute cooldown. Normal 100%
+throttle remains available throughout cooldown. The scoreboard shows boost and
+cooldown time. Engine damage retains its normal throttle limit, so overdrive
+requires a fully healthy engine. Reverse remains limited to -100%.
+
+Boost and cooldown state survive saving and reloading; timers include unloaded
+time. Install the updated plugin and matching ServerAssets vehicle YAML,
+including `behaviour.train.locomotive: true` on the locomotive. Plugin updates
+do not overwrite existing vehicle configurations.
+
 ## Documentation
 
 [User guide](https://github.com/TF-Minecraft/Docs/blob/main/projects/VehicleFramework/docs/playing.md): commands, models, vehicle YAML, weapons, and trains.

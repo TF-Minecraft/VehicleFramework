@@ -12,6 +12,7 @@ simple_locomotive:
         vector: move.movealign
         tracked: true
         train:
+            locomotive: true
             back-connector: connector_back
             fuel-cars:
                 - coal_car
@@ -48,16 +49,16 @@ simple_locomotive:
                 - exhaust.exhaustalign
             requires-start: true
             health: 200.0
-            fuel-burn-rate: 5
+            fuel-burn-rate: 1.25
             fuel: coal
             fuel-capacity: 4800
             repair-time: 60
             damage-chance: 0.7
             armor: armored
             role: engine_armored
-            max: 100
+            max: 120
             min: -100
-            speed: 0.6
+            speed: 0.72
             turn-rate: 0.2
             vfx:
                 - body

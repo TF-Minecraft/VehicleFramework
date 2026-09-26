@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.google.gson.JsonObject;
+import org.json.simple.JSONObject;
 
 import net.tfminecraft.vehicleframework.tracks.ThrottleTape;
 
@@ -33,6 +34,7 @@ public class IncompleteVehicle {
 	private List<String> whitelist = new ArrayList<>();
 	private ConsistData consist = ConsistData.unbound();
 	private ThrottleTape throttleTape;
+	private JSONObject locomotiveOverdrive;
 	private boolean ticketsEnabled = false;
 	private String ticketId;
 
@@ -62,6 +64,14 @@ public class IncompleteVehicle {
 
 	public double getFuel() {
 		return fuel;
+	}
+
+	public JSONObject getLocomotiveOverdrive() {
+		return locomotiveOverdrive;
+	}
+
+	public void setLocomotiveOverdrive(JSONObject state) {
+		locomotiveOverdrive = state;
 	}
 
 	public String getSkin() {

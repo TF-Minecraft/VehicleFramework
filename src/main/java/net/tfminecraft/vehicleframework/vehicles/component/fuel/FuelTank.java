@@ -146,6 +146,10 @@ public class FuelTank {
     }
 
     public void tick(Throttle throttle) {
+        tick(throttle, 1.0);
+    }
+
+    public void tick(Throttle throttle, double multiplier) {
         if (throttle.getCurrent() == 0) return;
         if (current == 0) return;
 
@@ -154,7 +158,7 @@ public class FuelTank {
 
         double percentage = Math.abs(throttle.getCurrent()) / (double) span;
         percentage = Math.max(1, percentage);
-        double amount = rate * percentage;
+        double amount = rate * percentage * multiplier;
         current -= amount;
         if (current < 0) current = 0;
     }

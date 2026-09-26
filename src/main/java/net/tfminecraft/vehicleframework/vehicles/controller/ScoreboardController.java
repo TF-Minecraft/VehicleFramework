@@ -63,6 +63,14 @@ public class ScoreboardController {
 			}
 			i++;
 		}
+		if (vehicle.isLocomotive() && !vehicle.hasParent()) {
+			var overdrive = vehicle.getTrainHandler().getOverdrive();
+			long cooldown = overdrive.cooldownSeconds(System.currentTimeMillis());
+			long remaining = overdrive.remainingSeconds();
+			scores.add(cooldown > 0 ? "§f- Overdrive cooldown: §e" + cooldown + "s"
+					: remaining > 0 ? "§f- Overdrive left: §e" + remaining + "s"
+					: "§f- Overdrive: §aReady (W > 100%)");
+		}
 		if(vehicle.hasComponent(Component.HULL)) {
 			if(vehicle.getComponent(Component.HULL) instanceof SinkableHull) {
 				SinkableHull sHull = (SinkableHull) vehicle.getComponent(Component.HULL);

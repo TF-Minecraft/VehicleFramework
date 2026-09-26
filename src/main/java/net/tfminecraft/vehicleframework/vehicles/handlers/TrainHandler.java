@@ -49,8 +49,11 @@ import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.component.fuel.FuelTank;
 import net.tfminecraft.vehicleframework.vehicles.handlers.container.Container;
 import net.tfminecraft.vehicleframework.vehicles.handlers.train.Connector;
+import net.tfminecraft.vehicleframework.vehicles.handlers.train.LocomotiveOverdrive;
 
 public class TrainHandler {
+	private final boolean locomotive;
+	private final LocomotiveOverdrive overdrive = new LocomotiveOverdrive();
 	protected ActiveVehicle v;
 	protected ActiveVehicle child;
 	
@@ -81,6 +84,7 @@ public class TrainHandler {
 	private final ThrottleTape.DwellState tapeDwell = new ThrottleTape.DwellState();
 	
 	public TrainHandler(ConfigurationSection config) {
+		locomotive = config.getBoolean("locomotive", false);
 		if(config.contains("front-connector")) {
 			front = new Connector(config.getString("front-connector"));
 		}
@@ -97,6 +101,7 @@ public class TrainHandler {
 	}
 	
 	public TrainHandler(ActiveVehicle v, TrainHandler another) {
+		locomotive = another.locomotive;
 		this.v = v;
 		if(another.isAttachable()) {
 			front = new Connector(v, another.getFront());
@@ -115,6 +120,14 @@ public class TrainHandler {
 		}
 	}
 	
+	public boolean isLocomotive() {
+		return locomotive;
+	}
+
+	public LocomotiveOverdrive getOverdrive() {
+		return overdrive;
+	}
+
 	public void updateModel(ActiveModel m) {
 		if(isAttachable()) {
 			front.updateModel(m);
