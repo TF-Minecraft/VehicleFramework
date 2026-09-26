@@ -2,7 +2,9 @@ package net.tfminecraft.vehicleframework.vehicles.handlers;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
@@ -12,6 +14,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import org.joml.Quaternionf;
 import org.json.simple.JSONObject;
@@ -1047,6 +1050,8 @@ public class TrainHandler {
 		// blocked carriage cannot leave the locomotive moving independently.
 		List<CarPlacement> accepted = planCars();
 		List<Runnable> afterMove = new ArrayList<>();
+		// Block shapes looked up for this tick only; blocks can change between ticks.
+		Map<Long, List<BoundingBox>> shapes = new HashMap<>();
 		int steps = Math.max(1, (int) Math.ceil(Math.abs(ds) / 0.25));
 		double step = ds / steps;
 		double moved = 0;
@@ -1062,7 +1067,7 @@ public class TrainHandler {
 				s = advance.s;
 			}
 			List<CarPlacement> next = planCars();
-			if (!clearStep(accepted, next)) {
+			if (!clearStep(accepted, next, shapes)) {
 				restoreStep(before);
 				blocked = true;
 				trackEnd = compressesConsist(accepted, next);
@@ -1124,7 +1129,8 @@ public class TrainHandler {
 		return false;
 	}
 
-	private boolean clearStep(List<CarPlacement> previous, List<CarPlacement> next) {
+	private boolean clearStep(List<CarPlacement> previous, List<CarPlacement> next,
+			Map<Long, List<BoundingBox>> shapes) {
 		if (next.isEmpty() || previous.size() != next.size() || compressesConsist(previous, next)) {
 			return false;
 		}
@@ -1132,7 +1138,7 @@ public class TrainHandler {
 			CarPlacement from = previous.get(i);
 			CarPlacement to = next.get(i);
 			if (TrainBlockCollision.blocked(to.vehicle.getEntity(), from.spline, from.s,
-					to.spline, to.s, reach(to.vehicle.getTrainHandler()))) {
+					to.spline, to.s, reach(to.vehicle.getTrainHandler()), shapes)) {
 				return false;
 			}
 		}

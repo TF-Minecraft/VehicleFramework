@@ -33,38 +33,68 @@ public final class TrainBlockCollision {
 
     /**
      * Whether a car moving from one track position to another would run into a block.
-     * Blocks already inside the car's space at the start are ignored, so a car can
-     * still move off something that ended up inside it.
+     * Blocks already inside the car's space at the start are ignored where the car is
+     * not moving into new space, so it can still move off something that ended up
+     * inside it but cannot push further into it.
      */
     public static boolean blocked(Entity entity, TrackSpline fromSpline, double fromS,
             TrackSpline toSpline, double toS, double reach) {
+        return blocked(entity, fromSpline, fromS, toSpline, toS, reach, new HashMap<>());
+    }
+
+    /** As above, reusing block shapes already looked up during the same movement tick. */
+    public static boolean blocked(Entity entity, TrackSpline fromSpline, double fromS,
+            TrackSpline toSpline, double toS, double reach, Map<Long, List<BoundingBox>> shapes) {
         if (entity == null || entity.getWorld() == null || toSpline == null) {
             return false;
         }
         World world = entity.getWorld();
-        Map<Long, List<BoundingBox>> shapes = new HashMap<>();
         Set<Long> inside = fromSpline == null
                 ? Set.of()
-                : touched(world, slices(fromSpline, fromS, reach), shapes, Set.of(), false);
+                : touched(world, slices(fromSpline, fromS, reach, 0), shapes, Set.of(), false);
+        // Only compare positions along one track. After a junction change, the whole
+        // car counts as moving within its old space.
+        double moved = 0;
+        if (fromSpline != null && fromSpline.getId().equals(toSpline.getId())) {
+            moved = toS - fromS;
+            if (toSpline.isLoop()) {
+                double length = toSpline.length();
+                moved = moved - length * Math.rint(moved / length);
+            }
+        }
         // Steps are much shorter than a car, so the car's space at the end of a step
         // also covers the blocks it passed, even on fast ticks.
-        return !touched(world, slices(toSpline, toS, reach), shapes, inside, true).isEmpty();
+        return !touched(world, slices(toSpline, toS, reach, moved), shapes, inside, true).isEmpty();
     }
 
     private record Slice(double x, double z, double fx, double fz, double halfLength,
-            double minY, double maxY) {
+            double minY, double maxY, boolean leading) {
     }
 
-    private static List<Slice> slices(TrackSpline spline, double s, double reach) {
+    private static List<Slice> slices(TrackSpline spline, double s, double reach, double moved) {
         List<Slice> slices = new ArrayList<>();
         double length = Math.max(SLICE, 2 * reach);
         int count = (int) Math.ceil(length / SLICE);
         double step = length / count;
+        double end = spline.length();
         for (int i = 0; i < count; i++) {
-            TrackPose pose = spline.sampleAt(s - length / 2 + (i + 0.5) * step);
+            double along = -length / 2 + (i + 0.5) * step;
+            double at = s + along;
+            double clamped = spline.isLoop() ? at : Math.max(0, Math.min(end, at));
+            TrackPose pose = spline.sampleAt(clamped);
             double yaw = Math.toRadians(pose.yaw);
-            slices.add(new Slice(pose.x, pose.z, -Math.sin(yaw), Math.cos(yaw), step / 2,
-                    pose.y + Cache.trackVehicleYOffset, pose.y + Cache.trainClearanceHeight));
+            double fx = -Math.sin(yaw);
+            double fz = Math.cos(yaw);
+            // Couplers can reach past the end of the track. Carry on straight there.
+            double past = at - clamped;
+            double x = pose.x + fx * past;
+            double z = pose.z + fz * past;
+            double y = pose.y - Math.tan(Math.toRadians(pose.pitch)) * past;
+            // The part of the car that has moved into space it did not cover before.
+            boolean leading = moved > 0 ? along + step / 2 > length / 2 - moved
+                    : moved < 0 && along - step / 2 < -length / 2 - moved;
+            slices.add(new Slice(x, z, fx, fz, step / 2,
+                    y + Cache.trackVehicleYOffset, y + Cache.trainClearanceHeight, leading));
         }
         return slices;
     }
@@ -84,7 +114,7 @@ public final class TrainBlockCollision {
                 for (int y = (int) Math.floor(slice.minY) - 1; y < Math.ceil(slice.maxY); y++) {
                     for (int z = (int) Math.floor(slice.z - ez); z < Math.ceil(slice.z + ez); z++) {
                         long key = key(x, y, z);
-                        if (ignore.contains(key) || hits.contains(key)) {
+                        if ((!slice.leading && ignore.contains(key)) || hits.contains(key)) {
                             continue;
                         }
                         for (BoundingBox solid : shapes.computeIfAbsent(key, k -> solids(world, k))) {

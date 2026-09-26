@@ -99,6 +99,24 @@ class TrainBlockCollisionTest {
     }
 
     @Test
+    void blockAlreadyOverlappingFrontStillBlocksMovingIntoIt() {
+        // Front coupler starts at z 25.9, inside the block from z 25 to 26.
+        Solid solid = (x, y, z) -> tunnel(3).at(x, y, z) || (x == 0 && y == 64 && z == 25);
+        assertTrue(blocked(northTrack(), solid, 20.9, 21.15));
+        assertFalse(blocked(northTrack(), solid, 20.9, 20.65));
+    }
+
+    @Test
+    void blockPastTrackEndIsChecked() {
+        TrackSpline track = TrackSpline.fromPoints(UUID.randomUUID(), "world", false,
+                List.of(new double[]{0.5, 64, 0}, new double[]{0.5, 64, 30}));
+        // Moving to s 29.25 takes the front coupler to z 34.25, past the track end at z 30.
+        Solid solid = (x, y, z) -> tunnel(3).at(x, y, z) || (x == 0 && y == 64 && z == 34);
+        assertTrue(blocked(track, solid, 29, 29.25));
+        assertFalse(blocked(track, tunnel(3), 29, 29.25));
+    }
+
+    @Test
     void noWorldIsNeverBlocked() {
         Entity entity = mock(Entity.class);
         TrackSpline track = northTrack();
@@ -106,10 +124,14 @@ class TrainBlockCollisionTest {
     }
 
     private static boolean blocked(TrackSpline track, Solid solid) {
+        return blocked(track, solid, 20.9, 21.15);
+    }
+
+    private static boolean blocked(TrackSpline track, Solid solid, double from, double to) {
         Entity entity = mock(Entity.class);
         World world = world(solid);
         when(entity.getWorld()).thenReturn(world);
-        return TrainBlockCollision.blocked(entity, track, 20.9, track, 21.15, REACH);
+        return TrainBlockCollision.blocked(entity, track, from, track, to, REACH);
     }
 
     private static TrackSpline northTrack() {
