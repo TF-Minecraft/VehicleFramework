@@ -704,10 +704,14 @@ public class TrainHandler {
 		Location loc = v.getEntity().getLocation();
 		TrackPose at = new TrackPose(loc.getX(), loc.getY() - Cache.trackVehicleYOffset, loc.getZ(), 0, 0);
 		TrackSpline current = boundSpline();
-		if (current != null && onTrack(current.sampleAt(s), at)) {
-			return;
+		Float facing = savedModelYaw();
+		if (current != null) {
+			TrackPose saved = current.sampleAt(s);
+			if (onTrack(saved, at) && (facing == null || facesAlong(facing, saved))) {
+				return;
+			}
 		}
-		TrackMatch match = nearestTrack(registry.inWorld(v.getEntity().getWorld().getName()), at, savedModelYaw());
+		TrackMatch match = nearestTrack(registry.inWorld(v.getEntity().getWorld().getName()), at, facing);
 		if (match == null) {
 			PersistenceLog.append("RETRACK_LOAD none " + PersistenceLog.vehicle(v));
 			unbind();

@@ -548,6 +548,22 @@ class TrainReversePlacementTest {
         assertFalse(loco.isBound(), "A train must not come back facing the other way");
     }
 
+    @Test
+    void loadingTrainAtMiddleOfTrackReversedWhileUnloadedUnbindsIt() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 50);
+        inWorld(loco, "world");
+        savedBoneYaw(loco, 0);
+        registry.onRebuilt(null);
+        List<double[]> reversed = new ArrayList<>(track.xyz());
+        Collections.reverse(reversed);
+        // s=50 still lands on the same spot, but the track now runs the other way.
+        registry.replace(TrackSpline.fromPoints(track.getId(), "world", false, reversed));
+        loco.applyConsist(new ConsistData(null, null, track.getId().toString(), 50d, 1));
+        loco.placeLoadedCars();
+        assertFalse(loco.isBound());
+    }
+
     @ParameterizedTest
     @CsvSource({"0, true", "45, true", "-45, true", "90, false", "180, false", "-120, false"})
     void modelMustFaceAlongTrackToRebind(float modelYaw, boolean along) {
