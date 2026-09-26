@@ -3,6 +3,7 @@ package net.tfminecraft.vehicleframework.tracks;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -76,32 +77,85 @@ public final class TrainBlockCollision {
         double length = Math.max(SLICE, 2 * reach);
         int count = (int) Math.ceil(length / SLICE);
         double step = length / count;
-        double end = spline.length();
         for (int i = 0; i < count; i++) {
             double along = -length / 2 + (i + 0.5) * step;
-            double at = s + along;
-            double clamped = spline.isLoop() ? at : Math.max(0, Math.min(end, at));
-            TrackPose pose = spline.sampleAt(clamped);
-            double yaw = Math.toRadians(pose.yaw);
-            double fx = -Math.sin(yaw);
-            double fz = Math.cos(yaw);
-            // Couplers can reach past the end of the track. Carry on straight there.
-            double past = at - clamped;
-            double x = pose.x + fx * past;
-            double z = pose.z + fz * past;
-            double y = pose.y - Math.tan(Math.toRadians(pose.pitch)) * past;
             // The part of the car that has moved into space it did not cover before.
             boolean leading = moved > 0 ? along + step / 2 > length / 2 - moved
                     : moved < 0 && along - step / 2 < -length / 2 - moved;
-            slices.add(new Slice(x, z, fx, fz, step / 2,
-                    y + Cache.trackVehicleYOffset, y + Cache.trainClearanceHeight, leading));
+            slices.add(slice(spline, s + along, step / 2, leading));
         }
         return slices;
     }
 
+    private static Slice slice(TrackSpline spline, double at, double halfLength, boolean leading) {
+        double end = spline.length();
+        double clamped = spline.isLoop() ? at : Math.max(0, Math.min(end, at));
+        TrackPose pose = spline.sampleAt(clamped);
+        double yaw = Math.toRadians(pose.yaw);
+        double fx = -Math.sin(yaw);
+        double fz = Math.cos(yaw);
+        // Couplers can reach past the end of the track. Carry on straight there.
+        double past = at - clamped;
+        double x = pose.x + fx * past;
+        double z = pose.z + fz * past;
+        double y = pose.y - Math.tan(Math.toRadians(pose.pitch)) * past;
+        return new Slice(x, z, fx, fz, halfLength,
+                y + Cache.trackVehicleYOffset, y + Cache.trainClearanceHeight, leading);
+    }
+
+    /** A block inside the space trains need, and how far along the track it is. */
+    public record Obstruction(int x, int y, int z, double s) {
+    }
+
+    /** Blocks inside the space trains need between two points on a track, in track order. */
+    public static List<Obstruction> obstructions(World world, TrackSpline spline, double fromS, double toS) {
+        return scan(world, spline, fromS, toS, false).obstructions();
+    }
+
+    /**
+     * Obstructions along a track, skipping unloaded chunks rather than loading them.
+     * {@code skipped} is how much of the track was not checked.
+     */
+    public record Scan(List<Obstruction> obstructions, double skipped) {
+    }
+
+    public static Scan scanLoaded(World world, TrackSpline spline) {
+        return scan(world, spline, 0, spline.length(), true);
+    }
+
+    private static Scan scan(World world, TrackSpline spline, double fromS, double toS, boolean loadedOnly) {
+        List<Obstruction> found = new ArrayList<>();
+        if (world == null || spline == null || toS <= fromS) {
+            return new Scan(found, 0);
+        }
+        Map<Long, List<BoundingBox>> shapes = new HashMap<>();
+        Set<Long> seen = new HashSet<>();
+        int count = (int) Math.ceil((toS - fromS) / SLICE);
+        double step = (toS - fromS) / count;
+        double skipped = 0;
+        for (int i = 0; i < count; i++) {
+            double at = fromS + (i + 0.5) * step;
+            Slice slice = slice(spline, at, step / 2, false);
+            if (loadedOnly && !world.isChunkLoaded((int) Math.floor(slice.x) >> 4, (int) Math.floor(slice.z) >> 4)) {
+                skipped += step;
+                continue;
+            }
+            for (long key : touched(world, List.of(slice), shapes, seen, false, loadedOnly)) {
+                seen.add(key);
+                found.add(new Obstruction(keyX(key), keyY(key), keyZ(key), at));
+            }
+        }
+        return new Scan(found, skipped);
+    }
+
     private static Set<Long> touched(World world, List<Slice> slices, Map<Long, List<BoundingBox>> shapes,
             Set<Long> ignore, boolean firstOnly) {
-        Set<Long> hits = new HashSet<>();
+        return touched(world, slices, shapes, ignore, firstOnly, false);
+    }
+
+    private static Set<Long> touched(World world, List<Slice> slices, Map<Long, List<BoundingBox>> shapes,
+            Set<Long> ignore, boolean firstOnly, boolean loadedOnly) {
+        Set<Long> hits = new LinkedHashSet<>();
         double halfWidth = Cache.trainClearanceWidth / 2;
         for (Slice slice : slices) {
             if (slice.maxY - slice.minY <= EPS) {
@@ -115,6 +169,9 @@ public final class TrainBlockCollision {
                     for (int z = (int) Math.floor(slice.z - ez); z < Math.ceil(slice.z + ez); z++) {
                         long key = key(x, y, z);
                         if ((!slice.leading && ignore.contains(key)) || hits.contains(key)) {
+                            continue;
+                        }
+                        if (loadedOnly && !world.isChunkLoaded(x >> 4, z >> 4)) {
                             continue;
                         }
                         for (BoundingBox solid : shapes.computeIfAbsent(key, k -> solids(world, k))) {
@@ -134,9 +191,9 @@ public final class TrainBlockCollision {
     }
 
     private static List<BoundingBox> solids(World world, long key) {
-        int x = (int) (key >> 38);
-        int y = (int) (key << 52 >> 52);
-        int z = (int) (key << 26 >> 38);
+        int x = keyX(key);
+        int y = keyY(key);
+        int z = keyZ(key);
         Block block = world.getBlockAt(x, y, z);
         if (block.isPassable()) {
             return List.of();
@@ -146,6 +203,18 @@ public final class TrainBlockCollision {
             solids.add(local.clone().shift(x, y, z));
         }
         return solids;
+    }
+
+    private static int keyX(long key) {
+        return (int) (key >> 38);
+    }
+
+    private static int keyY(long key) {
+        return (int) (key << 52 >> 52);
+    }
+
+    private static int keyZ(long key) {
+        return (int) (key << 26 >> 38);
     }
 
     private static long key(int x, int y, int z) {

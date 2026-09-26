@@ -77,10 +77,33 @@ public final class TrackClearance {
 				}
 			}
 		}
+		checkTrainSpace(world, points);
 		if (registry == null) {
 			return;
 		}
 		checkOverlap(world.getName(), points, registry, ignore, frog);
+	}
+
+	/** Refuses track that trains could not run along, using the same space as moving trains. */
+	static void checkTrainSpace(World world, List<double[]> points) throws TrackLayException {
+		TrackSpline stroke = TrackSpline.fromPoints(UUID.randomUUID(), world.getName(), false, points);
+		List<TrainBlockCollision.Obstruction> inWay =
+				TrainBlockCollision.obstructions(world, stroke, 0, stroke.length());
+		if (inWay.isEmpty()) {
+			return;
+		}
+		TrainBlockCollision.Obstruction first = inWay.get(0);
+		String name = world.getBlockAt(first.x(), first.y(), first.z()).getType().name().toLowerCase(Locale.US);
+		String more = inWay.size() == 1 ? "" : " and " + (inWay.size() - 1) + " more";
+		throw new TrackLayException(
+				"Cannot lay track: trains need " + format(Cache.trainClearanceWidth) + " wide by "
+						+ format(Cache.trainClearanceHeight) + " high above the rail. " + name + " at "
+						+ first.x() + ", " + first.y() + ", " + first.z() + more + " in the way.",
+				inWay);
+	}
+
+	static String format(double value) {
+		return value == Math.rint(value) ? String.valueOf((long) value) : String.valueOf(value);
 	}
 
 	static void checkOverlap(

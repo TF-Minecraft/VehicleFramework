@@ -1,6 +1,8 @@
 package net.tfminecraft.vehicleframework.tracks;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
@@ -9,6 +11,7 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import java.util.UUID;
 
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
@@ -117,6 +120,52 @@ class TrainBlockCollisionTest {
     }
 
     @Test
+    void obstructionsAreListedOnceInTrackOrder() {
+        World world = world((x, y, z) -> tunnel(3).at(x, y, z)
+                || (x == 1 && y == 65 && z == 40) || (x == -1 && y == 64 && z == 12));
+        List<TrainBlockCollision.Obstruction> found =
+                TrainBlockCollision.obstructions(world, northTrack(), 0, 100);
+        assertEquals(2, found.size());
+        assertEquals(12, found.get(0).z());
+        assertEquals(40, found.get(1).z());
+        assertTrue(found.get(0).s() < found.get(1).s());
+    }
+
+    @Test
+    void scanSkipsUnloadedChunks() {
+        World world = world(tunnel(2));
+        TrainBlockCollision.Scan scan = TrainBlockCollision.scanLoaded(world, northTrack());
+        assertTrue(scan.obstructions().isEmpty());
+        assertEquals(100, scan.skipped(), 1e-6);
+    }
+
+    @Test
+    void scanChecksLoadedChunks() {
+        World world = world(tunnel(2));
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+        TrainBlockCollision.Scan scan = TrainBlockCollision.scanLoaded(world, northTrack());
+        assertFalse(scan.obstructions().isEmpty());
+        assertEquals(0, scan.skipped(), 1e-6);
+    }
+
+    @Test
+    void layingRefusesTrackTrainsCannotUse() {
+        World world = world(tunnel(2));
+        List<double[]> points = List.of(new double[]{0.5, 64, 10}, new double[]{0.5, 64, 30});
+        TrackLayException refused = assertThrows(TrackLayException.class,
+                () -> TrackClearance.checkTrainSpace(world, points));
+        assertFalse(refused.inTrainSpace.isEmpty());
+        assertTrue(refused.hasBlock());
+        assertTrue(refused.getMessage().contains("in the way"), refused.getMessage());
+    }
+
+    @Test
+    void layingAllowsTrackTrainsCanUse() throws TrackLayException {
+        World world = world(tunnel(3));
+        TrackClearance.checkTrainSpace(world, List.of(new double[]{0.5, 64, 10}, new double[]{0.5, 64, 30}));
+    }
+
+    @Test
     void noWorldIsNeverBlocked() {
         Entity entity = mock(Entity.class);
         TrackSpline track = northTrack();
@@ -162,6 +211,7 @@ class TrainBlockCollisionTest {
             Block block = mock(Block.class);
             boolean full = solid.at(x, y, z);
             when(block.isPassable()).thenReturn(!full);
+            when(block.getType()).thenReturn(full ? Material.STONE : Material.AIR);
             if (full) {
                 VoxelShape shape = mock(VoxelShape.class);
                 when(shape.getBoundingBoxes()).thenReturn(List.of(new BoundingBox(0, 0, 0, 1, 1, 1)));
