@@ -120,6 +120,21 @@ class TrainBlockCollisionTest {
     }
 
     @Test
+    void blockOverlappingFrontStillBlocksAcrossTrackChange() {
+        TrackSpline stem = TrackSpline.fromPoints(UUID.randomUUID(), "world", false,
+                List.of(new double[]{0.5, 64, 0}, new double[]{0.5, 64, 20}));
+        TrackSpline next = TrackSpline.fromPoints(UUID.randomUUID(), "world", false,
+                List.of(new double[]{0.5, 64, 20}, new double[]{0.5, 64, 60}));
+        // Front coupler moves from z 24.9 (past the stem's end) to 25.15 on the next track.
+        Solid solid = (x, y, z) -> tunnel(3).at(x, y, z) || (x == 0 && y == 64 && z == 24);
+        Entity entity = mock(Entity.class);
+        World world = world(solid);
+        when(entity.getWorld()).thenReturn(world);
+        assertTrue(TrainBlockCollision.blocked(entity, stem, 19.9, next, 0.15, REACH));
+        assertFalse(TrainBlockCollision.blocked(entity, next, 0.15, stem, 19.9, REACH));
+    }
+
+    @Test
     void obstructionsAreListedOnceInTrackOrder() {
         World world = world((x, y, z) -> tunnel(3).at(x, y, z)
                 || (x == 1 && y == 65 && z == 40) || (x == -1 && y == 64 && z == 12));

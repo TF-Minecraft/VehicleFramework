@@ -53,8 +53,6 @@ public final class TrainBlockCollision {
         Set<Long> inside = fromSpline == null
                 ? Set.of()
                 : touched(world, slices(fromSpline, fromS, reach, 0), shapes, Set.of(), false);
-        // Only compare positions along one track. After a junction change, the whole
-        // car counts as moving within its old space.
         double moved = 0;
         if (fromSpline != null && fromSpline.getId().equals(toSpline.getId())) {
             moved = toS - fromS;
@@ -62,6 +60,12 @@ public final class TrainBlockCollision {
                 double length = toSpline.length();
                 moved = moved - length * Math.rint(moved / length);
             }
+        } else if (fromSpline != null) {
+            // Across a junction, measure the step in the world along the new track.
+            TrackPose from = fromSpline.sampleAt(fromS);
+            TrackPose to = toSpline.sampleAt(toS);
+            double yaw = Math.toRadians(to.yaw);
+            moved = (to.x - from.x) * -Math.sin(yaw) + (to.z - from.z) * Math.cos(yaw);
         }
         // Steps are much shorter than a car, so the car's space at the end of a step
         // also covers the blocks it passed, even on fast ticks.
