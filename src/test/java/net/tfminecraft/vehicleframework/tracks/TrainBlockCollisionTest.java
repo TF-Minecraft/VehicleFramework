@@ -195,6 +195,27 @@ class TrainBlockCollisionTest {
     }
 
     @Test
+    void singleBlockRefusalAlsoListsTheTrainSpace() {
+        World world = world(tunnel(2));
+        List<double[]> points = List.of(new double[]{0.5, 64, 10}, new double[]{0.5, 64, 30});
+        TrackLayException step = new TrackLayException("Cannot lay track: stone in the way at 0, 64, 12.", 0, 64, 12);
+        TrackLayException refused = TrackClearance.withTrainSpace(world, points, step);
+        assertTrue(refused.inTrainSpace.size() > 1);
+        assertEquals(12, refused.inTrainSpace.get(0).z());
+        assertEquals(12, (int) refused.blockZ);
+        assertTrue(refused.getMessage().startsWith("Cannot lay track: stone in the way at 0, 64, 12, and "),
+                refused.getMessage());
+    }
+
+    @Test
+    void singleBlockRefusalWithNothingElseStaysAsItWas() {
+        World world = world(tunnel(3));
+        List<double[]> points = List.of(new double[]{0.5, 64, 10}, new double[]{0.5, 64, 30});
+        TrackLayException step = new TrackLayException("Cannot lay track: stone in the way at 0, 64, 12.", 0, 64, 12);
+        assertEquals(step, TrackClearance.withTrainSpace(world, points, step));
+    }
+
+    @Test
     void layingAllowsTrackTrainsCanUse() throws TrackLayException {
         World world = world(tunnel(3));
         TrackClearance.checkTrainSpace(world, List.of(new double[]{0.5, 64, 10}, new double[]{0.5, 64, 30}));

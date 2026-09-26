@@ -1,5 +1,6 @@
 package net.tfminecraft.vehicleframework.tracks;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -48,7 +49,11 @@ public final class TrackClearance {
 			return;
 		}
 		Set<UUID> ignore = ignoreSplineIds == null ? Set.of() : ignoreSplineIds;
-		liftOneBlockSteps(world, points);
+		try {
+			liftOneBlockSteps(world, points);
+		} catch (TrackLayException e) {
+			throw withTrainSpace(world, points, e);
+		}
 		// Before the rail check, so a refusal lists every block in the way of trains
 		// rather than only the first one found.
 		checkTrainSpace(world, points);
@@ -73,9 +78,9 @@ public final class TrackClearance {
 					Block block = world.getBlockAt(x, y, z);
 					if (TrackSupport.blocksRail(block, p[1])) {
 						String name = block.getType().name().toLowerCase(Locale.US);
-						throw new TrackLayException(
+						throw withTrainSpace(world, points, new TrackLayException(
 								"Cannot lay track: " + name + " in the way at " + x + ", " + y + ", " + z + ".",
-								x, y, z);
+								x, y, z));
 					}
 				}
 			}
@@ -102,6 +107,33 @@ public final class TrackClearance {
 						+ format(Cache.trainClearanceHeight) + " high above the rail. " + name + " at "
 						+ first.x() + ", " + first.y() + ", " + first.z() + more + " in the way.",
 				inWay);
+	}
+
+	/**
+	 * A refusal naming one block, such as a step too high to climb, also lists every
+	 * block in the way of trains along the stroke, so all of them can be shown.
+	 */
+	static TrackLayException withTrainSpace(World world, List<double[]> points, TrackLayException refused) {
+		if (!refused.hasBlock()) {
+			return refused;
+		}
+		TrackSpline stroke = TrackSpline.fromPoints(UUID.randomUUID(), world.getName(), false, points);
+		List<TrainBlockCollision.Obstruction> inWay = new ArrayList<>();
+		inWay.add(new TrainBlockCollision.Obstruction(refused.blockX, refused.blockY, refused.blockZ, 0));
+		for (TrainBlockCollision.Obstruction o : TrainBlockCollision.obstructions(world, stroke, 0, stroke.length())) {
+			if (o.x() != refused.blockX || o.y() != refused.blockY || o.z() != refused.blockZ) {
+				inWay.add(o);
+			}
+		}
+		if (inWay.size() == 1) {
+			return refused;
+		}
+		String message = refused.getMessage();
+		if (message.endsWith(".")) {
+			message = message.substring(0, message.length() - 1);
+		}
+		return new TrackLayException(message + ", and " + (inWay.size() - 1)
+				+ " more blocks in the way of trains.", inWay);
 	}
 
 	static String format(double value) {
