@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -24,6 +25,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.util.Vector;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.VoxelShape;
+import org.joml.Quaternionf;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,11 +34,15 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import com.ticxo.modelengine.api.model.bone.SimpleManualAnimator;
+
 import net.tfminecraft.vehicleframework.VehicleFramework;
+import net.tfminecraft.vehicleframework.bones.BoneRotator;
 import net.tfminecraft.vehicleframework.database.ConsistData;
 import net.tfminecraft.vehicleframework.database.VehicleRepository;
 import net.tfminecraft.vehicleframework.database.VehicleSnapshot;
 import net.tfminecraft.vehicleframework.tracks.TrackJunction;
+import net.tfminecraft.vehicleframework.tracks.TrackPose;
 import net.tfminecraft.vehicleframework.tracks.TrackRegistry;
 import net.tfminecraft.vehicleframework.tracks.TrackSpline;
 import net.tfminecraft.vehicleframework.tracks.TrackStore;
@@ -513,6 +519,7 @@ class TrainReversePlacementTest {
         TrackSpline track = denseTrack();
         TrainHandler loco = consist(track, 60);
         inWorld(loco, "world");
+        savedBoneYaw(loco, 0);
         registry.onRebuilt(null);
         registry.digAt(track, 20);
         // Loading restores the (spline, s) saved before the edit.
@@ -523,6 +530,28 @@ class TrainReversePlacementTest {
         assertEquals(60, loco.v.getEntity().getLocation().getZ(), 1e-8);
         assertEquals(40, loco.getChild().getTrainHandler().getChild().getTrainHandler()
                 .v.getEntity().getLocation().getZ(), 1e-8);
+    }
+
+    @Test
+    void loadingTrainOntoTrackReversedWhileUnloadedUnbindsIt() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        inWorld(loco, "world");
+        // Entity yaw 0 and bone yaw 0: the model faces +z, the track's +s.
+        savedBoneYaw(loco, 0);
+        registry.onRebuilt(null);
+        List<double[]> reversed = new ArrayList<>(track.xyz());
+        Collections.reverse(reversed);
+        registry.replace(TrackSpline.fromPoints(track.getId(), "world", false, reversed));
+        loco.applyConsist(new ConsistData(null, null, track.getId().toString(), 60d, 1));
+        loco.placeLoadedCars();
+        assertFalse(loco.isBound(), "A train must not come back facing the other way");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0, true", "45, true", "-45, true", "90, false", "180, false", "-120, false"})
+    void modelMustFaceAlongTrackToRebind(float modelYaw, boolean along) {
+        assertEquals(along, TrainHandler.facesAlong(modelYaw, new TrackPose(0, 64, 0, 0f, 0f)));
     }
 
     @Test
@@ -714,6 +743,16 @@ class TrainReversePlacementTest {
                 car = car.hasChild() ? car.getChild().getTrainHandler() : null) {
             when(car.v.getEntity().getWorld()).thenReturn(world);
         }
+    }
+
+    private static void savedBoneYaw(TrainHandler loco, float yaw) {
+        SimpleManualAnimator animator = stub(SimpleManualAnimator.class);
+        when(animator.getRotation()).thenReturn(new Quaternionf().rotateYXZ((float) Math.toRadians(yaw), 0, 0));
+        BoneRotator rotator = stub(BoneRotator.class);
+        when(rotator.getAnimator()).thenReturn(animator);
+        BehaviourHandler behaviour = stub(BehaviourHandler.class);
+        when(behaviour.getRotator()).thenReturn(rotator);
+        when(loco.v.getBehaviourHandler()).thenReturn(behaviour);
     }
 
     private static void inWorld(TrainHandler loco, String name) {

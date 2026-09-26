@@ -13,6 +13,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.Vector;
+import org.joml.Quaternionf;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
@@ -706,7 +707,7 @@ public class TrainHandler {
 		if (current != null && onTrack(current.sampleAt(s), at)) {
 			return;
 		}
-		TrackMatch match = nearestTrack(registry.inWorld(v.getEntity().getWorld().getName()), at);
+		TrackMatch match = nearestTrack(registry.inWorld(v.getEntity().getWorld().getName()), at, savedModelYaw());
 		if (match == null) {
 			PersistenceLog.append("RETRACK_LOAD none " + PersistenceLog.vehicle(v));
 			unbind();
@@ -877,7 +878,7 @@ public class TrainHandler {
 		if (splineId == null || old == null || rebuilt == null || !splineId.equals(old.getId())) {
 			return;
 		}
-		TrackMatch match = nearestTrack(rebuilt, old.sampleAt(s));
+		TrackMatch match = nearestTrack(rebuilt, old.sampleAt(s), null);
 		if (match != null) {
 			moveTo(VehicleFramework.getTrackRegistry(), match);
 		}
@@ -886,14 +887,18 @@ public class TrainHandler {
 	private record TrackMatch(TrackSpline spline, double s) {
 	}
 
-	/** The closest point on these tracks that counts as the same place, preferring the current track. */
-	private TrackMatch nearestTrack(Collection<TrackSpline> candidates, TrackPose was) {
+	/**
+	 * The closest point on these tracks that counts as the same place,
+	 * preferring the current track. With {@code facing}, only track whose +s
+	 * runs the way the model faces qualifies; the consist cannot face -s.
+	 */
+	private TrackMatch nearestTrack(Collection<TrackSpline> candidates, TrackPose was, Float facing) {
 		TrackMatch best = null;
 		double bestD = Double.POSITIVE_INFINITY;
 		for (TrackSpline candidate : candidates) {
 			double candidateS = candidate.nearestS(was.x, was.y, was.z);
 			TrackPose at = candidate.sampleAt(candidateS);
-			if (!onTrack(at, was)) {
+			if (!onTrack(at, was) || (facing != null && !facesAlong(facing, at))) {
 				continue;
 			}
 			double d = Math.pow(at.x - was.x, 2) + Math.pow(at.y - was.y, 2) + Math.pow(at.z - was.z, 2);
@@ -904,6 +909,28 @@ public class TrainHandler {
 			}
 		}
 		return best;
+	}
+
+	/**
+	 * World yaw the model faced when saved. applyPose turns the bone to the
+	 * track's +s heading relative to the entity, so undo that. Null without a rotator.
+	 */
+	private Float savedModelYaw() {
+		if (v == null || v.getEntity() == null || v.getBehaviourHandler() == null) {
+			return null;
+		}
+		BoneRotator rotator = v.getBehaviourHandler().getRotator();
+		if (rotator == null || rotator.getAnimator() == null || rotator.getAnimator().getRotation() == null) {
+			return null;
+		}
+		float boneYaw = new ConvertedAngle(new Quaternionf(rotator.getAnimator().getRotation())).getYaw();
+		return ConvertedAngle.wrapDegrees(v.getEntity().getLocation().getYaw() - boneYaw);
+	}
+
+	// Loose enough for curves and turnouts, tight enough to reject crossings and reversed track.
+	static boolean facesAlong(float modelYaw, TrackPose pose) {
+		float trackYaw = TrackSplineMotion.worldHeading(null, pose, 1).getYaw();
+		return Math.abs(ConvertedAngle.wrapDegrees(trackYaw - modelYaw)) <= 60f;
 	}
 
 	private static boolean onTrack(TrackPose at, TrackPose was) {
