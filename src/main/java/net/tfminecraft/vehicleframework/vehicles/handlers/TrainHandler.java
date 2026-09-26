@@ -1131,7 +1131,8 @@ public class TrainHandler {
 		for (int i = 0; i < next.size(); i++) {
 			CarPlacement from = previous.get(i);
 			CarPlacement to = next.get(i);
-			if (TrainBlockCollision.blocked(to.vehicle.getEntity(), from.pose(), to.pose())) {
+			if (TrainBlockCollision.blocked(to.vehicle.getEntity(), from.spline, from.s,
+					to.spline, to.s, reach(to.vehicle.getTrainHandler()))) {
 				return false;
 			}
 		}

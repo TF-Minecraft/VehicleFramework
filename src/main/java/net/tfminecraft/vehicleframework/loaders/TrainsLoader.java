@@ -43,6 +43,8 @@ public class TrainsLoader {
 		Cache.trackSnapDistance = Math.max(0.5, config.getDouble("snap-distance", 3.0));
 		Cache.trackDisplayYOffset = config.getDouble("display-y-offset", 0.5);
 		Cache.trackVehicleYOffset = config.getDouble("vehicle-y-offset", 0.5);
+		Cache.trainClearanceWidth = Math.max(0.5, config.getDouble("clearance.width", 3.0));
+		Cache.trainClearanceHeight = Math.max(0.5, config.getDouble("clearance.height", 3.0));
 		Cache.trackMaxTurnDegrees = Math.max(1.0, config.getDouble("max-turn-degrees", 25.0));
 		Cache.trackMinLayDistance = Math.max(1.0, config.getDouble("min-lay-distance", 8.0));
 		Cache.trackJoinDistance = Math.max(0.25, config.getDouble("join-distance", 1.5));
