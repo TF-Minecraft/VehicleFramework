@@ -51,6 +51,11 @@ public class Connector {
 		return offsetAt(pose).add(new Vector(pose.x, pose.y, pose.z));
 	}
 
+	/**
+	 * Places a car so this coupler meets {@code target} seen from above. The car keeps the
+	 * height of its own rail: where the grade changes between two cars, their couplers
+	 * sit at different heights, and meeting exactly would lift or sink the car off its track.
+	 */
 	public TrackPose coupledPose(TrackPose nominal, Vector target) {
 		double dx = target.getX() - nominal.x;
 		double dz = target.getZ() - nominal.z;
@@ -58,7 +63,7 @@ public class Connector {
 				? (float) Math.toDegrees(Math.atan2(-dx, dz)) : nominal.yaw;
 		TrackPose facing = new TrackPose(nominal.x, nominal.y, nominal.z, yaw, nominal.pitch);
 		Vector offset = offsetAt(facing);
-		return new TrackPose(target.getX() - offset.getX(), target.getY() - offset.getY(),
+		return new TrackPose(target.getX() - offset.getX(), nominal.y,
 				target.getZ() - offset.getZ(), yaw, nominal.pitch);
 	}
 

@@ -58,9 +58,25 @@ class ConnectorTest {
         TrackPose nominal = new TrackPose(96, 64, 194, yaw - 25, pitch);
         TrackPose coupled = front.coupledPose(nominal, back.positionAt(parent));
         Vector renderedFront = renderedAnchor(coupled, PASSENGER_FRONT, new Vector3f(), -entityYaw, size);
-        assertEquals(0, expectedBack.distance(renderedFront), 1e-5);
+        // Couplers meet seen from above; the car stays at its own rail height.
+        assertEquals(0, Math.hypot(expectedBack.getX() - renderedFront.getX(),
+                expectedBack.getZ() - renderedFront.getZ()), 1e-5);
+        assertEquals(nominal.y, coupled.y, 1e-9);
         assertEquals(pitch, coupled.pitch);
         assertEquals(new Vector3f(0, 15f / 16, 78f / 16), PASSENGER_FRONT);
+    }
+
+    @Test
+    void carOnLevelTrackBehindLocomotiveOnGradeStaysOnItsRail() {
+        // Lab case: locomotive 11 degrees nose down, passenger car still on the level.
+        Connector back = connector(LOCO_BACK, LOCO_PIVOT, 88, new Vector3f(1));
+        Connector front = connector(PASSENGER_FRONT, new Vector3f(), 88, new Vector3f(1));
+        TrackPose loco = new TrackPose(5449.57, 430.384, 3462.5, 88.4f, 11.1f);
+        TrackPose nominal = new TrackPose(5457.82, 432.0, 3462.49, 88.4f, 0f);
+        TrackPose coupled = front.coupledPose(nominal, back.positionAt(loco));
+        assertEquals(432.0, coupled.y, 1e-9);
+        assertEquals(nominal.x, coupled.x, 0.5);
+        assertEquals(nominal.z, coupled.z, 0.5);
     }
 
     private static Vector renderedAnchor(TrackPose pose, Vector3f point, Vector3f pivot,
