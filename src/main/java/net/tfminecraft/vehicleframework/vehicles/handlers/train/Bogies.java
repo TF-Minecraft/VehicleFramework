@@ -2,6 +2,7 @@ package net.tfminecraft.vehicleframework.vehicles.handlers.train;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import org.bukkit.util.Vector;
 
@@ -19,63 +20,137 @@ import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
  * A carriage on two bogies, as real coaches are built. The body rests on the rail under
  * each bogie, so it lies along the line between them, and each bogie turns and tilts to
  * follow the rail under it. Bogie bones must pivot at the bogie's centre, and the body
- * rotator must pivot at the model's origin.
+ * rotator must pivot at the model's origin. A vehicle's skins share its bogie config, so
+ * each model is checked for the bogie bones: one without them places the car rigid.
  */
 public final class Bogies {
 	// Bogies closer than this along the car cannot set the body's angle.
 	static final double MIN_SPAN = 0.25;
 	private final List<String> bones;
 	private ActiveVehicle v;
+	private final RotatorFactory rotatorFactory;
 	private final List<BoneRotator> rotators = new ArrayList<>();
 	// Along the car from the model's origin, in blocks; +z faces +s.
 	private double[] offsets;
+	// The model the offsets and rotators were taken from. A skin change brings another.
+	private ActiveModel readyFor;
+	// A model without both bogie bones, such as a skin built without bogies: placed rigid.
+	private ActiveModel missingFor;
+
+	/** Makes the rotator that turns one bogie bone. */
+	interface RotatorFactory {
+		BoneRotator create(ActiveVehicle v, ModelBone bone);
+	}
 
 	public Bogies(List<String> bones) {
 		this.bones = List.copyOf(bones);
+		this.rotatorFactory = null;
 	}
 
 	public Bogies(ActiveVehicle v, Bogies another) {
-		this.bones = another.bones;
-		this.v = v;
+		this(v, another.bones, (car, bone) -> new BoneRotator(car, car.getEntity(), bone, new RotationLimits()));
 	}
 
-	/** Whether this car has two bogies and its model is loaded. */
+	Bogies(ActiveVehicle v, List<String> bones, RotatorFactory rotatorFactory) {
+		this.bones = List.copyOf(bones);
+		this.v = v;
+		this.rotatorFactory = rotatorFactory;
+	}
+
+	/**
+	 * Whether this car rests on two bogies of its current model. A model without both
+	 * bogie bones, as a skin may be, places the car as a rigid one.
+	 */
 	public boolean isReady() {
 		if (bones.size() != 2 || v == null) {
 			return false;
 		}
-		if (offsets != null) {
-			return true;
-		}
+		ActiveModel model;
 		try {
-			ActiveModel model = v.getModel();
-			double[] found = new double[2];
-			List<BoneRotator> made = new ArrayList<>();
-			ModelBone[] foundBones = new ModelBone[2];
-			for (int i = 0; i < 2; i++) {
-				foundBones[i] = model.getBone(bones.get(i)).orElseThrow();
-				found[i] = foundBones[i].getBlueprintBone().getRotatedGlobalPosition().z() * model.getScale().z();
-			}
-			if (Math.abs(found[0] - found[1]) < MIN_SPAN) {
-				// Both bogies at one point along the car: nothing to rest the body between.
-				return false;
-			}
-			for (ModelBone bone : foundBones) {
-				made.add(new BoneRotator(v, v.getEntity(), bone, new RotationLimits()));
-			}
-			rotators.addAll(made);
-			offsets = found;
-			return true;
+			model = v.getModel();
 		} catch (RuntimeException notLoaded) {
-			// The model or its bones are not there yet; place the car as a rigid one.
 			return false;
 		}
+		if (model == null) {
+			return false;
+		}
+		if (model == readyFor) {
+			return true;
+		}
+		if (model == missingFor) {
+			return false;
+		}
+		release();
+		double[] found;
+		try {
+			found = find(model);
+		} catch (RuntimeException notLoaded) {
+			// The model's bones are not there yet; place the car as a rigid one.
+			return false;
+		}
+		if (found == null) {
+			missingFor = model;
+			return false;
+		}
+		for (String name : bones) {
+			rotators.add(rotatorFactory.create(v, model.getBone(name).orElseThrow()));
+		}
+		offsets = found;
+		readyFor = model;
+		return true;
 	}
 
+	/**
+	 * Follows the vehicle to a new model, as on a skin change. Bogies the new model also
+	 * has keep their angles; otherwise the car is set up again for the new model.
+	 */
 	public void updateModel(ActiveModel model) {
+		missingFor = null;
+		double[] found = null;
+		if (model != null && readyFor != null) {
+			try {
+				found = find(model);
+			} catch (RuntimeException notLoaded) {
+				found = null;
+			}
+		}
+		if (found == null) {
+			release();
+			return;
+		}
 		for (BoneRotator rotator : rotators) {
 			rotator.updateModel(model);
 		}
+		offsets = found;
+		readyFor = model;
+	}
+
+	// Each bogie's offset along the car on this model, or null if it lacks a bogie bone
+	// or has both bogies at one point.
+	private double[] find(ActiveModel model) {
+		double[] found = new double[2];
+		for (int i = 0; i < 2; i++) {
+			Optional<ModelBone> bone = model.getBone(bones.get(i));
+			if (bone.isEmpty()) {
+				return null;
+			}
+			found[i] = bone.get().getBlueprintBone().getRotatedGlobalPosition().z() * model.getScale().z();
+		}
+		if (Math.abs(found[0] - found[1]) < MIN_SPAN) {
+			// Both bogies at one point along the car: nothing to rest the body between.
+			return null;
+		}
+		return found;
+	}
+
+	// Drop the rotators of the last model, so they are not saved or turned for bones it no longer has.
+	private void release() {
+		if (!rotators.isEmpty()) {
+			v.getAccessPanel().getRotators().removeAll(rotators);
+			rotators.clear();
+		}
+		offsets = null;
+		readyFor = null;
 	}
 
 	/** Along the car from the model's origin to each bogie, in blocks, +z facing +s. */
