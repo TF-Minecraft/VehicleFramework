@@ -11,8 +11,10 @@ import com.ticxo.modelengine.api.animation.BlueprintAnimation;
 import com.ticxo.modelengine.api.animation.property.IAnimationProperty;
 import com.ticxo.modelengine.api.animation.property.SimpleProperty;
 import com.ticxo.modelengine.api.model.ActiveModel;
+import com.ticxo.modelengine.api.utils.data.io.SavedData;
 
 import net.tfminecraft.vehicleframework.enums.Animation;
+import net.tfminecraft.vehicleframework.enums.Direction;
 
 public class AnimationHandler {
 	private HashMap<Animation, List<String>> animations = new HashMap<>();
@@ -79,6 +81,82 @@ public class AnimationHandler {
 		m.getAnimationHandler().playAnimation(new SimpleProperty(m, anim), true);
 	}
 	
+	/**
+	 * Holds train wheels at rest and matches the phase of paired, mirrored movement
+	 * loops on reversal. Forward/backward animation lists pair by their configured order.
+	 */
+	public void animateWheels(Direction direction, double speed) {
+		if (m == null) {
+			return;
+		}
+		if (direction == Direction.STILL || speed == 0) {
+			pauseWheels(Animation.FORWARD);
+			pauseWheels(Animation.BACKWARD);
+			return;
+		}
+		Animation target = direction == Direction.BACKWARD ? Animation.BACKWARD : Animation.FORWARD;
+		Animation opposite = target == Animation.FORWARD ? Animation.BACKWARD : Animation.FORWARD;
+		List<String> names = animations.get(target);
+		List<String> previous = animations.get(opposite);
+		var engine = m.getAnimationHandler();
+		for (int i = 0; i < names.size(); i++) {
+			String name = names.get(i);
+			BlueprintAnimation blueprint = m.getBlueprint().getAnimations().get(name);
+			if (blueprint == null) {
+				continue;
+			}
+			IAnimationProperty playing = engine.getAnimation(name);
+			if (playing == null || playing.isEnded()) {
+				SimpleProperty next = new SimpleProperty(m, blueprint);
+				IAnimationProperty from = i < previous.size() ? engine.getAnimation(previous.get(i)) : null;
+				if (from != null && !from.isEnded()
+						&& from.getBlueprintAnimation().getLoopMode() == BlueprintAnimation.LoopMode.LOOP
+						&& blueprint.getLoopMode() == BlueprintAnimation.LoopMode.LOOP
+						&& from.getBlueprintAnimation().getLength() > 0 && blueprint.getLength() > 0) {
+					double phase = Math.max(0, Math.min(1,
+							from.getTime() / from.getBlueprintAnimation().getLength()));
+					seek(next, (1 - phase) * blueprint.getLength());
+				}
+				next.setSpeed(speed);
+				engine.playAnimation(next, true);
+			} else {
+				if (blueprint.getLoopMode() == BlueprintAnimation.LoopMode.LOOP) {
+					playing.setForceLoopMode(null);
+				}
+				playing.setSpeed(speed);
+			}
+		}
+		for (String name : previous) {
+			if (!names.contains(name)) {
+				engine.forceStopAnimation(name);
+			}
+		}
+	}
+
+	private void pauseWheels(Animation direction) {
+		for (String name : animations.get(direction)) {
+			IAnimationProperty playing = m.getAnimationHandler().getAnimation(name);
+			if (playing != null) {
+				// LOOP at speed zero wraps its endpoint to frame zero; HOLD retains it.
+				if (playing.getBlueprintAnimation().getLoopMode() == BlueprintAnimation.LoopMode.LOOP) {
+					playing.setForceLoopMode(BlueprintAnimation.LoopMode.HOLD);
+				}
+				playing.setSpeed(0);
+			}
+		}
+	}
+
+	// ModelEngine exposes seeking through its saved playback state, not a time setter.
+	// Seed both times and enter PLAY so the first update does not reset to frame zero.
+	private static void seek(SimpleProperty animation, double time) {
+		SavedData state = new SavedData();
+		animation.save(state);
+		state.putDouble("time", time);
+		state.putDouble("last_time", time);
+		state.putString("phase", IAnimationProperty.Phase.PLAY.name());
+		animation.load(state);
+	}
+
 	public void stopAllAnimations() {
 		for(Animation a : animations.keySet()) {
 			stop(a);

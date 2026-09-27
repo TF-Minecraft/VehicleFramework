@@ -15,6 +15,7 @@ import net.tfminecraft.vehicleframework.enums.Animation;
 import net.tfminecraft.vehicleframework.enums.Direction;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.controller.VehicleMovementController;
+import net.tfminecraft.vehicleframework.vehicles.handlers.state.AnimationHandler;
 
 class TrainWheelSpinTest {
     @Test
@@ -30,17 +31,15 @@ class TrainWheelSpinTest {
         TrainHandler first = car(1.0);
         loco.setChild(first.v);
         loco.animateMove(Direction.FORWARD, 0.5);
-        verify(loco.v.getMoveControls()).animateMove(Direction.FORWARD);
-        verify(loco.v).setAnimationSpeed(Animation.FORWARD, 0.5 * 20 / (Math.PI * 1.875));
-        verify(first.v.getMoveControls()).animateMove(Direction.FORWARD);
-        verify(first.v).setAnimationSpeed(Animation.FORWARD, 0.5 * 20 / Math.PI);
+        verify(loco.v.getAnimationHandler()).animateWheels(Direction.FORWARD, 0.5 * 20 / (Math.PI * 1.875));
+        verify(first.v.getAnimationHandler()).animateWheels(Direction.FORWARD, 0.5 * 20 / Math.PI);
     }
 
     @Test
     void backwardMoveSetsBackwardAnimationSpeed() {
         TrainHandler loco = car(1.0);
         loco.animateMove(Direction.BACKWARD, -0.25);
-        verify(loco.v).setAnimationSpeed(Animation.BACKWARD, 0.25 * 20 / Math.PI);
+        verify(loco.v.getAnimationHandler()).animateWheels(Direction.BACKWARD, 0.25 * 20 / Math.PI);
     }
 
     @Test
@@ -52,10 +51,11 @@ class TrainWheelSpinTest {
     }
 
     @Test
-    void stoppingDoesNotChangeWheelSpeed() {
+    void stoppingPausesWheelsWithoutStoppingTheAnimation() {
         TrainHandler loco = car(1.0);
         loco.animateMove(Direction.STILL);
-        verify(loco.v.getMoveControls()).animateMove(Direction.STILL);
+        verify(loco.v.getAnimationHandler()).animateWheels(Direction.STILL, 0);
+        verify(loco.v.getMoveControls(), never()).animateMove(Direction.STILL);
         verify(loco.v, never()).setAnimationSpeed(eq(Animation.FORWARD), anyDouble());
         verify(loco.v, never()).setAnimationSpeed(eq(Animation.BACKWARD), anyDouble());
     }
@@ -66,6 +66,7 @@ class TrainWheelSpinTest {
         TrainHandler handler = new TrainHandler(config);
         ActiveVehicle vehicle = mock(ActiveVehicle.class);
         when(vehicle.getMoveControls()).thenReturn(mock(VehicleMovementController.class));
+        when(vehicle.getAnimationHandler()).thenReturn(mock(AnimationHandler.class));
         when(vehicle.getTrainHandler()).thenReturn(handler);
         handler.v = vehicle;
         return handler;
