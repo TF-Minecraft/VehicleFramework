@@ -15,6 +15,10 @@ passenger_car:
         train:
             # Blocks across the wheels, so they turn at the train's speed.
             wheel-diameter: 1.0
+            # Rest the body on its two bogies, each following its own rail.
+            bogies:
+                - bogey
+                - bogey2
             front-connector: connector_front
             back-connector: connector_back
     states:

@@ -55,6 +55,7 @@ import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.component.fuel.FuelTank;
 import net.tfminecraft.vehicleframework.vehicles.handlers.container.Container;
+import net.tfminecraft.vehicleframework.vehicles.handlers.train.Bogies;
 import net.tfminecraft.vehicleframework.vehicles.handlers.train.Connector;
 import net.tfminecraft.vehicleframework.vehicles.handlers.train.LocomotiveOverdrive;
 
@@ -91,10 +92,15 @@ public class TrainHandler {
 	private final ThrottleTape.DwellState tapeDwell = new ThrottleTape.DwellState();
 	// Blocks across the wheels. With it, the move animations turn at the train's speed.
 	private double wheelDiameter;
+	// Two-bogie carriages rest on the rail under each bogie instead of their centre.
+	private Bogies bogies;
 	
 	public TrainHandler(ConfigurationSection config) {
 		locomotive = config.getBoolean("locomotive", false);
 		wheelDiameter = Math.max(0, config.getDouble("wheel-diameter", 0));
+		if (config.contains("bogies")) {
+			bogies = new Bogies(config.getStringList("bogies"));
+		}
 		if(config.contains("front-connector")) {
 			front = new Connector(config.getString("front-connector"));
 		}
@@ -114,6 +120,9 @@ public class TrainHandler {
 		locomotive = another.locomotive;
 		wheelDiameter = another.wheelDiameter;
 		this.v = v;
+		if (another.bogies != null) {
+			bogies = new Bogies(v, another.bogies);
+		}
 		if(another.isAttachable()) {
 			front = new Connector(v, another.getFront());
 		}
@@ -140,6 +149,9 @@ public class TrainHandler {
 	}
 
 	public void updateModel(ActiveModel m) {
+		if (bogies != null) {
+			bogies.updateModel(m);
+		}
 		if(isAttachable()) {
 			front.updateModel(m);
 		}
@@ -765,7 +777,48 @@ public class TrainHandler {
 	}
 
 	private record CarPlacement(ActiveVehicle vehicle, TrackSpline spline, double s, int sign,
-			double missingSpacing, TrackPose pose) {
+			double missingSpacing, TrackPose pose, TrackPose[] bogieRails) {
+		CarPlacement(ActiveVehicle vehicle, TrackSpline spline, double s, int sign,
+				double missingSpacing, TrackPose pose) {
+			this(vehicle, spline, s, sign, missingSpacing, pose, null);
+		}
+	}
+
+	// The junction route the consist is placed along, so bogies can straddle a junction.
+	private record Route(TrackRegistry registry, boolean takeBranch, UUID stemId, UUID branchId,
+			double junctionS, int facingSign, double stemLength, boolean stemLoop, double branchLength) {
+		/** The rail at {@code offset} along the track from {@code s}, following the route. */
+		TrackPose rail(UUID splineId, double s, double offset) {
+			TrackJunctionTravel.Pose at = TrackJunctionTravel.rewind(splineId, s, offset > 0 ? -1 : 1,
+					Math.abs(offset), takeBranch, stemId == null ? splineId : stemId, branchId, junctionS,
+					facingSign, stemLength, stemLoop, branchLength);
+			TrackSpline spline = at.splineId == null ? null : registry.get(at.splineId).orElse(null);
+			if (spline == null) {
+				return null;
+			}
+			if (at.missingSpacing <= 1e-9) {
+				return spline.sampleAt(at.s);
+			}
+			// Past the end of the route: carry on straight off that end.
+			double outwards = at.s <= 1e-9 ? -1 : 1;
+			return Bogies.rail(spline, at.s + outwards * at.missingSpacing);
+		}
+	}
+
+	// A bogie car's two rails along the route, or null to place it as a rigid car.
+	private TrackPose[] bogieRails(Route route, UUID onSpline, double at) {
+		if (!onBogies() || route == null) {
+			return null;
+		}
+		double[] offsets = bogies.offsets();
+		TrackPose[] rails = new TrackPose[offsets.length];
+		for (int i = 0; i < offsets.length; i++) {
+			rails[i] = route.rail(onSpline, at, offsets[i]);
+			if (rails[i] == null) {
+				return null;
+			}
+		}
+		return rails;
 	}
 
 	private void applyPlacements(List<CarPlacement> placements) {
@@ -775,7 +828,14 @@ public class TrainHandler {
 			train.s = placement.s;
 			train.travelSign = placement.sign;
 			applyPose(placement.vehicle, placement.pose());
+			if (placement.bogieRails() != null) {
+				train.bogies.follow(placement.bogieRails(), placement.pose());
+			}
 		}
+	}
+
+	private boolean onBogies() {
+		return bogies != null && bogies.isReady();
 	}
 
 	private List<CarPlacement> planCars() {
@@ -784,21 +844,25 @@ public class TrainHandler {
 		if (spline == null) {
 			return placements;
 		}
-		placements.add(new CarPlacement(v, spline, s, travelSign, 0, spline.sampleAt(s)));
 		TrackRegistry registry = VehicleFramework.getTrackRegistry();
-		if (registry == null) {
-			return placements;
-		}
-		TrackJunction route = routeJunction();
+		TrackJunction route = registry == null ? null : routeJunction();
 		UUID stemId = route == null ? null : route.stemSplineId;
 		UUID branchId = route == null ? null : route.branchSplineId;
 		double junctionS = route == null ? 0 : route.s;
 		int facingSign = route == null ? 1 : route.facingSign;
-		TrackSpline stem = stemId == null ? null : registry.get(stemId).orElse(null);
-		TrackSpline branch = branchId == null ? null : registry.get(branchId).orElse(null);
+		TrackSpline stem = stemId == null || registry == null ? null : registry.get(stemId).orElse(null);
+		TrackSpline branch = branchId == null || registry == null ? null : registry.get(branchId).orElse(null);
 		double stemLength = stem == null ? spline.length() : stem.length();
 		boolean stemLoop = stem != null ? stem.isLoop() : spline.isLoop();
 		double branchLength = branch == null ? 0 : branch.length();
+		Route along = registry == null ? null : new Route(registry, takeBranch && route != null,
+				stemId, branchId, junctionS, facingSign, stemLength, stemLoop, branchLength);
+		TrackPose[] locoRails = bogieRails(along, splineId, s);
+		placements.add(new CarPlacement(v, spline, s, travelSign, 0,
+				locoRails == null ? spline.sampleAt(s) : bogies.bodyPose(locoRails), locoRails));
+		if (registry == null) {
+			return placements;
+		}
 		UUID parentSpline = splineId;
 		double parentS = s;
 		// Models face the +s tangent even in reverse. Couplers stay on that
@@ -836,8 +900,11 @@ public class TrainHandler {
 			}
 			TrackSpline carSpline = pose.splineId == null ? null : registry.get(pose.splineId).orElse(null);
 			if (carSpline != null) {
-				TrackPose carPose = carSpline.sampleAt(pose.s);
-				if (parentTrain.canHaveAttached() && carTrain.isAttachable() && pose.missingSpacing <= 1e-9) {
+				TrackPose[] rails = carTrain.bogieRails(along, pose.splineId, pose.s);
+				TrackPose carPose = rails == null ? carSpline.sampleAt(pose.s) : carTrain.bogies.bodyPose(rails);
+				// A car on bogies follows its own rails; its couplers swing to meet, as real ones do.
+				if (rails == null && parentTrain.canHaveAttached() && carTrain.isAttachable()
+						&& pose.missingSpacing <= 1e-9) {
 					// Arc spacing locates the car on the route; rigid couplers must meet
 					// in world space. A separate tangent at each centre opens a gap on bends.
 					TrackPose parentPose = placements.get(placements.size() - 1).pose();
@@ -847,7 +914,7 @@ public class TrainHandler {
 						// Keep the sampled pose until connector blueprints and model transforms load.
 					}
 				}
-				placements.add(new CarPlacement(car, carSpline, pose.s, carTravelSign, pose.missingSpacing, carPose));
+				placements.add(new CarPlacement(car, carSpline, pose.s, carTravelSign, pose.missingSpacing, carPose, rails));
 			} else {
 				return List.of();
 			}
