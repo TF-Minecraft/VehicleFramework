@@ -84,9 +84,7 @@ public class RepairManager implements Listener{
 		if(p == null || v == null) {
 			return;
 		}
-		VehicleRepairStartEvent startEvent = new VehicleRepairStartEvent(p, v);
-		Bukkit.getPluginManager().callEvent(startEvent);
-		if(startEvent.isCancelled()) {
+		if(!startAllowed(p, v)) {
 			return;
 		}
 		ItemStack i = p.getInventory().getItemInMainHand();
@@ -162,9 +160,20 @@ public class RepairManager implements Listener{
 		}
 	}
 	
+	/**
+	 * Fired when the repair menu opens and again when each repair or fire fight starts in it,
+	 * so a plugin that blocks repairs also blocks them from a menu that was already open.
+	 */
+	private static boolean startAllowed(Player p, ActiveVehicle v) {
+		VehicleRepairStartEvent startEvent = new VehicleRepairStartEvent(p, v);
+		Bukkit.getPluginManager().callEvent(startEvent);
+		return !startEvent.isCancelled();
+	}
+
 	public void repairComponent(Player p, ItemMeta m, NamespacedKey key, ActiveVehicle v ) {
 		Component type = Component.valueOf(m.getPersistentDataContainer().get(key, PersistentDataType.STRING).toUpperCase());
 		VehicleComponent c = v.getComponent(type);
+		if(c == null || !startAllowed(p, v)) return;
 		if(isBeingRepaired(c)) {
 			p.sendMessage("§cComponent is already under repair");
 			return;
@@ -177,7 +186,7 @@ public class RepairManager implements Listener{
 		if(c.isOnFire() && tool.equalsIgnoreCase("water")) {
 			c.getFire().fight();
 			p.getWorld().playSound(p.getLocation(), Sound.BLOCK_LAVA_EXTINGUISH, 1f, 1f);
-			repairing.get(p).updateBoard();
+			v.updateBoard();
 		} else if(c.getHealthData().getHealthPercentage() < 100 && tool.equalsIgnoreCase("repair")) {
 			c.getHealthData().startRepair();
 			p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 1f, 1f);
@@ -199,7 +208,7 @@ public class RepairManager implements Listener{
 	}
 	public void repairWeapon(Player p, ItemMeta m, NamespacedKey key, ActiveVehicle v) {
 		ActiveWeapon w = v.getWeaponHandler().getWeapon(m.getPersistentDataContainer().get(key, PersistentDataType.STRING));
-		if(w == null) return;
+		if(w == null || !startAllowed(p, v)) return;
 		if(isBeingRepaired(w)) {
 			p.sendMessage("§cWeapon is already under repair");
 			return;

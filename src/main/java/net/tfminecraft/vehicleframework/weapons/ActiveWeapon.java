@@ -103,6 +103,8 @@ public class ActiveWeapon {
 			moveControls.trackCursor(controller);
 		}
 		moveControls.move();
+		// Counts down a repair started from the repair menu, as components do.
+		healthData.tick();
 	}
 	
 	public String getId() {

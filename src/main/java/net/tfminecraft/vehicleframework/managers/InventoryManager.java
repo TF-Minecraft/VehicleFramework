@@ -168,7 +168,7 @@ public class InventoryManager {
 		ItemStack i = new ItemStack(Material.IRON_SHOVEL, 1);
 		ItemMeta m = i.getItemMeta();
 		m.setDisplayName("§7Repair Tool");
-		NamespacedKey key = new NamespacedKey(VehicleFramework.plugin, "wm_tool_type");
+		NamespacedKey key = new NamespacedKey(VehicleFramework.plugin, "vf_tool_type");
 		m.getPersistentDataContainer().set(key, PersistentDataType.STRING, "repair");
 		List<String> lore = new ArrayList<>();
 		if(tool.equalsIgnoreCase("repair")) {
