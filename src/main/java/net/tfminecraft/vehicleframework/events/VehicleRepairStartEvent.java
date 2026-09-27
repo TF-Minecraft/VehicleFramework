@@ -9,8 +9,8 @@ import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 
 /**
  * Fired when a player starts a vehicle repair: when the repair item opens the repair
- * menu (before seat/speed checks), and again when a component or weapon repair or a
- * fire fight starts from that menu. Cancel to block the repair.
+ * menu (before seat/speed checks), and again immediately before a component or weapon
+ * repair or a fire fight that would actually start. Cancel to block the repair.
  */
 public final class VehicleRepairStartEvent extends PlayerEvent implements Cancellable {
 	private static final HandlerList HANDLERS = new HandlerList();
