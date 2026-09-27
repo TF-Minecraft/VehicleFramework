@@ -47,6 +47,13 @@ time. Install the updated plugin and matching ServerAssets vehicle YAML,
 including `behaviour.train.locomotive: true` on the locomotive. Plugin updates
 do not overwrite existing vehicle configurations.
 
+## Train wheel animations
+
+Trains with `behaviour.train.wheel-diameter` hold their wheel pose while stopped
+and preserve it when changing direction. Their configured forward/backward
+animation lists pair by order; each pair must be mirrored looping animations of
+one wheel turn. Wheel speed continues to follow travel speed and wheel diameter.
+
 ## Track ends
 
 Set `behaviour.train.wheel-bones` to the model bones at the frontmost and rearmost

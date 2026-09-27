@@ -29,7 +29,6 @@ import net.tfminecraft.vehicleframework.database.ConsistData;
 import net.tfminecraft.vehicleframework.database.PersistenceLog;
 import net.tfminecraft.vehicleframework.database.VehicleRepository;
 import net.tfminecraft.vehicleframework.database.VehicleSnapshot;
-import net.tfminecraft.vehicleframework.enums.Animation;
 import net.tfminecraft.vehicleframework.enums.Direction;
 import net.tfminecraft.vehicleframework.managers.VehicleManager;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTape;
@@ -723,13 +722,14 @@ public class TrainHandler {
 	/**
 	 * Plays the move animation on every car. With a speed in blocks per tick, cars with a
 	 * wheel diameter turn their wheels to match it; the forward and backward animations
-	 * must turn the wheels once per second as authored.
+	 * must each contain one mirrored wheel turn.
 	 */
 	public void animateMove(Direction dir, double speed) {
-		v.getMoveControls().animateMove(dir);
-		if (dir != Direction.STILL && speed != 0 && wheelDiameter > 0) {
-			v.setAnimationSpeed(dir == Direction.BACKWARD ? Animation.BACKWARD : Animation.FORWARD,
-					wheelTurnsPerSecond(speed, wheelDiameter));
+		if (wheelDiameter > 0) {
+			v.getAnimationHandler().animateWheels(dir,
+					dir == Direction.STILL ? 0 : wheelTurnsPerSecond(speed, wheelDiameter));
+		} else {
+			v.getMoveControls().animateMove(dir);
 		}
 		if (hasChild()) {
 			child.getTrainHandler().animateMove(dir, speed);
