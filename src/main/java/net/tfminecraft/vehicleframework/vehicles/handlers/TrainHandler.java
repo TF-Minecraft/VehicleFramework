@@ -51,12 +51,15 @@ import net.tfminecraft.vehicleframework.tracks.TrackPose;
 import net.tfminecraft.vehicleframework.tracks.TrackRegistry;
 import net.tfminecraft.vehicleframework.tracks.TrackSpline;
 import net.tfminecraft.vehicleframework.tracks.RecorderLog;
+import net.tfminecraft.vehicleframework.VFLogger;
 import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.component.fuel.FuelTank;
 import net.tfminecraft.vehicleframework.vehicles.handlers.container.Container;
 import net.tfminecraft.vehicleframework.vehicles.handlers.train.Bogies;
 import net.tfminecraft.vehicleframework.vehicles.handlers.train.Connector;
+import net.tfminecraft.vehicleframework.vehicles.handlers.train.Deck;
+import net.tfminecraft.vehicleframework.vehicles.handlers.train.DeckBody;
 import net.tfminecraft.vehicleframework.vehicles.handlers.train.LocomotiveOverdrive;
 
 public class TrainHandler {
@@ -94,12 +97,22 @@ public class TrainHandler {
 	private double wheelDiameter;
 	// Two-bogie carriages rest on the rail under each bogie instead of their centre.
 	private Bogies bogies;
+	// A roof or other surface players can walk on, and the boxes that make it solid.
+	private Deck deck;
+	private DeckBody deckBody;
 	
 	public TrainHandler(ConfigurationSection config) {
 		locomotive = config.getBoolean("locomotive", false);
 		wheelDiameter = Math.max(0, config.getDouble("wheel-diameter", 0));
 		if (config.contains("bogies")) {
 			bogies = new Bogies(config.getStringList("bogies"));
+		}
+		if (config.contains("walkable")) {
+			deck = Deck.fromConfig(config.getConfigurationSection("walkable"));
+			if (deck == null) {
+				VFLogger.log("Ignoring walkable in " + config.getCurrentPath()
+						+ ": it needs x and z as [from, to] and a top height");
+			}
 		}
 		if(config.contains("front-connector")) {
 			front = new Connector(config.getString("front-connector"));
@@ -122,6 +135,10 @@ public class TrainHandler {
 		this.v = v;
 		if (another.bogies != null) {
 			bogies = new Bogies(v, another.bogies);
+		}
+		deck = another.deck;
+		if (deck != null) {
+			deckBody = new DeckBody(v, deck);
 		}
 		if(another.isAttachable()) {
 			front = new Connector(v, another.getFront());
@@ -146,6 +163,17 @@ public class TrainHandler {
 
 	public LocomotiveOverdrive getOverdrive() {
 		return overdrive;
+	}
+
+	/** The solid boxes of this car's walkable deck, or null if it has none. */
+	public DeckBody getDeckBody() {
+		return deckBody;
+	}
+
+	public void removeDeck() {
+		if (deckBody != null) {
+			deckBody.remove();
+		}
 	}
 
 	public void updateModel(ActiveModel m) {
@@ -1426,6 +1454,10 @@ public class TrainHandler {
 		entity.setGravity(false);
 		entity.teleport(next);
 		entity.setVelocity(new Vector(0, 0, 0));
+		DeckBody deckAt = vehicle.getTrainHandler().getDeckBody();
+		if (deckAt != null) {
+			deckAt.place(new Deck.Frame(next.getX(), next.getY(), next.getZ(), pose.yaw, pose.pitch));
+		}
 		if (vehicle.getBehaviourHandler() != null) {
 			BoneRotator rotator = vehicle.getBehaviourHandler().getRotator();
 			if (rotator != null) {

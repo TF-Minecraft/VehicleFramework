@@ -26,6 +26,7 @@ import net.tfminecraft.vehicleframework.database.LogWriter;
 import net.tfminecraft.vehicleframework.events.VFEntityDamageEvent;
 import net.tfminecraft.vehicleframework.events.VFExplosionEvent;
 import net.tfminecraft.vehicleframework.VehicleFramework;
+import net.tfminecraft.vehicleframework.vehicles.handlers.train.DeckBody;
 
 public class ExplosionCreator {
 
@@ -142,7 +143,7 @@ public class ExplosionCreator {
 	    	}
 	    }
 	    for (Entity entity : explosionCenter.getWorld().getNearbyEntities(explosionCenter, blastRadius, blastRadius, blastRadius)) {
-	        if (entity instanceof LivingEntity) { // Ensure it's a living entity (like players, mobs, etc.)
+	        if (entity instanceof LivingEntity && !DeckBody.isPart(entity)) { // Ensure it's a living entity (like players, mobs, etc.)
 	        	LivingEntity livingEntity = (LivingEntity) entity;
 	            double distance = livingEntity.getLocation().distance(explosionCenter);
 	            if (distance <= blastRadius) {
@@ -173,7 +174,7 @@ public class ExplosionCreator {
 	}
 	
 	public static void applyDamage(Entity e, double damage, String cause) {
-		if(!(e instanceof LivingEntity)) return;
+		if(!(e instanceof LivingEntity) || DeckBody.isPart(e)) return;
         if (e instanceof Player) {
         	Player player = (Player) e;
             double armorValue = player.getAttribute(Attribute.ARMOR).getValue(); // Get armor value

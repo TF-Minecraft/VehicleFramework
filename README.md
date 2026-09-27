@@ -47,6 +47,29 @@ time. Install the updated plugin and matching ServerAssets vehicle YAML,
 including `behaviour.train.locomotive: true` on the locomotive. Plugin updates
 do not overwrite existing vehicle configurations.
 
+## Walkable decks
+
+Train cars can have a deck that players walk on, and players standing on it ride
+along with the train. The flat car (`flat_car`, model in ServerAssets) is the only
+car that has one: an open deck with no seats, for riders to stand on. Set a deck
+under `behaviour.train.walkable` in a car's YAML, in the model's blocks from its
+origin:
+
+```yaml
+walkable:
+    x: [-1.5, 1.5]      # across the car
+    z: [-4.5, 4.5]      # along it; +z faces the front
+    top: 1.3125         # height of the deck
+    box-size: 1.5       # optional; at most 3
+```
+
+The deck is made of invisible shulkers, which players can stand on. Minecraft
+does not rotate their boxes, so on bends they overhang the car's corners a little;
+smaller boxes overhang less. Clicks and hits on the deck go to the car. Players are
+carried up to `walkable.carry-max-speed` in `trains.yml`, 1.0 blocks a tick by
+default; faster than that, the deck slides out from under them. Plugin updates do
+not overwrite existing vehicle configurations, so add `flat_car.yml` by hand.
+
 ## Documentation
 
 [User guide](https://github.com/TF-Minecraft/Docs/blob/main/projects/VehicleFramework/docs/playing.md): commands, models, vehicle YAML, weapons, and trains.

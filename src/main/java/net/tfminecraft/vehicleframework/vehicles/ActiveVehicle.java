@@ -534,7 +534,13 @@ public class ActiveVehicle {
 			try {
 				vehicleManager.unregister(entity);
 			} finally {
-				VehicleEntityCleanup.remove(entity);
+				try {
+					if (isTrain()) {
+						getTrainHandler().removeDeck();
+					}
+				} finally {
+					VehicleEntityCleanup.remove(entity);
+				}
 			}
 		}
 	}

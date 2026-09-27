@@ -1,0 +1,49 @@
+flat_car:
+    name: "§l§eFlat Car"
+    model: flat_car
+    fixed: true
+    skins:
+        flat_car:
+            name: "Flat Car"
+            model: flat_car
+    death:
+        template: explode_small
+    behaviour:
+        rotator: body
+        vector: connector_back.connector_front
+        tracked: true
+        train:
+            # Rest the body on its two bogies, each following its own rail.
+            bogies:
+                - bogey
+                - bogey2
+            # Blocks across the wheels, so they turn at the train's speed.
+            wheel-diameter: 1.0
+            # The deck players stand on and ride, in model blocks from its origin: x across
+            # the car, z along it and top is the height of the planks.
+            walkable:
+                x: [-1.5, 1.5]
+                z: [-4.5, 4.5]
+                top: 1.3125
+                # Smaller boxes keep above the rail and follow the car closer on bends.
+                box-size: 1.5
+            front-connector: connector_front
+            back-connector: connector_back
+    states:
+        ground:
+            animations:
+                forward:
+                    - forward
+                backward:
+                    - backward
+    # No seats: riders stand on the deck.
+    seats: []
+    components:
+        hull:
+            health: 30.0
+            repair-time: 100
+            damage-chance: 1.0
+            armor: emplacement
+            role: hull_emplacement
+            vfx:
+                - body
