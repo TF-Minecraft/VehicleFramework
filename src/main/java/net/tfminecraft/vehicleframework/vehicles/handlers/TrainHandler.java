@@ -722,7 +722,7 @@ public class TrainHandler {
 	/**
 	 * Plays the move animation on every car. With a speed in blocks per tick, cars with a
 	 * wheel diameter turn their wheels to match it; the forward and backward animations
-	 * must turn the wheels once per second as authored.
+	 * must each contain one mirrored wheel turn.
 	 */
 	public void animateMove(Direction dir, double speed) {
 		if (wheelDiameter > 0) {

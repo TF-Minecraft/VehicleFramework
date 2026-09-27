@@ -83,7 +83,7 @@ public class AnimationHandler {
 	
 	/**
 	 * Holds train wheels at rest and matches the phase of paired, mirrored movement
-	 * loops on reversal. Forward/backward animation lists pair by their configured order.
+	 * loops on reversal. Speed is wheel turns per second; lists pair by configured order.
 	 */
 	public void animateWheels(Direction direction, double speed) {
 		if (m == null) {
@@ -117,13 +117,13 @@ public class AnimationHandler {
 							from.getTime() / from.getBlueprintAnimation().getLength()));
 					seek(next, (1 - phase) * blueprint.getLength());
 				}
-				next.setSpeed(speed);
+				next.setSpeed(speed * blueprint.getLength());
 				engine.playAnimation(next, true);
 			} else {
 				if (blueprint.getLoopMode() == BlueprintAnimation.LoopMode.LOOP) {
 					playing.setForceLoopMode(null);
 				}
-				playing.setSpeed(speed);
+				playing.setSpeed(speed * blueprint.getLength());
 			}
 		}
 		for (String name : previous) {

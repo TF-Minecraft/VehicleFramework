@@ -172,6 +172,14 @@ class WheelAnimationPhaseTest {
         double before = angle();
         animations.animateWheels(Direction.BACKWARD, 1);
         assertEquals(before, angle(), 1e-8);
+        tick(1);
+        assertEquals(before + 17.75, angle(), 1e-8);
+        animations.animateWheels(Direction.STILL, 0);
+        tick(2);
+        before = angle();
+        animations.animateWheels(Direction.BACKWARD, 2);
+        tick(1);
+        assertEquals(before + 35.5, angle(), 1e-8);
     }
 
     @Test
