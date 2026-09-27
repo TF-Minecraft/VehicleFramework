@@ -6,6 +6,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
+import org.bukkit.event.world.EntitiesLoadEvent;
 
 import io.papermc.paper.event.player.PrePlayerAttackEntityEvent;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
@@ -41,6 +42,19 @@ public class DeckListener implements Listener {
 	public void interactAt(PlayerInteractAtEntityEvent e) {
 		if (DeckBody.isPart(e.getRightClicked())) {
 			e.setCancelled(true);
+		}
+	}
+
+	/**
+	 * Boxes are never saved, but a chunk kept in memory below full load hands its entities
+	 * back when it fully loads again. Any deck part no car is using is left over; remove it.
+	 */
+	@EventHandler
+	public void entitiesLoad(EntitiesLoadEvent e) {
+		for (Entity entity : e.getEntities()) {
+			if (DeckBody.isStray(entity)) {
+				entity.remove();
+			}
 		}
 	}
 }

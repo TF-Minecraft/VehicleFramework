@@ -99,8 +99,10 @@ The deck is made of invisible shulkers, which players can stand on. Minecraft
 does not rotate their boxes, so on bends they overhang the car's corners a little;
 smaller boxes overhang less. Clicks and hits on the deck go to the car. Players are
 carried up to `walkable.carry-max-speed` in `trains.yml`, 1.0 blocks a tick by
-default; faster than that, the deck slides out from under them. Plugin updates do
-not overwrite existing vehicle configurations, so add `flat_car.yml` by hand.
+default; faster than that, the deck slides out from under them. The boxes are
+never saved; any left behind when a car unloads are removed when their chunk
+loads again. Plugin updates do not overwrite existing vehicle configurations, so
+add `flat_car.yml` by hand.
 
 ## Documentation
 

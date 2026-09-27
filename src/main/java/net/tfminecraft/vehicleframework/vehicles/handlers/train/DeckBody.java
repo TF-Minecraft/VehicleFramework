@@ -74,6 +74,11 @@ public final class DeckBody {
 		return k != null && entity.getPersistentDataContainer().has(k, PersistentDataType.STRING);
 	}
 
+	/** Whether an entity is a deck box or display that no car's deck is using. */
+	public static boolean isStray(Entity entity) {
+		return entity != null && !PARTS.containsKey(entity.getUniqueId()) && isPart(entity);
+	}
+
 	/** Moves the deck to the car's new place, making its boxes the first time. */
 	public void place(Deck.Frame next) {
 		if (next == null || v.getEntity() == null || v.getEntity().getWorld() == null) {
@@ -145,18 +150,18 @@ public final class DeckBody {
 		forget();
 	}
 
+	// Removes every box whether or not Paper still counts it as valid. A chunk that drops
+	// out of full load marks its entities invalid before the unload events that remove the
+	// car, but keeps them in memory; skipped, they reappear as a deck with no car when the
+	// chunk is next fully loaded.
 	private void despawn() {
 		for (Shulker box : boxes) {
 			PARTS.remove(box.getUniqueId());
-			if (box.isValid()) {
-				box.remove();
-			}
+			box.remove();
 		}
 		for (ItemDisplay carrier : carriers) {
 			PARTS.remove(carrier.getUniqueId());
-			if (carrier.isValid()) {
-				carrier.remove();
-			}
+			carrier.remove();
 		}
 		boxes.clear();
 		carriers.clear();
