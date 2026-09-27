@@ -343,12 +343,8 @@ public final class TrackRegistry {
 		int previousCount = spline.getSamples().size();
 		List<TrackJunction> saved = List.copyOf(junctionsOn(spline.getId()));
 		TrackSample origin = end.prepend ? spline.first() : spline.last();
-		float yaw = origin.yaw;
-		if (end.prepend) {
-			yaw = yaw + 180f;
-		}
-		List<double[]> extra = TrackCurve.lay(
-				origin.x, origin.y, origin.z, yaw, x, y, z,
+		List<double[]> extra = TrackCurve.layAligned(
+				origin.x, origin.y, origin.z, endYaw(spline, end.prepend), x, y, z,
 				Cache.trackMinLayDistance, Cache.trackMaxTurnDegrees,
 				Cache.trackDesiredGradeDegrees, Cache.trackMaxGradeDegrees, TrackGenerate.STEP);
 		TrackClearance.check(bukkitWorld, extra, this, Set.of(spline.getId()));
@@ -372,6 +368,36 @@ public final class TrackRegistry {
 		TrackSpline stored = replace(next);
 		rehomeJunctions(saved, spline, false, stored);
 		return new StrokeLay(stored, extra, previousCount);
+	}
+
+	private static float endYaw(TrackSpline spline, boolean prepend) {
+		List<double[]> xyz = spline.xyz();
+		if (prepend) {
+			Collections.reverse(xyz);
+		}
+		// Skip points that nearly repeat, so the chords give a real direction.
+		double[] end = xyz.get(xyz.size() - 1);
+		double[] mid = null;
+		double[] back = null;
+		for (int i = xyz.size() - 2; i >= 0 && back == null; i--) {
+			double[] p = xyz.get(i);
+			if (mid == null) {
+				if (horizontal(p, end) >= 0.05) {
+					mid = p;
+				}
+			} else if (horizontal(p, mid) >= 0.05) {
+				back = p;
+			}
+		}
+		if (mid == null) {
+			TrackSample origin = prepend ? spline.first() : spline.last();
+			return prepend ? origin.yaw + 180f : origin.yaw;
+		}
+		return TrackCurve.endYaw(back, mid, end);
+	}
+
+	private static double horizontal(double[] a, double[] b) {
+		return Math.hypot(b[0] - a[0], b[2] - a[2]);
 	}
 
 	private StrokeLay closeLoop(TrackEnd from, TrackEnd to, World bukkitWorld) throws TrackLayException {

@@ -10,6 +10,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import net.tfminecraft.vehicleframework.cache.Cache;
+
 class TrackRegistryJoinTest {
 
 	@Test
@@ -21,6 +23,72 @@ class TrackRegistryJoinTest {
 		assertEquals(id, second.getId());
 		assertTrue(second.length() > first.length());
 		assertEquals(1, registry.inWorld("world").size());
+	}
+
+	@Test
+	void extendingAlongRow_settlesOnRowInsteadOfWaving(@TempDir java.nio.file.Path dir) throws Exception {
+		TrackRegistry registry = new TrackRegistry(dir.toFile());
+		// First piece arrives at the row 5 degrees off, as on the Main line.
+		double rad = Math.toRadians(95);
+		registry.lay("world", 20.5 + 20 * Math.sin(rad), 64, 0.5 - 20 * Math.cos(rad), 20.5, 64, 0.5);
+		double x = 20.5;
+		TrackSpline spline = null;
+		for (int d : new int[] {12, 9, 14, 11, 13}) {
+			spline = registry.lay("world", x, 64, 0.5, x - d, 64, 0.5).spline();
+			x -= d;
+		}
+		assertEquals(90f, spline.last().yaw, 0.05f);
+		for (TrackSample sample : spline.getSamples()) {
+			if (sample.x < 20.5 - 12) {
+				assertEquals(0.5, sample.z, 1e-6);
+			}
+		}
+	}
+
+	@Test
+	void extendingAlongRow_largeErrorShrinksEachClick(@TempDir java.nio.file.Path dir) throws Exception {
+		double maxTurn = Cache.trackMaxTurnDegrees;
+		Cache.trackMaxTurnDegrees = 35;
+		try {
+			largeErrorShrinks(dir);
+		} finally {
+			Cache.trackMaxTurnDegrees = maxTurn;
+		}
+	}
+
+	private static void largeErrorShrinks(java.nio.file.Path dir) throws Exception {
+		TrackRegistry registry = new TrackRegistry(dir.toFile());
+		// Lab replay of Main: the rail reached the row 14 degrees off, and short
+		// clicks along it kept the full error, flipping side every click.
+		double rad = Math.toRadians(104);
+		registry.lay("world", 20.5 + 20 * Math.sin(rad), 64, 0.5 - 20 * Math.cos(rad), 20.5, 64, 0.5);
+		double x = 20.5;
+		double error = 14;
+		TrackSpline spline = null;
+		for (int d : new int[] {8, 13, 12, 12, 13}) {
+			spline = registry.lay("world", x, 64, 0.5, x - d, 64, 0.5).spline();
+			x -= d;
+			int n = spline.getSamples().size();
+			double next = Math.abs(TrackCurve.endYaw(
+					spline.xyz().get(n - 3), spline.xyz().get(n - 2), spline.xyz().get(n - 1)) - 90);
+			assertTrue(next < error || next < 0.05, "error " + next + " after " + error);
+			error = next;
+		}
+		assertEquals(0, error, 0.05);
+	}
+
+	@Test
+	void extendingFromEndWithRepeatedPoint_keepsHeading(@TempDir java.nio.file.Path dir) throws Exception {
+		TrackRegistry registry = new TrackRegistry(dir.toFile());
+		registry.replace(TrackSpline.fromPoints(UUID.randomUUID(), "world", false, List.of(
+				new double[] {0.5, 64, 0.5},
+				new double[] {5.5, 64, 0.5},
+				new double[] {10.5, 64, 0.5},
+				new double[] {10.5, 64, 0.5})));
+		TrackSpline extended = registry.lay("world", 10.5, 64, 0.5, 22.5, 64, 0.5).spline();
+		for (TrackSample sample : extended.getSamples()) {
+			assertEquals(0.5, sample.z, 1e-6);
+		}
 	}
 
 	@Test
