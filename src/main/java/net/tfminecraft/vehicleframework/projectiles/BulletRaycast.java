@@ -22,6 +22,7 @@ import net.tfminecraft.vehicleframework.util.ImpactVfx;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.weapons.ActiveWeapon;
 import net.tfminecraft.vehicleframework.weapons.Weapon;
+import net.tfminecraft.vehicleframework.vehicles.handlers.train.DeckBody;
 import net.tfminecraft.vehicleframework.weapons.ammunition.Bullet;
 import net.tfminecraft.vehicleframework.weapons.ammunition.data.AmmunitionData;
 
@@ -88,7 +89,8 @@ public final class BulletRaycast {
 	}
 
 	private static boolean isValidTarget(Entity entity, Set<Entity> ignoreEntities) {
-		if (ignoreEntities.contains(entity)) {
+		// Walkable deck boxes are invisible; shots go through them to the car.
+		if (ignoreEntities.contains(entity) || DeckBody.isPart(entity)) {
 			return false;
 		}
 		if (entity instanceof LivingEntity living) {

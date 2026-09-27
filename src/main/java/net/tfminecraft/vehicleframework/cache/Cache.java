@@ -55,6 +55,8 @@ public class Cache {
 	public static double trackVehicleYOffset = 0.5;
 	public static double trainClearanceWidth = 3;
 	public static double trainClearanceHeight = 2.5;
+	// Players on a train's deck move with it up to this speed, in blocks a tick.
+	public static double trainDeckCarryMaxSpeed = 1.0;
 	public static long trackLayRetryMs = 3000;
 	public static double trackMaxTurnDegrees = 25;
 	public static double trackMinLayDistance = 8;

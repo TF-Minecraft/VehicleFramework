@@ -41,6 +41,13 @@ max-grade-degrees: 10
 # Loaded chunks only. Unloaded track uses this style the next time its chunk loads.
 resync-chunks-per-tick: 2
 
+# Cars with behaviour.train.walkable, such as the flat car, have a deck players can stand on.
+walkable:
+  # Players on a deck move with the train up to this speed, in blocks a tick.
+  # The locomotive runs at 0.72, or 0.864 at full overdrive. Faster, the deck slides
+  # out from under them. 0 never carries anyone.
+  carry-max-speed: 1.0
+
 # Moving trains: crumbs and clack while rolling. Does not affect layer clicks or placing 1x3s.
 fx:
   particle: BLOCK_CRACK

@@ -98,6 +98,8 @@ import net.tfminecraft.vehicleframework.vehicles.handlers.TowHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.SeatHandler.MountResult;
 import net.tfminecraft.vehicleframework.vehicles.seat.Seat;
 import net.tfminecraft.vehicleframework.vehicles.handlers.train.ConsistRelinker;
+import net.tfminecraft.vehicleframework.vehicles.handlers.train.DeckRiders;
+import net.tfminecraft.vehicleframework.vehicles.handlers.train.DeckBody;
 import net.tfminecraft.vehicleframework.vehicles.Vehicle;
 
 public class VehicleManager implements Listener{
@@ -323,6 +325,7 @@ public class VehicleManager implements Listener{
 					}
 	            }
 				TrainCollision.tick(vehicles.values());
+				DeckRiders.tick(vehicles.values());
 	            Iterator<Map.Entry<Player, ActiveVehicle>> iterator = tow.entrySet().iterator();
 	            while (iterator.hasNext()) {
 	                Map.Entry<Player, ActiveVehicle> entry = iterator.next();
@@ -583,6 +586,15 @@ public class VehicleManager implements Listener{
 	public void vehicleInteract(PlayerInteractEntityEvent e){
 		Entity entity = e.getRightClicked();
 		Player p = e.getPlayer();
+		// A walkable deck covers its car, so a click on the deck is a click on the car.
+		ActiveVehicle deckOwner = DeckBody.owner(entity);
+		if (deckOwner != null) {
+			e.setCancelled(true);
+			entity = deckOwner.getEntity();
+		} else if (DeckBody.isPart(entity)) {
+			e.setCancelled(true);
+			return;
+		}
 		for (Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
         	ActiveVehicle v = entry.getValue();
             if(v.isPassenger(entity, true)) {

@@ -37,6 +37,7 @@ import net.tfminecraft.vehicleframework.tracks.TrackRegistry;
 import net.tfminecraft.vehicleframework.tracks.TrackToolListener;
 import net.tfminecraft.vehicleframework.vehicles.controller.GroundEngineLog;
 import net.tfminecraft.vehicleframework.vehicles.handlers.TrainHandler;
+import net.tfminecraft.vehicleframework.vehicles.handlers.train.DeckListener;
 
 public class VehicleFramework extends JavaPlugin{
 	
@@ -112,6 +113,7 @@ public class VehicleFramework extends JavaPlugin{
 		getServer().getPluginManager().registerEvents(vehicleManager.getSpawnManager(), this);
 		getServer().getPluginManager().registerEvents(vehicleManager.getRepairManager(), this);
 		getServer().getPluginManager().registerEvents(new TrackToolListener(), this);
+		getServer().getPluginManager().registerEvents(new DeckListener(), this);
 		trackDisplayManager = new TrackDisplayManager();
 		getServer().getPluginManager().registerEvents(trackDisplayManager, this);
 		

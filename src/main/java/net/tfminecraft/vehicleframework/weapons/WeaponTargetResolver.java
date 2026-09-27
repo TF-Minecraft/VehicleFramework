@@ -12,6 +12,7 @@ import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
+import net.tfminecraft.vehicleframework.vehicles.handlers.train.DeckBody;
 
 public final class WeaponTargetResolver {
 
@@ -61,7 +62,7 @@ public final class WeaponTargetResolver {
 	}
 
 	private static boolean isValidTarget(Entity entity, Set<Entity> ignore) {
-		if (entity == null || ignore.contains(entity)) {
+		if (entity == null || ignore.contains(entity) || DeckBody.isPart(entity)) {
 			return false;
 		}
 		if (entity instanceof LivingEntity living) {

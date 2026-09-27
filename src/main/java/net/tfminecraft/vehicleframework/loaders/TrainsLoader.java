@@ -60,6 +60,7 @@ public class TrainsLoader {
 		Cache.trackDesiredGradeDegrees = Math.min(
 				Cache.trackMaxGradeDegrees,
 				Math.max(1.0, config.getDouble("desired-grade-degrees", 6.0)));
+		Cache.trainDeckCarryMaxSpeed = Math.max(0.0, config.getDouble("walkable.carry-max-speed", 1.0));
 		Cache.trackResyncChunksPerTick = Math.max(1, config.getInt("resync-chunks-per-tick", 2));
 		Cache.debugLogging = config.getBoolean("debug-logging", false);
 		loadFx(config);
