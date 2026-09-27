@@ -76,8 +76,8 @@ Changing skin sets the bogies up again for the new model; skins that share the
 bogie bones keep their bogie angles.
 
 Install this plugin update before a ServerAssets vehicle YAML that gives
-`bogies` to a vehicle with a skin lacking those bones, such as the locomotive's
-Flying Scotsman skin.
+`bogies` to a vehicle whose skins do not all have those bones, such as the
+Simple Locomotive, whose original skin has none.
 
 ## Walkable decks
 
