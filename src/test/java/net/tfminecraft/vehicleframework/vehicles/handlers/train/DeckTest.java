@@ -128,6 +128,44 @@ class DeckTest {
         assertTrue(next[1] > start[1]);
     }
 
+    // The flat car's deck: 3 wide, 9 long, 1.3125 up, in 1.5 wide boxes.
+    private static final Deck FLAT = new Deck(-1.5, 1.5, -4.5, 4.5, 1.3125, 1.5);
+
+    @Test
+    void onLevelTrackRidersStandOnTheDeckTop() {
+        Deck.Frame from = new Deck.Frame(0, 64, 0, 0, 0);
+        Deck.Frame to = new Deck.Frame(0, 64, 0.3, 0, 0);
+        assertEquals(65.3125, FLAT.support(from, to, 0.5, 1), 1e-9);
+    }
+
+    @Test
+    void goingDownhillRidersStayOnTheBoxesTheClientHasNotMovedYet() {
+        // Down a 10 degree grade at 0.3 blocks a tick, standing in the middle of a box.
+        double drop = 0.3 * Math.sin(Math.toRadians(10));
+        Deck.Frame from = new Deck.Frame(0, 64, 0, 0, 10);
+        Deck.Frame to = new Deck.Frame(0, 64 - drop, 0.3, 0, 10);
+        double[] start = from.toWorld(0.75, FLAT.top(), 0.75);
+        double[] next = Deck.carry(from, to, start[0], start[1], start[2]);
+        double floor = FLAT.support(from, to, next[0], next[2]);
+        // Carried down with the car, the feet would sink into the boxes where they were.
+        double oldTop = -Double.MAX_VALUE;
+        for (Deck.Box box : FLAT.boxes(from)) {
+            if (Math.abs(next[0] - box.x()) < box.size() / 2 + Deck.FOOT
+                    && Math.abs(next[2] - box.z()) < box.size() / 2 + Deck.FOOT) {
+                oldTop = Math.max(oldTop, box.y() + box.size());
+            }
+        }
+        assertTrue(next[1] < oldTop);
+        assertEquals(oldTop, floor, 1e-9);
+    }
+
+    @Test
+    void nothingHoldsUpAPlayerOffTheDeck() {
+        Deck.Frame frame = new Deck.Frame(0, 64, 0, 0, 0);
+        assertTrue(Double.isNaN(FLAT.support(frame, frame, 3, 0)));
+        assertTrue(Double.isNaN(FLAT.support(frame, frame, 0, 6)));
+    }
+
     @Test
     void readsTheWalkableSection() {
         YamlConfiguration config = new YamlConfiguration();

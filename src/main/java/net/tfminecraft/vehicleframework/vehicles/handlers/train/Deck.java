@@ -25,6 +25,8 @@ public final class Deck {
 	static final double BELOW = 0.25;
 	// A jump from the deck rises about 1.25 blocks; carry players through it.
 	static final double ABOVE = 1.5;
+	// Half a player's width: boxes this close to their centre are under their feet.
+	static final double FOOT = 0.3;
 
 	private final double minX;
 	private final double maxX;
@@ -174,6 +176,27 @@ public final class Deck {
 		return local[0] >= minX - EDGE && local[0] <= maxX + EDGE
 				&& local[2] >= minZ - EDGE && local[2] <= maxZ + EDGE
 				&& height >= -BELOW && height <= ABOVE;
+	}
+
+	/**
+	 * The highest box top under feet at this world position, with the car in either frame,
+	 * or NaN if no box is under them. A client can move the boxes a tick after it moves the
+	 * player, and a player whose feet are even slightly inside a box falls through it. Kept
+	 * on the higher of the two, a rider is on top of the boxes wherever the client has them.
+	 */
+	public double support(Frame from, Frame to, double worldX, double worldZ) {
+		double top = Double.NaN;
+		for (Frame frame : new Frame[] { from, to }) {
+			for (Box box : boxes(frame)) {
+				double reach = box.size() / 2 + FOOT;
+				double boxTop = box.y() + box.size();
+				if (Math.abs(worldX - box.x()) < reach && Math.abs(worldZ - box.z()) < reach
+						&& (Double.isNaN(top) || boxTop > top)) {
+					top = boxTop;
+				}
+			}
+		}
+		return top;
 	}
 
 	/** Where a point on the car in {@code from} is once the car has moved to {@code to}. */

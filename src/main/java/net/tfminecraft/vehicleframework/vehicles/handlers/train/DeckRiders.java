@@ -28,6 +28,8 @@ public final class DeckRiders {
 	private static final int KEEP_TICKS = 40;
 	// Players this far from a car's origin cannot be on its deck.
 	private static final double REACH = 16;
+	// Feet no further than a step below a box top are lifted onto it.
+	private static final double STEP = 0.6;
 	private static final Map<UUID, Deque<Shift>> SENT = new HashMap<>();
 	private static long tick;
 
@@ -69,6 +71,11 @@ public final class DeckRiders {
 					continue;
 				}
 				double[] next = Deck.carry(from, to, at[0], at[1], at[2]);
+				double floor = body.getDeck().support(from, to, next[0], next[2]);
+				if (next[1] < floor && next[1] > floor - STEP) {
+					// Lift feet out of a box they would sink into, or they fall through it.
+					next[1] = floor;
+				}
 				double dx = next[0] - at[0];
 				double dy = next[1] - at[1];
 				double dz = next[2] - at[2];
