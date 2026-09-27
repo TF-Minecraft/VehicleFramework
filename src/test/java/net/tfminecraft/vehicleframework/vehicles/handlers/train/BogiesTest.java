@@ -79,6 +79,31 @@ class BogiesTest {
         assertEquals(-2, across[0], 1e-4);
     }
 
+    @Test
+    void bogieOnTrackLaidTheOtherWayTurnsTheSameAsOnOurs() {
+        TrackPose body = new TrackPose(0, 64, 0, 10, 2);
+        float[] same = Bogies.turn(body, new TrackPose(0, 64, 2, 15, 5));
+        float[] reversed = Bogies.turn(body, new TrackPose(0, 64, 2, 15 - 180, -5));
+        assertEquals(same[0], reversed[0], 1e-4);
+        assertEquals(same[1], reversed[1], 1e-4);
+    }
+
+    @Test
+    void bodyRestsOnTwoRailsGivenSeparately() {
+        // As if the front bogie had crossed onto a branch: its rail comes from another track.
+        TrackPose front = new TrackPose(0.5 + 0.3, 64, 22.125, -8f, 0f);
+        TrackPose back = new TrackPose(0.5, 64, 17.875, 0f, 0f);
+        TrackPose body = Bogies.bodyPose(front, back, FRONT, BACK);
+        assertEquals(0.65, body.x, 1e-6);
+        assertEquals(20, body.z, 1e-6);
+        double yaw = Math.toDegrees(Math.atan2(-0.3, 4.25));
+        assertEquals(yaw, body.yaw, 1e-4);
+        // Order of the rails follows the offsets, not which is ahead.
+        TrackPose swapped = Bogies.bodyPose(back, front, BACK, FRONT);
+        assertEquals(body.x, swapped.x, 1e-9);
+        assertEquals(body.yaw, swapped.yaw, 1e-6);
+    }
+
     // The bogie centre, placed from the body pose, lies on the rail at its own distance along.
     private static void assertOnRail(TrackSpline line, TrackPose body, double s, double offset, double tolerance) {
         double yaw = Math.toRadians(body.yaw);

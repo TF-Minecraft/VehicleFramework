@@ -69,31 +69,42 @@ public final class Bogies {
 		}
 	}
 
-	/** Where the car's origin goes so both bogies sit on the rail around {@code s}. */
-	public TrackPose bodyPose(TrackSpline spline, double s) {
-		return bodyPose(spline, s, offsets[0], offsets[1]);
+	/** Along the car from the model's origin to each bogie, in blocks, +z facing +s. */
+	public double[] offsets() {
+		return offsets.clone();
+	}
+
+	/** Where the car's origin goes so each bogie sits on its rail, in {@link #offsets()} order. */
+	public TrackPose bodyPose(TrackPose[] rails) {
+		return bodyPose(rails[0], rails[1], offsets[0], offsets[1]);
 	}
 
 	/** Turns each bogie to the rail under it, relative to the body. */
-	public void follow(TrackSpline spline, double s, TrackPose body) {
+	public void follow(TrackPose[] rails, TrackPose body) {
 		for (int i = 0; i < rotators.size(); i++) {
-			float[] turn = turn(body, rail(spline, s + offsets[i]));
+			float[] turn = turn(body, rails[i]);
 			rotators.get(i).rotateToTarget(turn[0], turn[1], 0f, 1f, true, true, false);
 		}
 	}
 
 	static TrackPose bodyPose(TrackSpline spline, double s, double first, double second) {
+		return bodyPose(rail(spline, s + first), rail(spline, s + second), first, second);
+	}
+
+	/** The body resting on two rails, each under the bogie at its offset along the car. */
+	static TrackPose bodyPose(TrackPose firstRail, TrackPose secondRail, double first, double second) {
+		if (Math.abs(first - second) < 1e-6) {
+			return firstRail;
+		}
+		boolean firstAhead = first > second;
+		TrackPose a = firstAhead ? firstRail : secondRail;
+		TrackPose b = firstAhead ? secondRail : firstRail;
 		double front = Math.max(first, second);
 		double back = Math.min(first, second);
-		if (front - back < 1e-6) {
-			return rail(spline, s + front);
-		}
-		TrackPose a = rail(spline, s + front);
-		TrackPose b = rail(spline, s + back);
 		Vector along = new Vector(a.x - b.x, a.y - b.y, a.z - b.z);
 		double length = along.length();
 		if (length < 1e-6) {
-			return rail(spline, s);
+			return a;
 		}
 		along.multiply(1 / length);
 		// The body is the straight line between the two bogie centres; the origin sits
@@ -109,12 +120,19 @@ public final class Bogies {
 
 	/** Yaw and pitch that turn a bogie on this body to the rail under it, as bone angles. */
 	static float[] turn(TrackPose body, TrackPose rail) {
-		float yaw = ConvertedAngle.wrapDegrees(-(rail.yaw - body.yaw));
-		return new float[] {yaw, rail.pitch - body.pitch};
+		float railYaw = rail.yaw;
+		float railPitch = rail.pitch;
+		// A bogie on a track laid the other way sees its rail heading backwards.
+		if (Math.abs(ConvertedAngle.wrapDegrees(railYaw - body.yaw)) > 90) {
+			railYaw += 180;
+			railPitch = -railPitch;
+		}
+		float yaw = ConvertedAngle.wrapDegrees(-(railYaw - body.yaw));
+		return new float[] {yaw, railPitch - body.pitch};
 	}
 
 	// The rail at a distance along the track, carrying on straight past its ends.
-	static TrackPose rail(TrackSpline spline, double at) {
+	public static TrackPose rail(TrackSpline spline, double at) {
 		double end = spline.length();
 		double clamped = spline.isLoop() ? at : Math.max(0, Math.min(end, at));
 		TrackPose pose = spline.sampleAt(clamped);
