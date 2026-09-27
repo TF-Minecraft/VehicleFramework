@@ -55,6 +55,7 @@ import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.component.fuel.FuelTank;
 import net.tfminecraft.vehicleframework.vehicles.handlers.container.Container;
+import net.tfminecraft.vehicleframework.vehicles.handlers.train.Bogies;
 import net.tfminecraft.vehicleframework.vehicles.handlers.train.Connector;
 import net.tfminecraft.vehicleframework.vehicles.handlers.train.LocomotiveOverdrive;
 
@@ -91,10 +92,15 @@ public class TrainHandler {
 	private final ThrottleTape.DwellState tapeDwell = new ThrottleTape.DwellState();
 	// Blocks across the wheels. With it, the move animations turn at the train's speed.
 	private double wheelDiameter;
+	// Two-bogie carriages rest on the rail under each bogie instead of their centre.
+	private Bogies bogies;
 	
 	public TrainHandler(ConfigurationSection config) {
 		locomotive = config.getBoolean("locomotive", false);
 		wheelDiameter = Math.max(0, config.getDouble("wheel-diameter", 0));
+		if (config.contains("bogies")) {
+			bogies = new Bogies(config.getStringList("bogies"));
+		}
 		if(config.contains("front-connector")) {
 			front = new Connector(config.getString("front-connector"));
 		}
@@ -114,6 +120,9 @@ public class TrainHandler {
 		locomotive = another.locomotive;
 		wheelDiameter = another.wheelDiameter;
 		this.v = v;
+		if (another.bogies != null) {
+			bogies = new Bogies(v, another.bogies);
+		}
 		if(another.isAttachable()) {
 			front = new Connector(v, another.getFront());
 		}
@@ -140,6 +149,9 @@ public class TrainHandler {
 	}
 
 	public void updateModel(ActiveModel m) {
+		if (bogies != null) {
+			bogies.updateModel(m);
+		}
 		if(isAttachable()) {
 			front.updateModel(m);
 		}
@@ -775,7 +787,19 @@ public class TrainHandler {
 			train.s = placement.s;
 			train.travelSign = placement.sign;
 			applyPose(placement.vehicle, placement.pose());
+			if (train.onBogies()) {
+				train.bogies.follow(placement.spline, placement.s, placement.pose());
+			}
 		}
+	}
+
+	private boolean onBogies() {
+		return bogies != null && bogies.isReady();
+	}
+
+	// A car's pose at s: on its two bogies if it has them, else the track under its centre.
+	private TrackPose carPose(TrackSpline spline, double at) {
+		return onBogies() ? bogies.bodyPose(spline, at) : spline.sampleAt(at);
 	}
 
 	private List<CarPlacement> planCars() {
@@ -784,7 +808,7 @@ public class TrainHandler {
 		if (spline == null) {
 			return placements;
 		}
-		placements.add(new CarPlacement(v, spline, s, travelSign, 0, spline.sampleAt(s)));
+		placements.add(new CarPlacement(v, spline, s, travelSign, 0, carPose(spline, s)));
 		TrackRegistry registry = VehicleFramework.getTrackRegistry();
 		if (registry == null) {
 			return placements;
@@ -836,8 +860,10 @@ public class TrainHandler {
 			}
 			TrackSpline carSpline = pose.splineId == null ? null : registry.get(pose.splineId).orElse(null);
 			if (carSpline != null) {
-				TrackPose carPose = carSpline.sampleAt(pose.s);
-				if (parentTrain.canHaveAttached() && carTrain.isAttachable() && pose.missingSpacing <= 1e-9) {
+				TrackPose carPose = carTrain.carPose(carSpline, pose.s);
+				// A car on bogies follows its own rails; its couplers swing to meet, as real ones do.
+				if (!carTrain.onBogies() && parentTrain.canHaveAttached() && carTrain.isAttachable()
+						&& pose.missingSpacing <= 1e-9) {
 					// Arc spacing locates the car on the route; rigid couplers must meet
 					// in world space. A separate tangent at each centre opens a gap on bends.
 					TrackPose parentPose = placements.get(placements.size() - 1).pose();
