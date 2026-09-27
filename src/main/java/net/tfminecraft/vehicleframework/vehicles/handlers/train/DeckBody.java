@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
@@ -34,10 +35,14 @@ public final class DeckBody {
 	private final Deck deck;
 	private final List<ItemDisplay> carriers = new ArrayList<>();
 	private final List<Shulker> boxes = new ArrayList<>();
-	// Where the car is now, and where it was when riders were last carried.
+	// Ticks to wait before trying again after the boxes could not be spawned.
+	private static final int RETRY_TICKS = 100;
+	// Where the car is now, and where it was when riders were last carried. Both stay
+	// null while the car has no boxes, so nobody is carried on a deck that is not there.
 	private Deck.Frame frame;
 	private Deck.Frame carried;
-	private boolean failed;
+	private int retryAt;
+	private boolean warned;
 
 	public DeckBody(ActiveVehicle v, Deck deck) {
 		this.v = v;
@@ -71,32 +76,53 @@ public final class DeckBody {
 
 	/** Moves the deck to the car's new place, making its boxes the first time. */
 	public void place(Deck.Frame next) {
-		if (next == null || failed || v.getEntity() == null || v.getEntity().getWorld() == null) {
+		if (next == null || v.getEntity() == null || v.getEntity().getWorld() == null) {
 			return;
 		}
-		if (carried == null) {
-			carried = next;
+		if (Bukkit.getCurrentTick() < retryAt) {
+			forget();
+			return;
 		}
-		boolean moved = !next.same(frame);
-		frame = next;
 		World world = v.getEntity().getWorld();
 		List<Deck.Box> wanted = deck.boxes(next);
 		if (boxes.size() != wanted.size() || !intact()) {
-			rebuild(world, wanted);
+			build(world, wanted, next);
 			return;
 		}
-		if (!moved) {
+		if (next.same(frame)) {
 			return;
 		}
 		for (int i = 0; i < wanted.size(); i++) {
 			Deck.Box box = wanted.get(i);
 			ItemDisplay carrier = carriers.get(i);
 			if (!carrier.getWorld().equals(world) || !loaded(world, box)) {
-				rebuild(world, wanted);
+				build(world, wanted, next);
 				return;
 			}
 			carrier.teleport(location(world, box), TeleportFlag.EntityState.RETAIN_PASSENGERS);
 		}
+		arrive(next);
+	}
+
+	private void build(World world, List<Deck.Box> wanted, Deck.Frame next) {
+		if (rebuild(world, wanted)) {
+			arrive(next);
+		} else {
+			forget();
+		}
+	}
+
+	// The boxes are in place for this frame.
+	private void arrive(Deck.Frame next) {
+		if (carried == null) {
+			carried = next;
+		}
+		frame = next;
+	}
+
+	private void forget() {
+		frame = null;
+		carried = null;
 	}
 
 	/** The car's frame now, or null before the deck is first placed. */
@@ -116,8 +142,7 @@ public final class DeckBody {
 
 	public void remove() {
 		despawn();
-		frame = null;
-		carried = null;
+		forget();
 	}
 
 	private void despawn() {
@@ -148,23 +173,30 @@ public final class DeckBody {
 		return true;
 	}
 
-	private void rebuild(World world, List<Deck.Box> wanted) {
+	// Whether the boxes were made for the car in this place.
+	private boolean rebuild(World world, List<Deck.Box> wanted) {
 		despawn();
 		for (Deck.Box box : wanted) {
 			if (!loaded(world, box)) {
 				// Part of the car is over an unloaded chunk; try again next tick.
-				return;
+				return false;
 			}
 		}
 		try {
 			for (Deck.Box box : wanted) {
 				spawn(world, box);
 			}
+			return true;
 		} catch (RuntimeException e) {
-			// A protection plugin can refuse the spawn. Do not retry every tick.
-			failed = true;
+			// A protection plugin can refuse the spawn. Wait a while before trying again.
+			retryAt = Bukkit.getCurrentTick() + RETRY_TICKS;
 			despawn();
-			VFLogger.log("Could not make the walkable deck of " + v.getName() + ": " + e);
+			if (!warned) {
+				warned = true;
+				VFLogger.log("Could not make the walkable deck of " + v.getName() + ", retrying every "
+						+ RETRY_TICKS / 20 + " s: " + e);
+			}
+			return false;
 		}
 	}
 

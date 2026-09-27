@@ -67,7 +67,11 @@ public final class DeckRiders {
 					continue;
 				}
 				double[] at = clientPosition(p);
-				if (!body.getDeck().carries(from, at[0], at[1], at[2])) {
+				Location seen = p.getLocation();
+				// The estimate can count a shift the server has already seen, so a rider near
+				// an edge counts as on the deck if either their estimate or last report is on it.
+				if (!body.getDeck().carries(from, at[0], at[1], at[2])
+						&& !body.getDeck().carries(from, seen.getX(), seen.getY(), seen.getZ())) {
 					continue;
 				}
 				double[] next = Deck.carry(from, to, at[0], at[1], at[2]);
