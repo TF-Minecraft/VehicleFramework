@@ -43,6 +43,7 @@ import com.ticxo.modelengine.api.model.ActiveModel;
 import com.ticxo.modelengine.api.generator.blueprint.BlueprintBone;
 
 import net.tfminecraft.vehicleframework.VehicleFramework;
+import net.tfminecraft.vehicleframework.enums.Direction;
 import net.tfminecraft.vehicleframework.bones.BoneRotator;
 import net.tfminecraft.vehicleframework.database.ConsistData;
 import net.tfminecraft.vehicleframework.database.VehicleRepository;
@@ -211,6 +212,20 @@ class TrainReversePlacementTest {
         loco.v.getAccessPanel().setSpeed(0.1);
         loco.splineTick();
         assertPositions(loco, track, 60.6);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"-0.2, false, BACKWARD", "0.2, true, FORWARD", "0.2, false, FORWARD", "-0.2, true, BACKWARD"})
+    void wheelsFollowTheWayTheTrainMovesNotTheReverseSwitch(double speed, boolean reverse, String expected) {
+        TrackSpline track = straightTrack(false);
+        TrainHandler loco = consist(track, 60.5);
+        loco.v.getAccessPanel().setSpeed(speed);
+        loco.v.getAccessPanel().setReverse(reverse);
+        loco.splineTick();
+        Direction dir = Direction.valueOf(expected);
+        org.mockito.Mockito.verify(loco.v.getMoveControls()).animateMove(dir);
+        org.mockito.Mockito.verify(loco.v.getMoveControls(), org.mockito.Mockito.never())
+                .animateMove(dir == Direction.FORWARD ? Direction.BACKWARD : Direction.FORWARD);
     }
 
     @Test

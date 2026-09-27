@@ -12,6 +12,8 @@ simple_locomotive:
         vector: move.movealign
         tracked: true
         train:
+            # Blocks across the wheels, so they turn at the train's speed.
+            wheel-diameter: 1.875
             locomotive: true
             back-connector: connector_back
             fuel-cars:

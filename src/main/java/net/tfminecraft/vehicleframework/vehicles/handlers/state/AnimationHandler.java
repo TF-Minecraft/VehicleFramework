@@ -8,6 +8,7 @@ import java.util.Map;
 import org.bukkit.configuration.ConfigurationSection;
 
 import com.ticxo.modelengine.api.animation.BlueprintAnimation;
+import com.ticxo.modelengine.api.animation.property.IAnimationProperty;
 import com.ticxo.modelengine.api.animation.property.SimpleProperty;
 import com.ticxo.modelengine.api.model.ActiveModel;
 
@@ -107,6 +108,19 @@ public class AnimationHandler {
 		}
 	}
 	
+	/** Plays this move's animations at the given speed, where 1 is as authored. */
+	public void setSpeed(Animation a, double speed) {
+		if (m == null) {
+			return;
+		}
+		for (String s : animations.get(a)) {
+			IAnimationProperty playing = m.getAnimationHandler().getAnimation(s);
+			if (playing != null) {
+				playing.setSpeed(speed);
+			}
+		}
+	}
+
 	public void stop(Animation a) {
 		for(String s : animations.get(a)) {
 			BlueprintAnimation anim = m.getBlueprint().getAnimations().get(s);
