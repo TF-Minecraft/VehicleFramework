@@ -84,9 +84,7 @@ public class RepairManager implements Listener{
 		if(p == null || v == null) {
 			return;
 		}
-		VehicleRepairStartEvent startEvent = new VehicleRepairStartEvent(p, v);
-		Bukkit.getPluginManager().callEvent(startEvent);
-		if(startEvent.isCancelled()) {
+		if(!startAllowed(p, v)) {
 			return;
 		}
 		ItemStack i = p.getInventory().getItemInMainHand();
@@ -162,9 +160,21 @@ public class RepairManager implements Listener{
 		}
 	}
 	
+	/**
+	 * Fired when the repair menu opens and again immediately before a repair or fire fight
+	 * that would actually start, so a plugin that blocks repairs also blocks them from a
+	 * menu that was already open.
+	 */
+	private static boolean startAllowed(Player p, ActiveVehicle v) {
+		VehicleRepairStartEvent startEvent = new VehicleRepairStartEvent(p, v);
+		Bukkit.getPluginManager().callEvent(startEvent);
+		return !startEvent.isCancelled();
+	}
+
 	public void repairComponent(Player p, ItemMeta m, NamespacedKey key, ActiveVehicle v ) {
 		Component type = Component.valueOf(m.getPersistentDataContainer().get(key, PersistentDataType.STRING).toUpperCase());
 		VehicleComponent c = v.getComponent(type);
+		if(c == null) return;
 		if(isBeingRepaired(c)) {
 			p.sendMessage("§cComponent is already under repair");
 			return;
@@ -175,10 +185,12 @@ public class RepairManager implements Listener{
 		}
 		String tool = activeTool.get(p);
 		if(c.isOnFire() && tool.equalsIgnoreCase("water")) {
+			if(!startAllowed(p, v)) return;
 			c.getFire().fight();
 			p.getWorld().playSound(p.getLocation(), Sound.BLOCK_LAVA_EXTINGUISH, 1f, 1f);
-			repairing.get(p).updateBoard();
+			v.updateBoard();
 		} else if(c.getHealthData().getHealthPercentage() < 100 && tool.equalsIgnoreCase("repair")) {
+			if(!startAllowed(p, v)) return;
 			c.getHealthData().startRepair();
 			p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 1f, 1f);
 			beingRepaired.put(p, c);
@@ -211,6 +223,7 @@ public class RepairManager implements Listener{
 		if(w.getHealthData().getHealthPercentage() < 100) {
 			String tool = activeTool.get(p);
 			if(!tool.equalsIgnoreCase("repair")) return;
+			if(!startAllowed(p, v)) return;
 			w.getHealthData().startRepair();
 			p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 1f, 1f);
 			repairing.put(p, v);
