@@ -329,6 +329,127 @@ class TrainReversePlacementTest {
         assertEquals(speed > 0 ? -1 : 1, loco.v.getThrottle().getCurrent());
     }
 
+    @ParameterizedTest
+    @CsvSource({"97.1, 0.2", "97.1, 8", "22.9, -0.2", "22.9, -8"})
+    void outerAxlesStopWholeConsistBeforeLeavingRail(double start, double speed) {
+        TrackSpline track = straightTrack(false);
+        TrainHandler loco = wheeledConsist(track, start);
+        loco.v.getThrottle().setThrottle(speed > 0 ? 100 : -100);
+        loco.v.getAccessPanel().setSpeed(speed);
+        loco.splineTick();
+        assertPositions(loco, track, start);
+        assertEquals(0, loco.v.getThrottle().getCurrent());
+        assertEquals(0, loco.v.getAccessPanel().getSpeed(), 1e-9);
+        // Holding into the end cannot creep the outer axle off the rail.
+        loco.v.getAccessPanel().setSpeed(speed);
+        loco.splineTick();
+        assertPositions(loco, track, start);
+        double away = speed > 0 ? -0.1 : 0.1;
+        loco.v.getAccessPanel().setSpeed(away);
+        loco.splineTick();
+        assertPositions(loco, track, start + away);
+    }
+
+    @Test
+    void overhangingWheelsCanDriveBackOntoTrack() {
+        TrackSpline track = straightTrack(false);
+        TrainHandler loco = wheeledConsist(track, 21);
+        loco.v.getAccessPanel().setSpeed(-0.1);
+        loco.splineTick();
+        assertPositions(loco, track, 21);
+        loco.v.getAccessPanel().setSpeed(3);
+        loco.splineTick();
+        assertPositions(loco, track, 24);
+    }
+
+    @Test
+    void supportUsesScaledWheelBonesOnAnUncoupledCar() {
+        TrackSpline track = straightTrack(false);
+        TrainHandler car = car(List.of("axle_front", "axle_back"));
+        when(car.v.getModel().getScale()).thenReturn(new Vector3f(2));
+        car.setSplineId(track.getId());
+        car.setS(94.3);
+        car.placeLoadedCars();
+        car.v.getAccessPanel().setSpeed(0.1);
+        car.splineTick();
+        assertEquals(94.3, car.getS(), 1e-8);
+    }
+
+    @Test
+    void wheelSupportWrapsAcrossLoopSeam() {
+        TrackSpline track = straightTrack(true);
+        TrainHandler loco = wheeledConsist(track, 0.1);
+        loco.v.getAccessPanel().setSpeed(-0.2);
+        loco.splineTick();
+        assertPositions(loco, track, track.length() - 0.1);
+    }
+
+    @Test
+    void outerAxleCannotRunOffBranchTipOntoImaginaryStem() {
+        TrackSpline stem = straightTrack(false);
+        TrackSpline branch = TrackSpline.fromPoints(UUID.randomUUID(), "world", false,
+                List.of(new double[]{0, 64, 50}, new double[]{100, 64, 50}));
+        store.save(branch);
+        TrackJunction junction = new TrackJunction(UUID.randomUUID(), stem.getId(), 50,
+                1, TrackJunction.Side.LEFT, branch.getId(), true);
+        store.saveJunction("world", junction);
+        registry.loadFromDisk();
+        TrainHandler loco = wheeledConsist(branch, 97.1);
+        loco.applyConsist(new ConsistData(null, null, branch.getId().toString(), 97.1,
+                1, junction.id.toString(), true));
+        loco.placeLoadedCars();
+        loco.v.getAccessPanel().setSpeed(0.2);
+        loco.splineTick();
+        assertPositions(loco, branch, 97.1);
+    }
+
+    @Test
+    void wheelsCanEnterSelectedBranchBeforeCentreReachesStemEnd() {
+        TrackSpline stem = straightTrack(false);
+        TrackSpline branch = TrackSpline.fromPoints(UUID.randomUUID(), "world", false,
+                List.of(new double[]{0, 64, 100}, new double[]{0, 64, 200}));
+        store.save(branch);
+        store.saveJunction("world", new TrackJunction(UUID.randomUUID(), stem.getId(), 100,
+                1, TrackJunction.Side.LEFT, branch.getId(), true));
+        registry.loadFromDisk();
+        TrainHandler loco = wheeledConsist(stem, 97.1);
+        loco.v.getAccessPanel().setSpeed(0.2);
+        loco.splineTick();
+        assertPositions(loco, stem, 97.3);
+    }
+
+    @Test
+    void wheelsCrossBranchStartWithoutStopping() {
+        TrackSpline stem = straightTrack(false);
+        TrackSpline branch = TrackSpline.fromPoints(UUID.randomUUID(), "world", false,
+                List.of(new double[]{0, 64, 50}, new double[]{100, 64, 50}));
+        store.save(branch);
+        TrackJunction junction = new TrackJunction(UUID.randomUUID(), stem.getId(), 50,
+                1, TrackJunction.Side.LEFT, branch.getId(), true);
+        store.saveJunction("world", junction);
+        registry.loadFromDisk();
+        TrainHandler loco = wheeledConsist(branch, 22.9);
+        loco.applyConsist(new ConsistData(null, null, branch.getId().toString(), 22.9,
+                1, junction.id.toString(), true));
+        loco.v.getThrottle().setThrottle(-100);
+        loco.v.getAccessPanel().setSpeed(-0.2);
+        loco.splineTick();
+        assertEquals(22.7, loco.getS(), 1e-8);
+        assertEquals(-100, loco.v.getThrottle().getCurrent());
+    }
+
+    private TrainHandler wheeledConsist(TrackSpline track, double s) {
+        TrainHandler loco = car(List.of("axle_front", "axle_back"));
+        TrainHandler first = car(List.of("axle_front", "axle_back"));
+        TrainHandler last = car(List.of("axle_front", "axle_back"));
+        loco.setChild(first.v);
+        first.setChild(last.v);
+        loco.setSplineId(track.getId());
+        loco.setS(s);
+        loco.placeLoadedCars();
+        return loco;
+    }
+
     @Test
     void wallStopKeepsThrottleSetting() {
         TrackSpline track = straightTrack(false);
@@ -816,6 +937,10 @@ class TrainReversePlacementTest {
     }
 
     private TrainHandler car() {
+        return car(List.of());
+    }
+
+    private TrainHandler car(List<String> wheels) {
         ActiveVehicle vehicle = stub(ActiveVehicle.class);
         Entity entity = stub(Entity.class);
         Location[] location = {new Location(null, 0, 64, 0)};
@@ -837,7 +962,11 @@ class TrainReversePlacementTest {
         when(vehicle.getModel()).thenReturn(model);
         Connector front = connector(vehicle, model, "front", 5);
         Connector back = connector(vehicle, model, "back", -5);
-        TrainHandler handler = new TrainHandler(new YamlConfiguration()) {
+        connector(vehicle, model, "axle_front", 2.875f);
+        connector(vehicle, model, "axle_back", -2.875f);
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("wheel-bones", wheels);
+        TrainHandler handler = new TrainHandler(config) {
             @Override public boolean isAttachable() { return true; }
             @Override public boolean canHaveAttached() { return true; }
             @Override public Connector getFront() { return front; }

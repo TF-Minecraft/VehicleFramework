@@ -47,6 +47,18 @@ time. Install the updated plugin and matching ServerAssets vehicle YAML,
 including `behaviour.train.locomotive: true` on the locomotive. Plugin updates
 do not overwrite existing vehicle configurations.
 
+## Track ends
+
+Set `behaviour.train.wheel-bones` to the model bones at the frontmost and rearmost
+axle pivots. Their model positions and scale determine where rail support ends.
+The whole train stops before either axle runs past an open track end, in either
+direction; cars already overhanging can drive back onto the rails. Connected
+junctions and loop seams remain traversable.
+
+Install the matching ServerAssets vehicle YAML with this plugin update to check
+the outer axles of the locomotive, coal car, passenger car, and flat car. Without
+`wheel-bones`, configured bogie pivots are checked; rigid cars retain centre checks.
+
 ## Walkable decks
 
 Train cars can have a deck that players walk on, and players standing on it ride

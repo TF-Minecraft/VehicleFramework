@@ -95,6 +95,7 @@ public class TrainHandler {
 	private final ThrottleTape.DwellState tapeDwell = new ThrottleTape.DwellState();
 	// Blocks across the wheels. With it, the move animations turn at the train's speed.
 	private double wheelDiameter;
+	private final List<String> wheelBones = new ArrayList<>();
 	// Two-bogie carriages rest on the rail under each bogie instead of their centre.
 	private Bogies bogies;
 	// A roof or other surface players can walk on, and the boxes that make it solid.
@@ -104,6 +105,7 @@ public class TrainHandler {
 	public TrainHandler(ConfigurationSection config) {
 		locomotive = config.getBoolean("locomotive", false);
 		wheelDiameter = Math.max(0, config.getDouble("wheel-diameter", 0));
+		wheelBones.addAll(config.getStringList("wheel-bones"));
 		if (config.contains("bogies")) {
 			bogies = new Bogies(config.getStringList("bogies"));
 		}
@@ -132,6 +134,7 @@ public class TrainHandler {
 	public TrainHandler(ActiveVehicle v, TrainHandler another) {
 		locomotive = another.locomotive;
 		wheelDiameter = another.wheelDiameter;
+		wheelBones.addAll(another.wheelBones);
 		this.v = v;
 		if (another.bogies != null) {
 			bogies = new Bogies(v, another.bogies);
@@ -805,16 +808,52 @@ public class TrainHandler {
 	}
 
 	private record CarPlacement(ActiveVehicle vehicle, TrackSpline spline, double s, int sign,
-			double missingSpacing, TrackPose pose, TrackPose[] bogieRails) {
-		CarPlacement(ActiveVehicle vehicle, TrackSpline spline, double s, int sign,
-				double missingSpacing, TrackPose pose) {
-			this(vehicle, spline, s, sign, missingSpacing, pose, null);
-		}
+			double missingSpacing, TrackPose pose, TrackPose[] bogieRails, double[] missingRail) {
 	}
 
 	// The junction route the consist is placed along, so bogies can straddle a junction.
 	private record Route(TrackRegistry registry, boolean takeBranch, UUID stemId, UUID branchId,
 			double junctionS, int facingSign, double stemLength, boolean stemLoop, double branchLength) {
+		/** Distance a support lies beyond real track; branch tips do not reconnect to the stem. */
+		double missingRail(UUID splineId, double s, double offset) {
+			TrackSpline spline = registry.get(splineId).orElse(null);
+			if (spline == null) {
+				return Math.abs(offset);
+			}
+			if (splineId.equals(branchId) && s + offset > spline.length()) {
+				return s + offset - spline.length();
+			}
+			// The leading wheels can reach a thrown turnout before the car's centre
+			// selects it. In particular, a turnout at the stem end still supplies rail.
+			if (!splineId.equals(branchId) && Math.abs(offset) > 1e-9) {
+				int direction = offset > 0 ? 1 : -1;
+				TrackJunction first = null;
+				double nearest = Double.POSITIVE_INFINITY;
+				for (TrackJunction junction : registry.junctionsOn(splineId)) {
+					boolean selected = takeBranch && junction.branchSplineId != null
+							&& junction.branchSplineId.equals(branchId);
+					double distance = TrackJunctionTravel.ahead(s, junction.s, direction,
+							spline.isLoop(), spline.length());
+					if ((selected || junction.thrown) && junction.facingSign == direction
+							&& junction.branchSplineId != null && distance >= -1e-9
+							&& distance <= Math.abs(offset) && distance < nearest) {
+						first = junction;
+						nearest = distance;
+					}
+				}
+				if (first != null) {
+					TrackSpline branch = registry.get(first.branchSplineId).orElse(null);
+					if (branch != null) {
+						return Math.max(0, Math.abs(offset) - nearest - branch.length());
+					}
+				}
+			}
+			return TrackJunctionTravel.rewind(splineId, s, offset > 0 ? -1 : 1,
+					Math.abs(offset), takeBranch || splineId.equals(branchId),
+					stemId == null ? splineId : stemId, branchId, junctionS,
+					facingSign, stemLength, stemLoop, branchLength).missingSpacing;
+		}
+
 		/** The rail at {@code offset} along the track from {@code s}, following the route. */
 		TrackPose rail(UUID splineId, double s, double offset) {
 			TrackJunctionTravel.Pose at = TrackJunctionTravel.rewind(splineId, s, offset > 0 ? -1 : 1,
@@ -847,6 +886,33 @@ public class TrainHandler {
 			}
 		}
 		return rails;
+	}
+
+	// Resolve the outer axle bones in model space, including the current model scale.
+	// Older configurations retain bogie support checks, or centre checks for rigid cars.
+	private double[] missingWheelRail(Route route, UUID onSpline, double at) {
+		double[] missing = new double[2];
+		if (route == null) {
+			return missing;
+		}
+		if (onBogies()) {
+			for (double offset : bogies.offsets()) {
+				int end = offset < 0 ? 0 : 1;
+				missing[end] = Math.max(missing[end], route.missingRail(onSpline, at, offset));
+			}
+		}
+		for (String name : wheelBones) {
+			try {
+				ActiveModel model = v.getModel();
+				double offset = model.getBone(name).orElseThrow().getBlueprintBone()
+						.getRotatedGlobalPosition().z() * model.getScale().z();
+				int end = offset < 0 ? 0 : 1;
+				missing[end] = Math.max(missing[end], route.missingRail(onSpline, at, offset));
+			} catch (RuntimeException notLoaded) {
+				// The model or this bone is not available yet.
+			}
+		}
+		return missing;
 	}
 
 	private void applyPlacements(List<CarPlacement> placements) {
@@ -887,7 +953,8 @@ public class TrainHandler {
 				stemId, branchId, junctionS, facingSign, stemLength, stemLoop, branchLength);
 		TrackPose[] locoRails = bogieRails(along, splineId, s);
 		placements.add(new CarPlacement(v, spline, s, travelSign, 0,
-				locoRails == null ? spline.sampleAt(s) : bogies.bodyPose(locoRails), locoRails));
+				locoRails == null ? spline.sampleAt(s) : bogies.bodyPose(locoRails), locoRails,
+				missingWheelRail(along, splineId, s)));
 		if (registry == null) {
 			return placements;
 		}
@@ -942,7 +1009,8 @@ public class TrainHandler {
 						// Keep the sampled pose until connector blueprints and model transforms load.
 					}
 				}
-				placements.add(new CarPlacement(car, carSpline, pose.s, carTravelSign, pose.missingSpacing, carPose, rails));
+				placements.add(new CarPlacement(car, carSpline, pose.s, carTravelSign, pose.missingSpacing, carPose, rails,
+						carTrain.missingWheelRail(along, pose.splineId, pose.s)));
 			} else {
 				return List.of();
 			}
@@ -1205,7 +1273,7 @@ public class TrainHandler {
 			if (!clearStep(accepted, next, shapes)) {
 				restoreStep(before);
 				blocked = true;
-				trackEnd = compressesConsist(accepted, next);
+				trackEnd = compressesConsist(accepted, next) || losesWheelSupport(accepted, next);
 				break;
 			}
 			trackEnd = reachesTrackEnd(accepted, next);
@@ -1266,7 +1334,8 @@ public class TrainHandler {
 
 	private boolean clearStep(List<CarPlacement> previous, List<CarPlacement> next,
 			Map<Long, List<BoundingBox>> shapes) {
-		if (next.isEmpty() || previous.size() != next.size() || compressesConsist(previous, next)) {
+		if (next.isEmpty() || previous.size() != next.size() || compressesConsist(previous, next)
+				|| losesWheelSupport(previous, next)) {
 			return false;
 		}
 		for (int i = 0; i < next.size(); i++) {
@@ -1309,6 +1378,19 @@ public class TrainHandler {
 			TrainSpaceHighlight.show(rider, found);
 			rider.sendActionBar(Component.text(message, NamedTextColor.RED));
 		}
+	}
+
+	private boolean losesWheelSupport(List<CarPlacement> previous, List<CarPlacement> next) {
+		for (int i = 0; i < Math.min(previous.size(), next.size()); i++) {
+			// A loaded or newly attached car may already overhang. Let it recover,
+			// including while clamped cars ahead of it regain their coupling gaps.
+			for (int end = 0; end < 2; end++) {
+				if (next.get(i).missingRail[end] > previous.get(i).missingRail[end] + 1e-9) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	private boolean compressesConsist(List<CarPlacement> previous, List<CarPlacement> next) {
