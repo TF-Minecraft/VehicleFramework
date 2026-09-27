@@ -66,6 +66,19 @@ Install the matching ServerAssets vehicle YAML with this plugin update to check
 the outer axles of the locomotive, coal car, passenger car, and flat car. Without
 `wheel-bones`, configured bogie pivots are checked; rigid cars retain centre checks.
 
+## Bogies and skins
+
+`behaviour.train.bogies` names two bogie bones; the car rests on the rail under
+each, and each bogie turns to follow the rail under it. A vehicle's skins share
+this setting, so each skin's model is checked for the bones: a skin built without
+them, such as the Simple Locomotive's original model, is placed as a rigid car.
+Changing skin sets the bogies up again for the new model; skins that share the
+bogie bones keep their bogie angles.
+
+Install this plugin update before a ServerAssets vehicle YAML that gives
+`bogies` to a vehicle with a skin lacking those bones, such as the locomotive's
+Flying Scotsman skin.
+
 ## Walkable decks
 
 Train cars can have a deck that players walk on, and players standing on it ride
