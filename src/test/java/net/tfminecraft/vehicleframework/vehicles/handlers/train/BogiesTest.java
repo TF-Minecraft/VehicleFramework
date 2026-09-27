@@ -104,6 +104,14 @@ class BogiesTest {
         assertEquals(body.yaw, swapped.yaw, 1e-6);
     }
 
+    @Test
+    void bogiesAtOnePointKeepTheOriginOffTheirRail() {
+        TrackSpline line = spline(new double[]{0.5, 64, 0}, new double[]{0.5, 64, 40});
+        TrackPose body = Bogies.bodyPose(line, 20, 1.5, 1.5);
+        assertEquals(20, body.z, 1e-6);
+        assertOnRail(line, body, 20, 1.5, 1e-6);
+    }
+
     // The bogie centre, placed from the body pose, lies on the rail at its own distance along.
     private static void assertOnRail(TrackSpline line, TrackPose body, double s, double offset, double tolerance) {
         double yaw = Math.toRadians(body.yaw);

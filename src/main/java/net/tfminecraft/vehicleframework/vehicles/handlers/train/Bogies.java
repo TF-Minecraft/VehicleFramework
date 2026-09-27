@@ -22,6 +22,8 @@ import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
  * rotator must pivot at the model's origin.
  */
 public final class Bogies {
+	// Bogies closer than this along the car cannot set the body's angle.
+	static final double MIN_SPAN = 0.25;
 	private final List<String> bones;
 	private ActiveVehicle v;
 	private final List<BoneRotator> rotators = new ArrayList<>();
@@ -49,9 +51,16 @@ public final class Bogies {
 			ActiveModel model = v.getModel();
 			double[] found = new double[2];
 			List<BoneRotator> made = new ArrayList<>();
+			ModelBone[] foundBones = new ModelBone[2];
 			for (int i = 0; i < 2; i++) {
-				ModelBone bone = model.getBone(bones.get(i)).orElseThrow();
-				found[i] = bone.getBlueprintBone().getRotatedGlobalPosition().z() * model.getScale().z();
+				foundBones[i] = model.getBone(bones.get(i)).orElseThrow();
+				found[i] = foundBones[i].getBlueprintBone().getRotatedGlobalPosition().z() * model.getScale().z();
+			}
+			if (Math.abs(found[0] - found[1]) < MIN_SPAN) {
+				// Both bogies at one point along the car: nothing to rest the body between.
+				return false;
+			}
+			for (ModelBone bone : foundBones) {
 				made.add(new BoneRotator(v, v.getEntity(), bone, new RotationLimits()));
 			}
 			rotators.addAll(made);
@@ -94,7 +103,8 @@ public final class Bogies {
 	/** The body resting on two rails, each under the bogie at its offset along the car. */
 	static TrackPose bodyPose(TrackPose firstRail, TrackPose secondRail, double first, double second) {
 		if (Math.abs(first - second) < 1e-6) {
-			return firstRail;
+			// One point to rest on: keep the origin back along the rail from it.
+			return shifted(firstRail, -first);
 		}
 		boolean firstAhead = first > second;
 		TrackPose a = firstAhead ? firstRail : secondRail;
@@ -131,19 +141,20 @@ public final class Bogies {
 		return new float[] {yaw, railPitch - body.pitch};
 	}
 
+	private static TrackPose shifted(TrackPose pose, double along) {
+		double yaw = Math.toRadians(pose.yaw);
+		double pitch = Math.toRadians(pose.pitch);
+		double horizontal = Math.cos(pitch) * along;
+		return new TrackPose(pose.x - Math.sin(yaw) * horizontal, pose.y - Math.sin(pitch) * along,
+				pose.z + Math.cos(yaw) * horizontal, pose.yaw, pose.pitch);
+	}
+
 	// The rail at a distance along the track, carrying on straight past its ends.
 	public static TrackPose rail(TrackSpline spline, double at) {
 		double end = spline.length();
 		double clamped = spline.isLoop() ? at : Math.max(0, Math.min(end, at));
 		TrackPose pose = spline.sampleAt(clamped);
 		double past = at - clamped;
-		if (Math.abs(past) < 1e-9) {
-			return pose;
-		}
-		double yaw = Math.toRadians(pose.yaw);
-		double pitch = Math.toRadians(pose.pitch);
-		double horizontal = Math.cos(pitch) * past;
-		return new TrackPose(pose.x - Math.sin(yaw) * horizontal, pose.y - Math.sin(pitch) * past,
-				pose.z + Math.cos(yaw) * horizontal, pose.yaw, pose.pitch);
+		return Math.abs(past) < 1e-9 ? pose : shifted(pose, past);
 	}
 }
