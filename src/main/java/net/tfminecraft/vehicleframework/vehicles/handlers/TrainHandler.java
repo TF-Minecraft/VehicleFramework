@@ -29,6 +29,7 @@ import net.tfminecraft.vehicleframework.database.ConsistData;
 import net.tfminecraft.vehicleframework.database.PersistenceLog;
 import net.tfminecraft.vehicleframework.database.VehicleRepository;
 import net.tfminecraft.vehicleframework.database.VehicleSnapshot;
+import net.tfminecraft.vehicleframework.enums.Animation;
 import net.tfminecraft.vehicleframework.enums.Direction;
 import net.tfminecraft.vehicleframework.managers.VehicleManager;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTape;
@@ -88,9 +89,12 @@ public class TrainHandler {
 	private double recordLength;
 	private double fxTraveled;
 	private final ThrottleTape.DwellState tapeDwell = new ThrottleTape.DwellState();
+	// Blocks across the wheels. With it, the move animations turn at the train's speed.
+	private double wheelDiameter;
 	
 	public TrainHandler(ConfigurationSection config) {
 		locomotive = config.getBoolean("locomotive", false);
+		wheelDiameter = Math.max(0, config.getDouble("wheel-diameter", 0));
 		if(config.contains("front-connector")) {
 			front = new Connector(config.getString("front-connector"));
 		}
@@ -108,6 +112,7 @@ public class TrainHandler {
 	
 	public TrainHandler(ActiveVehicle v, TrainHandler another) {
 		locomotive = another.locomotive;
+		wheelDiameter = another.wheelDiameter;
 		this.v = v;
 		if(another.isAttachable()) {
 			front = new Connector(v, another.getFront());
@@ -669,8 +674,27 @@ public class TrainHandler {
 	}
 
 	public void animateMove(Direction dir) {
+		animateMove(dir, 0);
+	}
+
+	/**
+	 * Plays the move animation on every car. With a speed in blocks per tick, cars with a
+	 * wheel diameter turn their wheels to match it; the forward and backward animations
+	 * must turn the wheels once per second as authored.
+	 */
+	public void animateMove(Direction dir, double speed) {
 		v.getMoveControls().animateMove(dir);
-    	if(hasChild()) child.getTrainHandler().animateMove(dir);
+		if (dir != Direction.STILL && speed != 0 && wheelDiameter > 0) {
+			v.setAnimationSpeed(dir == Direction.BACKWARD ? Animation.BACKWARD : Animation.FORWARD,
+					wheelTurnsPerSecond(speed, wheelDiameter));
+		}
+		if (hasChild()) {
+			child.getTrainHandler().animateMove(dir, speed);
+		}
+	}
+
+	static double wheelTurnsPerSecond(double blocksPerTick, double wheelDiameter) {
+		return Math.abs(blocksPerTick) * 20 / (Math.PI * wheelDiameter);
 	}
 	
 	public void splineTick() {
@@ -690,8 +714,9 @@ public class TrainHandler {
 			}
 			return;
 		}
-		boolean reverse = v.getAccessPanel() != null && v.getAccessPanel().isReverse();
-		animateMove(reverse ? Direction.BACKWARD : Direction.FORWARD);
+		// Follow how the train is moving, not the throttle: slowing down with the throttle
+		// below zero still rolls forward, and coasting at zero can roll backwards.
+		animateMove(speed < 0 ? Direction.BACKWARD : Direction.FORWARD, speed);
 		if (!tryBindOrKeep()) {
 			still();
 			return;

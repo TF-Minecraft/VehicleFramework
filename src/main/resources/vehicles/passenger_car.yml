@@ -13,6 +13,8 @@ passenger_car:
         vector: connector_back.connector_front
         tracked: true
         train:
+            # Blocks across the wheels, so they turn at the train's speed.
+            wheel-diameter: 1.0
             front-connector: connector_front
             back-connector: connector_back
     states:

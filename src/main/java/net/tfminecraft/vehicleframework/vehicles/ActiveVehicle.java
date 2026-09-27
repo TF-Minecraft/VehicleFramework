@@ -735,6 +735,9 @@ public class ActiveVehicle {
 	public void stopAnimation(Animation a) {
 		getAnimationHandler().stop(a);
 	}
+	public void setAnimationSpeed(Animation a, double speed) {
+		getAnimationHandler().setSpeed(a, speed);
+	}
 	//Behaviour
 	public boolean shouldFloat() {
 		return getBehaviourHandler().shouldFloat();
