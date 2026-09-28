@@ -46,46 +46,43 @@ public final class TrackStore {
 		}
 	}
 
-	/** Finishes pending writes and goes back to writing on the caller's thread. */
-	public void close() {
-		ExecutorService running;
-		synchronized (this) {
-			running = writer;
-			writer = null;
-		}
-		if (running == null) {
+	/**
+	 * Waits until every queued write has finished, then goes back to writing on
+	 * the caller's thread. Saves made meanwhile wait too, so none overtakes a
+	 * queued one.
+	 */
+	public synchronized void close() {
+		if (writer == null) {
 			return;
 		}
-		running.shutdown();
-		try {
-			if (!running.awaitTermination(30, TimeUnit.SECONDS)) {
-				VFLogger.log("Track saves did not finish within 30 seconds");
+		writer.shutdown();
+		boolean interrupted = false;
+		while (true) {
+			try {
+				if (writer.awaitTermination(10, TimeUnit.SECONDS)) {
+					break;
+				}
+				VFLogger.log("Still waiting for track saves to finish");
+			} catch (InterruptedException e) {
+				interrupted = true;
 			}
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
 		}
-		for (File file : List.copyOf(pending.keySet())) {
-			Runnable write = pending.remove(file);
-			if (write != null) {
-				write.run();
-			}
+		writer = null;
+		if (interrupted) {
+			Thread.currentThread().interrupt();
 		}
 	}
 
-	private void submit(File file, Runnable write) {
-		ExecutorService running;
-		synchronized (this) {
-			running = writer;
-		}
-		if (running == null) {
-			pending.remove(file);
+	private synchronized void submit(File file, Runnable write) {
+		if (writer == null) {
 			write.run();
 			return;
 		}
 		if (pending.put(file, write) != null) {
+			// The write already queued for this file picks up the newest one.
 			return;
 		}
-		running.execute(() -> {
+		writer.execute(() -> {
 			Runnable latest = pending.remove(file);
 			if (latest != null) {
 				latest.run();

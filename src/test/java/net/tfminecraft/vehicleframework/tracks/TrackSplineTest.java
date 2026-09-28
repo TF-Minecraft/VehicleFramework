@@ -108,6 +108,23 @@ class TrackSplineTest {
 		assertEquals(5, closing.z, 1e-9);
 	}
 
+	@SuppressWarnings("unchecked")
+	@Test
+	void fromJson_samplesOutOfOrder_recomputesDistances() {
+		JSONObject json = TrackSpline.fromPoints(
+				UUID.randomUUID(), "world", false,
+				List.of(new double[] {0, 0, 0}, new double[] {0, 0, 10}, new double[] {0, 0, 20},
+						new double[] {0, 0, 30})).toJson();
+		double[] stored = {0, 10, 5, 15};
+		org.json.simple.JSONArray samples = (org.json.simple.JSONArray) json.get("samples");
+		for (int i = 0; i < stored.length; i++) {
+			((JSONObject) samples.get(i)).put("s", stored[i]);
+		}
+		TrackSpline spline = TrackSpline.fromJson(json);
+		assertEquals(20, spline.getSamples().get(2).s, 1e-9);
+		assertEquals(7, spline.sampleAt(7).z, 1e-9);
+	}
+
 	@Test
 	void advance_openClampsAtEnd() {
 		TrackSpline spline = TrackSpline.fromPoints(

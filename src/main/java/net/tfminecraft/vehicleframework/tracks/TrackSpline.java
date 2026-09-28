@@ -328,7 +328,8 @@ public final class TrackSpline {
 			}
 			loaded.add(new TrackSample(x, y, z, yaw, pitch, s));
 		}
-		if (missingS) {
+		// sampleAt and advance need s rising along the track.
+		if (missingS || !rising(loaded)) {
 			loaded = recomputeS(loaded);
 		}
 		JSONArray segArr = (JSONArray) root.get("segments");
@@ -471,6 +472,15 @@ public final class TrackSpline {
 			segs.add(new TrackSegment(i, false, 1.0));
 		}
 		return segs;
+	}
+
+	private static boolean rising(List<TrackSample> samples) {
+		for (int i = 1; i < samples.size(); i++) {
+			if (!(samples.get(i).s >= samples.get(i - 1).s)) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private static List<TrackSample> recomputeS(List<TrackSample> loaded) {
