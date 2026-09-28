@@ -49,6 +49,7 @@ public class TrainsLoader {
 				config.getDouble("clearance.height", 2.5), Cache.trackVehicleYOffset);
 		Cache.trackMaxTurnDegrees = Math.max(1.0, config.getDouble("max-turn-degrees", 25.0));
 		Cache.trackMinLayDistance = Math.max(1.0, config.getDouble("min-lay-distance", 8.0));
+		Cache.trackCurveRadius = Math.max(1.0, config.getDouble("curve-radius", 32.0));
 		Cache.trackJoinDistance = Math.max(0.25, config.getDouble("join-distance", 1.5));
 		Cache.trackPlaceKeepoutRadius = Math.max(0.0, config.getDouble("place-keepout-radius", 1.5));
 		Cache.trackMinJunctionSpacing = Math.max(1.0, config.getDouble("min-junction-spacing", 16.0));

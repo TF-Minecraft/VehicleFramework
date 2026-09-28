@@ -18,6 +18,22 @@ public final class TrackCurve {
 	static final double ROW_CHORD_DEGREES = 2;
 	/** A click this far off the heading's line, still inside its block, continues straight. */
 	static final double PIN_OFFSET = 0.5;
+	/**
+	 * A click at most this far to the side of a track on a grid heading, and
+	 * within {@link #SHIFT_CHORD_DEGREES} of it, moves the track over rather than turning it.
+	 */
+	static final double SHIFT_OFFSET = 3;
+	static final double SHIFT_CHORD_DEGREES = 8;
+	/** Radius a long stroke curves at, so a bend or a sideways shift stays local instead of spanning the stroke. */
+	public static final double DEFAULT_CURVE_RADIUS = 32;
+	/**
+	 * Turning onto the end heading straight away and moving across near B
+	 * takes two more curves than one corner, so it is only laid when it keeps
+	 * this many curve radii more track on the grid headings.
+	 */
+	static final double EXTRA_CURVES_RADII = 2;
+	/** Each smaller radius tried when the curve radius does not fit. */
+	private static final double RADIUS_STEP = 0.85;
 
 	private TrackCurve() {
 	}
@@ -97,9 +113,10 @@ public final class TrackCurve {
 	 * Extends track from a heading to a clicked block. A single arc from a fixed
 	 * heading to a block centre ends off-grid whenever the heading is slightly
 	 * off, and the next click then bends it the other way, so a row of clicks
-	 * lays a wave. Instead, an end near a grid heading, or a click along a row,
-	 * is fitted onto the grid heading (arc then straight, or an S-bend when the
-	 * grid line is off to one side), or as close to it as the turn limits allow.
+	 * lays a wave. Instead, an end near a grid heading, a click along a row, or
+	 * a click just beside the row the rail is on, is fitted onto the grid
+	 * heading (a curve at the corner, or a sideways shift just before the click),
+	 * or as close to it as the turn limits allow.
 	 * A click just beside the current line continues it straight. Anything else
 	 * is a plain {@link #lay} arc.
 	 */
@@ -112,9 +129,58 @@ public final class TrackCurve {
 			double desiredGradeDegrees,
 			double maxGradeDegrees,
 			double step) throws TrackLayException {
+		return layAligned(ax, ay, az, startYaw, bx, by, bz, minDistance, maxTurnDegrees,
+				DEFAULT_CURVE_RADIUS, desiredGradeDegrees, maxGradeDegrees, step);
+	}
+
+	/**
+	 * As {@link #layAligned(double, double, double, float, double, double, double, double, double, double, double, double)},
+	 * curving at up to {@code curveRadius}: a longer stroke keeps its bends
+	 * that size and runs straight for the rest.
+	 */
+	public static List<double[]> layAligned(
+			double ax, double ay, double az,
+			float startYaw,
+			double bx, double by, double bz,
+			double minDistance,
+			double maxTurnDegrees,
+			double curveRadius,
+			double desiredGradeDegrees,
+			double maxGradeDegrees,
+			double step) throws TrackLayException {
 		ensureMinDistance(ax, ay, az, bx, by, bz, minDistance);
 		List<double[]> points = alignedXz(ax, ay, az, startYaw, bx, bz,
-				minRadius(minDistance, maxTurnDegrees), maxTurnDegrees, step);
+				minRadius(minDistance, maxTurnDegrees), curveRadius, maxTurnDegrees, step);
+		if (points == null) {
+			return lay(ax, ay, az, startYaw, bx, by, bz,
+					minDistance, maxTurnDegrees, desiredGradeDegrees, maxGradeDegrees, step);
+		}
+		TrackGrade.apply(points, ay, by, desiredGradeDegrees, maxGradeDegrees);
+		return points;
+	}
+
+	/**
+	 * Track from A on heading {@code startYaw} that reaches B travelling on
+	 * {@code endYaw}, so it runs into the track already at B without a kink.
+	 * When no curve within the turn limits does that, it is a plain {@link #lay} arc.
+	 */
+	public static List<double[]> join(
+			double ax, double ay, double az,
+			float startYaw,
+			double bx, double by, double bz,
+			float endYaw,
+			double minDistance,
+			double maxTurnDegrees,
+			double curveRadius,
+			double desiredGradeDegrees,
+			double maxGradeDegrees,
+			double step) throws TrackLayException {
+		ensureMinDistance(ax, ay, az, bx, by, bz, minDistance);
+		List<double[]> points = null;
+		if (Math.hypot(bx - ax, bz - az) >= 1e-6) {
+			points = fit(ax, ay, az, startYaw, bx, bz, endYaw,
+					minRadius(minDistance, maxTurnDegrees), curveRadius, maxTurnDegrees, step);
+		}
 		if (points == null) {
 			return lay(ax, ay, az, startYaw, bx, by, bz,
 					minDistance, maxTurnDegrees, desiredGradeDegrees, maxGradeDegrees, step);
@@ -150,6 +216,7 @@ public final class TrackCurve {
 			float startYaw,
 			double bx, double bz,
 			double minRadius,
+			double curveRadius,
 			double maxTurnDegrees,
 			double step) throws TrackLayException {
 		double dx = bx - ax;
@@ -170,7 +237,12 @@ public final class TrackCurve {
 		double arcGrid = nearestGrid(arcEnd);
 		double chordGrid = nearestGrid(chord);
 		List<Double> targets = new ArrayList<>();
-		if (Math.abs(wrap(arcEnd - arcGrid)) <= SNAP_END_DEGREES) {
+		// A click within a track's width of a row the rail is on shifts across onto the clicked row.
+		if (Math.abs(cross) <= SHIFT_OFFSET && Math.abs(wrap(chord - startYaw)) <= SHIFT_CHORD_DEGREES
+				&& Math.abs(wrap(startYaw - nearestGrid(startYaw))) <= 1e-3) {
+			targets.add(nearestGrid(startYaw));
+		}
+		if (Math.abs(wrap(arcEnd - arcGrid)) <= SNAP_END_DEGREES && !targets.contains(arcGrid)) {
 			targets.add(arcGrid);
 		}
 		// Clicking along a row: aim for the row's heading however far off the rail arrives.
@@ -183,7 +255,8 @@ public final class TrackCurve {
 			double miss = wrap(arcEnd - grid);
 			for (double off = 0; off < Math.abs(miss); off += 1.0) {
 				double end = grid + Math.signum(miss) * off;
-				List<double[]> fitted = fit(ax, ay, az, startYaw, bx, bz, end, minRadius, maxTurnDegrees, step);
+				List<double[]> fitted = fit(
+						ax, ay, az, startYaw, bx, bz, end, minRadius, curveRadius, maxTurnDegrees, step);
 				if (fitted != null) {
 					return fitted;
 				}
@@ -199,19 +272,28 @@ public final class TrackCurve {
 		return Math.round(yaw / GRID_DEGREES) * GRID_DEGREES;
 	}
 
-	/** Track from A on heading {@code startYaw} to B on heading {@code endYaw}, or null if it would be too sharp. */
+	/**
+	 * Track from A on heading {@code startYaw} to B on heading {@code endYaw},
+	 * or null if it would be too sharp. Curves are {@code curveRadius} where
+	 * they fit and tighter, down to {@code minRadius}, where they do not; the
+	 * rest is straight. A sideways shift is made just before B, and a turn at
+	 * the corner where the two headings' lines cross, unless that would leave
+	 * a long run off the grid; then it turns at A and shifts across before B.
+	 */
 	private static List<double[]> fit(
 			double ax, double ay, double az,
 			double startYaw,
 			double bx, double bz,
 			double endYaw,
 			double minRadius,
+			double curveRadius,
 			double maxTurnDegrees,
 			double step) throws TrackLayException {
 		double turn = wrap(endYaw - startYaw);
 		if (Math.abs(turn) > maxTurnDegrees + 1e-6) {
 			return null;
 		}
+		double radius = Math.max(minRadius, curveRadius);
 		double sx = -Math.sin(Math.toRadians(startYaw));
 		double sz = Math.cos(Math.toRadians(startYaw));
 		double ex = -Math.sin(Math.toRadians(endYaw));
@@ -219,28 +301,163 @@ public final class TrackCurve {
 		double vx = bx - ax;
 		double vz = bz - az;
 		double horiz = Math.hypot(vx, vz);
-		if (Math.abs(turn) < 1e-3 && Math.abs(sx * vz - sz * vx) < 1e-6 * horiz) {
-			return TrackGenerate.densify(ax, ay, az, bx, ay, bz, step);
-		}
-		if (Math.abs(turn) >= 1e-3) {
-			// Where the start and end headings' lines cross: A + t*s = B - u*e.
-			double det = sx * ez - ex * sz;
-			double t = (vx * ez - ex * vz) / det;
-			double u = (sx * vz - vx * sz) / det;
-			double reach = Math.min(t, u);
-			if (reach > 1e-6 && reach / Math.tan(Math.toRadians(Math.abs(turn)) / 2.0) >= minRadius - 1e-6) {
-				List<double[]> points = new ArrayList<>();
-				double qx = ax + sx * (t - reach);
-				double qz = az + sz * (t - reach);
-				double rx = bx - ex * (u - reach);
-				double rz = bz - ez * (u - reach);
-				append(points, piece(ax, ay, az, qx, qz, sx, sz, step));
-				append(points, piece(qx, ay, qz, rx, rz, sx, sz, step));
-				append(points, piece(rx, ay, rz, bx, bz, ex, ez, step));
-				return points;
+		if (Math.abs(turn) < 1e-3) {
+			if (Math.abs(sx * vz - sz * vx) < 1e-6 * horiz) {
+				return TrackGenerate.densify(ax, ay, az, bx, ay, bz, step);
 			}
+			for (double r = radius; r > 0; r = nextRadius(r, minRadius)) {
+				List<double[]> shifted = shift(ax, ay, az, startYaw, bx, bz, r, maxTurnDegrees, step);
+				if (shifted != null) {
+					return shifted;
+				}
+			}
+			return sBend(ax, ay, az, sx, sz, bx, bz, ex, ez, minRadius, maxTurnDegrees, step);
+		}
+		List<double[]> corner = null;
+		// Where the start and end headings' lines cross: A + t*s = B - u*e.
+		double det = sx * ez - ex * sz;
+		double t = (vx * ez - ex * vz) / det;
+		double u = (sx * vz - vx * sz) / det;
+		double reach = Math.min(t, u);
+		double half = Math.tan(Math.toRadians(Math.abs(turn)) / 2.0);
+		if (reach > 1e-6 && reach / half >= minRadius - 1e-6) {
+			double tangent = Math.min(reach, radius * half);
+			corner = new ArrayList<>();
+			double qx = ax + sx * (t - tangent);
+			double qz = az + sz * (t - tangent);
+			double rx = bx - ex * (u - tangent);
+			double rz = bz - ez * (u - tangent);
+			append(corner, piece(ax, ay, az, qx, qz, sx, sz, step));
+			append(corner, piece(qx, ay, qz, rx, rz, sx, sz, step));
+			append(corner, piece(rx, ay, rz, bx, bz, ex, ez, step));
+		}
+		List<double[]> turned = null;
+		for (double r = radius; r > 0 && turned == null; r = nextRadius(r, minRadius)) {
+			turned = turnThenShift(ax, ay, az, startYaw, bx, bz, endYaw, r, maxTurnDegrees, step);
+		}
+		if (corner != null && (turned == null
+				|| offGrid(turned) + EXTRA_CURVES_RADII * radius >= offGrid(corner))) {
+			return corner;
+		}
+		if (turned != null) {
+			return turned;
 		}
 		return sBend(ax, ay, az, sx, sz, bx, bz, ex, ez, minRadius, maxTurnDegrees, step);
+	}
+
+	/** The next smaller radius to try after {@code radius}, ending on {@code minRadius}; 0 once that has been tried. */
+	private static double nextRadius(double radius, double minRadius) {
+		if (radius <= minRadius + 1e-9) {
+			return 0;
+		}
+		return Math.max(minRadius, radius * RADIUS_STEP);
+	}
+
+	/** Length of the polyline heading off the grid headings. */
+	private static double offGrid(List<double[]> points) {
+		double length = 0;
+		for (int i = 1; i < points.size(); i++) {
+			double dx = points.get(i)[0] - points.get(i - 1)[0];
+			double dz = points.get(i)[2] - points.get(i - 1)[2];
+			double yaw = yawOf(dx, dz);
+			if (Math.abs(wrap(yaw - nearestGrid(yaw))) > 0.01) {
+				length += Math.hypot(dx, dz);
+			}
+		}
+		return length;
+	}
+
+	/** An arc of {@code radius} at A from {@code startYaw} round to {@code endYaw}, then on to B as {@link #shift} does. */
+	private static List<double[]> turnThenShift(
+			double ax, double ay, double az,
+			double startYaw,
+			double bx, double bz,
+			double endYaw,
+			double radius,
+			double maxTurnDegrees,
+			double step) throws TrackLayException {
+		double turn = Math.toRadians(wrap(endYaw - startYaw));
+		double sx = -Math.sin(Math.toRadians(startYaw));
+		double sz = Math.cos(Math.toRadians(startYaw));
+		// Sideways towards increasing yaw, the way a positive turn bends.
+		double nx = -Math.cos(Math.toRadians(startYaw));
+		double nz = -Math.sin(Math.toRadians(startYaw));
+		double forward = radius * Math.sin(Math.abs(turn));
+		double aside = Math.signum(turn) * radius * (1.0 - Math.cos(Math.abs(turn)));
+		double px = ax + sx * forward + nx * aside;
+		double pz = az + sz * forward + nz * aside;
+		double ex = -Math.sin(Math.toRadians(endYaw));
+		double ez = Math.cos(Math.toRadians(endYaw));
+		double along = (bx - px) * ex + (bz - pz) * ez;
+		if (along <= 1e-6) {
+			return null;
+		}
+		List<double[]> rest;
+		if (Math.abs(ex * (bz - pz) - ez * (bx - px)) < 1e-6) {
+			rest = TrackGenerate.densify(px, ay, pz, bx, ay, bz, step);
+		} else {
+			rest = shift(px, ay, pz, endYaw, bx, bz, radius, maxTurnDegrees, step);
+		}
+		if (rest == null) {
+			return null;
+		}
+		List<double[]> points = new ArrayList<>();
+		append(points, piece(ax, ay, az, px, pz, sx, sz, step));
+		append(points, rest);
+		return points;
+	}
+
+	/**
+	 * Straight on from A along {@code yaw}, then a reverse curve of
+	 * {@code radius} that ends at B on the same heading: the track keeps its
+	 * line and moves across only at the end. A shift wider than the turn limit
+	 * allows crosses over on a straight between the two curves. Null if the
+	 * reverse curve is longer than the way to B.
+	 */
+	private static List<double[]> shift(
+			double ax, double ay, double az,
+			double yaw,
+			double bx, double bz,
+			double radius,
+			double maxTurnDegrees,
+			double step) throws TrackLayException {
+		double dx = -Math.sin(Math.toRadians(yaw));
+		double dz = Math.cos(Math.toRadians(yaw));
+		double nx = -Math.cos(Math.toRadians(yaw));
+		double nz = -Math.sin(Math.toRadians(yaw));
+		double along = (bx - ax) * dx + (bz - az) * dz;
+		double across = (bx - ax) * nx + (bz - az) * nz;
+		double side = Math.signum(across);
+		double wide = Math.abs(across);
+		double cap = Math.toRadians(Math.min(maxTurnDegrees, 89));
+		double angle;
+		double middle = 0;
+		if (wide <= 2.0 * radius * (1.0 - Math.cos(cap))) {
+			angle = Math.acos(1.0 - wide / (2.0 * radius));
+		} else {
+			angle = cap;
+			middle = (wide - 2.0 * radius * (1.0 - Math.cos(cap))) / Math.sin(cap);
+		}
+		double length = 2.0 * radius * Math.sin(angle) + middle * Math.cos(angle);
+		if (along <= 0 || length > along + 1e-9) {
+			return null;
+		}
+		double cos = Math.cos(angle);
+		double sin = Math.sin(angle);
+		double mx = dx * cos + side * nx * sin;
+		double mz = dz * cos + side * nz * sin;
+		double j0x = ax + dx * (along - length);
+		double j0z = az + dz * (along - length);
+		double j1x = j0x + dx * radius * sin + side * nx * radius * (1.0 - cos);
+		double j1z = j0z + dz * radius * sin + side * nz * radius * (1.0 - cos);
+		double j2x = j1x + mx * middle;
+		double j2z = j1z + mz * middle;
+		List<double[]> points = new ArrayList<>();
+		append(points, piece(ax, ay, az, j0x, j0z, dx, dz, step));
+		append(points, piece(j0x, ay, j0z, j1x, j1z, dx, dz, step));
+		append(points, piece(j1x, ay, j1z, j2x, j2z, mx, mz, step));
+		append(points, piece(j2x, ay, j2z, bx, bz, mx, mz, step));
+		return points;
 	}
 
 	/** Two arcs meeting halfway between equal-length tangents from A and B (a biarc). */

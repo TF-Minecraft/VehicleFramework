@@ -24,6 +24,10 @@ clearance:
 # After a refused lay, seconds before the same player can try again (0 = no wait).
 lay-retry-seconds: 3
 min-lay-distance: 8
+# Radius, in blocks, of the bends in a laid stroke. A long stroke bends this tightly
+# near its corner or its end and is straight elsewhere; a short one bends tighter to fit,
+# down to the sharpest turn max-turn-degrees allows over min-lay-distance.
+curve-radius: 32
 join-distance: 1.5
 min-junction-spacing: 16
 max-junction-length: 32

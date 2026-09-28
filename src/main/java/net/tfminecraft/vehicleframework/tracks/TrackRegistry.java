@@ -345,7 +345,7 @@ public final class TrackRegistry {
 		TrackSample origin = end.prepend ? spline.first() : spline.last();
 		List<double[]> extra = TrackCurve.layAligned(
 				origin.x, origin.y, origin.z, endYaw(spline, end.prepend), x, y, z,
-				Cache.trackMinLayDistance, Cache.trackMaxTurnDegrees,
+				Cache.trackMinLayDistance, Cache.trackMaxTurnDegrees, Cache.trackCurveRadius,
 				Cache.trackDesiredGradeDegrees, Cache.trackMaxGradeDegrees, TrackGenerate.STEP);
 		TrackClearance.check(bukkitWorld, extra, this, Set.of(spline.getId()));
 		List<double[]> merged = new ArrayList<>();
@@ -403,15 +403,8 @@ public final class TrackRegistry {
 	private StrokeLay closeLoop(TrackEnd from, TrackEnd to, World bukkitWorld) throws TrackLayException {
 		TrackSpline spline = from.spline;
 		TrackSample originA = from.prepend ? spline.first() : spline.last();
-		float yaw = originA.yaw;
-		if (from.prepend) {
-			yaw = yaw + 180f;
-		}
 		TrackSample originB = to.prepend ? spline.first() : spline.last();
-		List<double[]> extra = TrackCurve.lay(
-				originA.x, originA.y, originA.z, yaw, originB.x, originB.y, originB.z,
-				Cache.trackMinLayDistance, Cache.trackMaxTurnDegrees,
-				Cache.trackDesiredGradeDegrees, Cache.trackMaxGradeDegrees, TrackGenerate.STEP);
+		List<double[]> extra = joinCurve(from, originA, to, originB);
 		TrackClearance.check(bukkitWorld, extra, this, Set.of(spline.getId()));
 		// Close the loop in the track's own direction. Reversing it would turn
 		// round any train on it and leave its junctions facing the wrong way.
@@ -456,15 +449,8 @@ public final class TrackRegistry {
 		boolean keepReversed = flip != fromReversedAsLaid;
 		boolean dropReversed = flip != toReversedAsLaid;
 		TrackSample originA = from.prepend ? from.spline.first() : from.spline.last();
-		float yaw = originA.yaw;
-		if (from.prepend) {
-			yaw = yaw + 180f;
-		}
 		TrackSample originB = to.prepend ? to.spline.first() : to.spline.last();
-		List<double[]> extra = TrackCurve.lay(
-				originA.x, originA.y, originA.z, yaw, originB.x, originB.y, originB.z,
-				Cache.trackMinLayDistance, Cache.trackMaxTurnDegrees,
-				Cache.trackDesiredGradeDegrees, Cache.trackMaxGradeDegrees, TrackGenerate.STEP);
+		List<double[]> extra = joinCurve(from, originA, to, originB);
 		TrackClearance.check(
 				bukkitWorld, extra, this, Set.of(from.spline.getId(), to.spline.getId()));
 		List<double[]> fromPart = points(from.spline, keepReversed);
@@ -502,6 +488,18 @@ public final class TrackRegistry {
 		rebuilt.accept(oldKeep, List.of(stored));
 		rebuilt.accept(oldDrop, List.of(stored));
 		return new StrokeLay(stored, extra, 0);
+	}
+
+	/** The stroke from one track end to another, leaving the first and entering the second along their own headings. */
+	private static List<double[]> joinCurve(TrackEnd from, TrackSample originA, TrackEnd to, TrackSample originB)
+			throws TrackLayException {
+		// Travelling into the far end runs against the heading off it.
+		float arrive = endYaw(to.spline, to.prepend) + 180f;
+		return TrackCurve.join(
+				originA.x, originA.y, originA.z, endYaw(from.spline, from.prepend),
+				originB.x, originB.y, originB.z, arrive,
+				Cache.trackMinLayDistance, Cache.trackMaxTurnDegrees, Cache.trackCurveRadius,
+				Cache.trackDesiredGradeDegrees, Cache.trackMaxGradeDegrees, TrackGenerate.STEP);
 	}
 
 	private record StrokeLay(TrackSpline spline, List<double[]> stroke, int previousCount) {

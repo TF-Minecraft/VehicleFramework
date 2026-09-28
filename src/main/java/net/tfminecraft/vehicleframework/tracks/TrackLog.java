@@ -80,6 +80,7 @@ public final class TrackLog {
 				+ " joinEnd=" + joinEnd
 				+ " minDist=" + fmt(Cache.trackMinLayDistance)
 				+ " maxTurn=" + fmt(Cache.trackMaxTurnDegrees)
+				+ " curveRadius=" + fmt(Cache.trackCurveRadius)
 				+ " desiredGrade=" + fmt(Cache.trackDesiredGradeDegrees)
 				+ " maxGrade=" + fmt(Cache.trackMaxGradeDegrees));
 	}
