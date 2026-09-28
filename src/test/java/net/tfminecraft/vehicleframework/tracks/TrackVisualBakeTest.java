@@ -138,4 +138,45 @@ class TrackVisualBakeTest {
 		assertTrue(TrackVisualDiff.same(before.get(0), after.get(0)));
 		assertEquals(1, TrackVisualDiff.firstChange(before, after));
 	}
+	@Test
+	void bakeAppended_matchesFullBakeAsTrackGrows() {
+		// Straights, curves, a climb and a repeated point, so pieces of every length appear.
+		List<double[]> all = new java.util.ArrayList<>();
+		double x = 0;
+		double y = 64;
+		double z = 0;
+		double heading = 0;
+		for (int i = 0; i < 400; i++) {
+			if (i % 50 > 30) {
+				heading += 0.09 * (i % 100 > 50 ? -1 : 1);
+			}
+			if (i > 200 && i < 230) {
+				y += 0.15;
+			}
+			x += Math.sin(heading);
+			z += Math.cos(heading);
+			all.add(new double[] {x, y, z});
+			if (i == 120) {
+				all.add(new double[] {x, y, z});
+			}
+		}
+		List<TrackVisual> baked = List.of();
+		int count = 0;
+		for (int n = 2; n <= all.size(); n += 1 + n % 3) {
+			List<double[]> points = all.subList(0, n);
+			List<TrackVisual> appended = TrackVisualBake.bakeAppended(baked, count, points);
+			List<TrackVisual> full = TrackVisualBake.bake(
+					TrackSpline.fromPoints(UUID.randomUUID(), "world", false, points));
+			assertEquals(full.size(), appended.size(), "pieces at " + n + " points");
+			for (int i = 0; i < full.size(); i++) {
+				TrackVisual a = full.get(i);
+				TrackVisual b = appended.get(i);
+				assertTrue(TrackVisualDiff.same(a, b), "piece " + i + " at " + n + " points");
+				assertEquals(a.yaw, b.yaw, 1e-4f);
+				assertEquals(a.pitch, b.pitch, 1e-4f);
+			}
+			baked = appended;
+			count = n;
+		}
+	}
 }

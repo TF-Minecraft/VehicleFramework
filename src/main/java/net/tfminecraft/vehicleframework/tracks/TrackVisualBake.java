@@ -42,6 +42,55 @@ public final class TrackVisualBake {
 		return out;
 	}
 
+	/**
+	 * The pieces of an open, unbroken track laid through {@code points}, when
+	 * {@code previous} are the pieces for its first {@code previousCount} points.
+	 * Pieces are chosen from the start and only look a few samples ahead, so
+	 * those well before the old end stay the same and only the tail is baked
+	 * again. Gives the same pieces as baking every point.
+	 */
+	public static List<TrackVisual> bakeAppended(
+			List<TrackVisual> previous, int previousCount, List<double[]> points) {
+		if (points == null || points.size() < 2) {
+			return List.of();
+		}
+		// A piece starting at i reads samples up to i + 2, and the old last
+		// sample turns once points follow it, so keep pieces starting before
+		// the last one at or below previousCount - 4.
+		int limit = Math.min(previousCount, points.size()) - 4;
+		int from = -1;
+		int keep = 0;
+		if (previous != null) {
+			for (int i = 0; i < previous.size(); i++) {
+				TrackVisual visual = previous.get(i);
+				if (visual.startIndex > limit) {
+					break;
+				}
+				from = visual.startIndex;
+				keep = i;
+			}
+		}
+		if (from <= 0) {
+			return bake(TrackSpline.fromPoints(null, "", false, points));
+		}
+		List<TrackVisual> out = new ArrayList<>(previous.subList(0, keep));
+		TrackSpline tail = TrackSpline.fromPoints(null, "", false, points.subList(from, points.size()));
+		for (TrackVisual visual : bake(tail)) {
+			out.add(new TrackVisual(
+					visual.type,
+					visual.startIndex + from,
+					visual.length,
+					visual.fromEdge + from,
+					visual.span,
+					visual.x,
+					visual.y,
+					visual.z,
+					visual.yaw,
+					visual.pitch));
+		}
+		return out;
+	}
+
 	private static boolean canTake(TrackSpline spline, boolean[] used, int start, int length) {
 		List<TrackSample> samples = spline.getSamples();
 		int n = samples.size();

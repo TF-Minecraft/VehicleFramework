@@ -66,6 +66,7 @@ public class VehicleFramework extends JavaPlugin{
 		printBanner();
 		plugin = this;
 		trackRegistry = new TrackRegistry(getDataFolder());
+		trackRegistry.writeInBackground();
 		trackRegistry.onRebuilt(TrainHandler::retrackTrains);
 		trackRegistry.occupiedBy(TrainHandler::anyTrainOn);
 		log = new LogWriter(getDataFolder());
@@ -99,6 +100,9 @@ public class VehicleFramework extends JavaPlugin{
 			TrainSpaceHighlight.clearAll();
 		}
 		vehicleManager.unloadAll();
+		if (trackRegistry != null) {
+			trackRegistry.close();
+		}
 		VehiclePersistence persistence = VehiclePersistence.current();
 		if (persistence != null) {
 			persistence.checkpointWal(true);

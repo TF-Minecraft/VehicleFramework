@@ -16,6 +16,10 @@ public final class TrackSpline {
 	private final boolean loop;
 	private final List<TrackSample> samples;
 	private final List<TrackSegment> segments;
+	// Edge index to segment, and the broken edges in order. Long tracks are
+	// looked up per sample and per train step, so a scan of segments is too slow.
+	private final TrackSegment[] byEdge;
+	private final int[] brokenEdges;
 	private List<TrackVisual> visualCache;
 
 	public TrackSpline(UUID id, String world, boolean loop, List<TrackSample> samples, List<TrackSegment> segments) {
@@ -35,6 +39,25 @@ public final class TrackSpline {
 			segs = segs.subList(0, expected);
 		}
 		this.segments = List.copyOf(segs);
+		this.byEdge = new TrackSegment[expected];
+		for (TrackSegment segment : this.segments) {
+			int edge = segment.fromIndex;
+			if (edge >= 0 && edge < expected && byEdge[edge] == null) {
+				byEdge[edge] = segment;
+			}
+		}
+		int broken = 0;
+		for (TrackSegment segment : byEdge) {
+			if (segment != null && segment.broken) {
+				broken++;
+			}
+		}
+		this.brokenEdges = new int[broken];
+		for (int i = 0, n = 0; i < expected; i++) {
+			if (byEdge[i] != null && byEdge[i].broken) {
+				brokenEdges[n++] = i;
+			}
+		}
 	}
 
 	public static TrackSpline fromPoints(UUID id, String world, boolean loop, List<double[]> xyz) {
@@ -145,13 +168,25 @@ public final class TrackSpline {
 		}
 		s = normalizeS(s, len);
 		int edges = edgeCount();
-		for (int i = 0; i < edges; i++) {
-			double a = edgeStartS(i);
-			double b = edgeEndS(i);
-			if (s + 1e-12 >= a && s <= b + 1e-12) {
+		// Edges run end to end with rising s, so the first edge ending at or
+		// after s is the one that holds it.
+		int lo = 0;
+		int hi = edges;
+		while (lo < hi) {
+			int mid = (lo + hi) >>> 1;
+			if (s <= edgeEndS(mid) + 1e-12) {
+				hi = mid;
+			} else {
+				lo = mid + 1;
+			}
+		}
+		if (lo < edges) {
+			double a = edgeStartS(lo);
+			double b = edgeEndS(lo);
+			if (s + 1e-12 >= a) {
 				double span = b - a;
 				double t = span < 1e-12 ? 0 : (s - a) / span;
-				return lerpEdge(i, t);
+				return lerpEdge(lo, t);
 			}
 		}
 		return lerpEdge(edges - 1, 1);
@@ -204,6 +239,10 @@ public final class TrackSpline {
 	}
 
 	public TrackSegment segment(int fromIndex) {
+		if (fromIndex >= 0 && fromIndex < byEdge.length) {
+			TrackSegment segment = byEdge[fromIndex];
+			return segment != null ? segment : new TrackSegment(fromIndex, false, 1.0);
+		}
 		for (TrackSegment segment : segments) {
 			if (segment.fromIndex == fromIndex) {
 				return segment;
@@ -289,7 +328,8 @@ public final class TrackSpline {
 			}
 			loaded.add(new TrackSample(x, y, z, yaw, pitch, s));
 		}
-		if (missingS) {
+		// sampleAt and advance need s rising along the track.
+		if (missingS || !rising(loaded)) {
 			loaded = recomputeS(loaded);
 		}
 		JSONArray segArr = (JSONArray) root.get("segments");
@@ -311,13 +351,9 @@ public final class TrackSpline {
 	}
 
 	private Double firstBrokenAhead(double from, double to) {
-		int edges = edgeCount();
 		boolean wrap = loop && to + 1e-12 < from - 1e-9;
 		Double stop = null;
-		for (int i = 0; i < edges; i++) {
-			if (!segmentBroken(i)) {
-				continue;
-			}
+		for (int i : brokenEdges) {
 			double start = edgeStartS(i);
 			boolean crosses;
 			if (wrap) {
@@ -342,13 +378,9 @@ public final class TrackSpline {
 	}
 
 	private Double firstBrokenBehind(double from, double to) {
-		int edges = edgeCount();
 		boolean wrap = loop && to > from + 1e-9;
 		double best = Double.NaN;
-		for (int i = 0; i < edges; i++) {
-			if (!segmentBroken(i)) {
-				continue;
-			}
+		for (int i : brokenEdges) {
 			double end = edgeEndS(i);
 			if (wrap) {
 				if (end < from - 1e-12 || end + 1e-12 >= to) {
@@ -366,15 +398,6 @@ public final class TrackSpline {
 			return best;
 		}
 		return null;
-	}
-
-	private boolean segmentBroken(int edgeIndex) {
-		for (TrackSegment segment : segments) {
-			if (segment.fromIndex == edgeIndex) {
-				return segment.broken;
-			}
-		}
-		return false;
 	}
 
 	private double edgeStartS(int edgeIndex) {
@@ -449,6 +472,15 @@ public final class TrackSpline {
 			segs.add(new TrackSegment(i, false, 1.0));
 		}
 		return segs;
+	}
+
+	private static boolean rising(List<TrackSample> samples) {
+		for (int i = 1; i < samples.size(); i++) {
+			if (!(samples.get(i).s >= samples.get(i - 1).s)) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private static List<TrackSample> recomputeS(List<TrackSample> loaded) {

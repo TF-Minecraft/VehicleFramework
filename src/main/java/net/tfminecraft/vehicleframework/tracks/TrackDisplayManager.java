@@ -5,7 +5,9 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -51,6 +53,13 @@ public final class TrackDisplayManager implements Listener {
 	private final Deque<ChunkRef> resyncQueue = new ArrayDeque<>();
 	private CommandSender resyncNotify;
 	private boolean missingSwitchLogged;
+	private NamespacedKey idKey;
+	private NamespacedKey edgeKey;
+	private NamespacedKey switchKey;
+	private NamespacedKey spanKey;
+	// Items by config path. Looking one up goes through the item plugin, and a
+	// long track spawns hundreds of displays at once.
+	private final Map<String, ItemStack> items = new HashMap<>();
 
 	public TrackDisplayManager() {
 		VehicleFramework plugin = VehicleFramework.getInstance();
@@ -63,20 +72,33 @@ public final class TrackDisplayManager implements Listener {
 		}
 	}
 
+	// Read for every live display each tick, so build them once.
 	public NamespacedKey idKey() {
-		return new NamespacedKey(VehicleFramework.getInstance(), KEY_ID);
+		if (idKey == null) {
+			idKey = new NamespacedKey(VehicleFramework.getInstance(), KEY_ID);
+		}
+		return idKey;
 	}
 
 	public NamespacedKey edgeKey() {
-		return new NamespacedKey(VehicleFramework.getInstance(), KEY_EDGE);
+		if (edgeKey == null) {
+			edgeKey = new NamespacedKey(VehicleFramework.getInstance(), KEY_EDGE);
+		}
+		return edgeKey;
 	}
 
 	public NamespacedKey switchKey() {
-		return new NamespacedKey(VehicleFramework.getInstance(), KEY_SWITCH);
+		if (switchKey == null) {
+			switchKey = new NamespacedKey(VehicleFramework.getInstance(), KEY_SWITCH);
+		}
+		return switchKey;
 	}
 
 	public NamespacedKey spanKey() {
-		return new NamespacedKey(VehicleFramework.getInstance(), KEY_SPAN);
+		if (spanKey == null) {
+			spanKey = new NamespacedKey(VehicleFramework.getInstance(), KEY_SPAN);
+		}
+		return spanKey;
 	}
 
 	public void spawnLoadedChunks() {
@@ -90,6 +112,7 @@ public final class TrackDisplayManager implements Listener {
 	public void reloadSwitches() {
 		despawnAllSwitches();
 		missingSwitchLogged = false;
+		items.clear();
 		for (World world : Bukkit.getWorlds()) {
 			for (Chunk chunk : world.getLoadedChunks()) {
 				spawnSwitchesInChunk(chunk);
@@ -100,6 +123,7 @@ public final class TrackDisplayManager implements Listener {
 	public void startRailResync(CommandSender sender) {
 		Cache.applyTrackDisplayStyle();
 		missingLogged.clear();
+		items.clear();
 		TrackRegistry registry = VehicleFramework.getTrackRegistry();
 		if (registry != null) {
 			registry.invalidateAllVisuals();
@@ -125,20 +149,74 @@ public final class TrackDisplayManager implements Listener {
 		if (world == null) {
 			return;
 		}
-		Set<Long> seen = new HashSet<>();
-		for (TrackVisual visual : spline.visuals()) {
-			int cx = TrackChunks.chunkCoord(visual.x);
-			int cz = TrackChunks.chunkCoord(visual.z);
-			long key = chunkKey(cx, cz);
-			if (!seen.add(key)) {
-				continue;
+		if (TrackBuildAnimator.isBuilding(spline.getId())) {
+			Set<Long> seen = new HashSet<>();
+			for (TrackVisual visual : spline.visuals()) {
+				int cx = TrackChunks.chunkCoord(visual.x);
+				int cz = TrackChunks.chunkCoord(visual.z);
+				if (seen.add(TrackChunks.key(cx, cz)) && world.isChunkLoaded(cx, cz)) {
+					TrackBuildAnimator.spawnIntoChunk(spline, world.getChunkAt(cx, cz));
+				}
 			}
-			if (!world.isChunkLoaded(cx, cz)) {
-				continue;
-			}
-			spawnSplineInChunk(spline, world.getChunkAt(cx, cz));
+		} else {
+			spawnLoaded(world, spline, spline.visuals(), null);
 		}
 		spawnSwitchesForSpline(spline);
+	}
+
+	/**
+	 * Updates the displays of a track after an edit, changing only chunks whose
+	 * pieces differ from {@code before}. Rebuilding every display of a long
+	 * track on each dig is slow.
+	 */
+	public void refreshSpline(TrackSpline before, UUID id) {
+		TrackRegistry registry = VehicleFramework.getTrackRegistry();
+		TrackSpline after = registry == null ? null : registry.get(id).orElse(null);
+		if (after == null) {
+			despawnSpline(id);
+			return;
+		}
+		if (before == null || !id.equals(before.getId()) || TrackBuildAnimator.isBuilding(id)) {
+			rebakeSpline(id);
+			return;
+		}
+		World world = Bukkit.getWorld(after.getWorld());
+		if (world == null) {
+			return;
+		}
+		Set<Long> changed = TrackVisualDiff.changedChunks(before.visuals(), after.visuals());
+		if (!changed.isEmpty()) {
+			Iterator<ItemDisplay> it = live.iterator();
+			while (it.hasNext()) {
+				ItemDisplay display = it.next();
+				if (!id.equals(readId(display))) {
+					continue;
+				}
+				Location at = display.getLocation();
+				if (changed.contains(TrackChunks.keyAt(at.getX(), at.getZ()))) {
+					display.remove();
+					it.remove();
+				}
+			}
+			spawnLoaded(world, after, after.visuals(), changed);
+		}
+		spawnSwitchesForSpline(after);
+	}
+
+	/** Spawns the pieces that lie in loaded chunks, or only in {@code onlyChunks} when given. */
+	private void spawnLoaded(World world, TrackSpline spline, List<TrackVisual> visuals, Set<Long> onlyChunks) {
+		Map<Long, Boolean> loaded = new HashMap<>();
+		for (TrackVisual visual : visuals) {
+			int cx = TrackChunks.chunkCoord(visual.x);
+			int cz = TrackChunks.chunkCoord(visual.z);
+			long key = TrackChunks.key(cx, cz);
+			if (onlyChunks != null && !onlyChunks.contains(key)) {
+				continue;
+			}
+			if (loaded.computeIfAbsent(key, k -> world.isChunkLoaded(cx, cz))) {
+				spawnDisplay(world, spline.getId(), visual);
+			}
+		}
 	}
 
 	public void despawnTrackDisplays(UUID id) {
@@ -279,7 +357,7 @@ public final class TrackDisplayManager implements Listener {
 				continue;
 			}
 			registry.replace(current);
-			rebakeSpline(spline.getId());
+			refreshSpline(spline, spline.getId());
 		}
 	}
 
@@ -640,11 +718,18 @@ public final class TrackDisplayManager implements Listener {
 		if (path == null || path.isBlank()) {
 			return null;
 		}
+		ItemStack cached = items.get(path);
+		if (cached != null) {
+			return cached;
+		}
 		try {
 			ItemStack item = TLibs.getItemAPI().getCreator().getItemFromPath(path);
 			if (item == null || item.getType().isAir()) {
+				// Not cached: the item plugin may not have loaded its items yet.
 				return null;
 			}
+			// Displays copy the stack they are given, so one can be shared.
+			items.put(path, item);
 			return item;
 		} catch (Exception e) {
 			return null;
@@ -697,7 +782,7 @@ public final class TrackDisplayManager implements Listener {
 		if (changed) {
 			registry.replace(current);
 		}
-		rebakeSpline(id);
+		refreshSpline(spline, id);
 	}
 
 	private int readSpan(ItemDisplay display) {
@@ -836,10 +921,6 @@ public final class TrackDisplayManager implements Listener {
 
 	private Integer readEdge(ItemDisplay display) {
 		return display.getPersistentDataContainer().get(edgeKey(), PersistentDataType.INTEGER);
-	}
-
-	private static long chunkKey(int cx, int cz) {
-		return ((long) cx << 32) ^ (cz & 0xffffffffL);
 	}
 
 	private record ChunkRef(String world, int x, int z) {
