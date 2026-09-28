@@ -53,6 +53,62 @@ class TrackSplineTest {
 	}
 
 	@Test
+	void advance_backwardsStopsAtBrokenSegmentBehind() {
+		TrackSpline spline = TrackSpline.fromPoints(
+				UUID.randomUUID(), "world", false,
+				List.of(new double[] {0, 0, 0}, new double[] {0, 0, 10}, new double[] {0, 0, 20}));
+		spline = spline.withSegment(0, new TrackSegment(0, true, 1.0));
+		TrackAdvance move = spline.advance(15, -8);
+		assertTrue(move.stoppedAtBreak);
+		assertEquals(10, move.s, 1e-9);
+	}
+
+	@Test
+	void segment_findsSegmentsStoredOutOfOrder() {
+		TrackSpline straight = TrackSpline.fromPoints(
+				UUID.randomUUID(), "world", false,
+				List.of(new double[] {0, 0, 0}, new double[] {0, 0, 10}, new double[] {0, 0, 20},
+						new double[] {0, 0, 30}));
+		TrackSpline spline = new TrackSpline(
+				straight.getId(), "world", false, straight.getSamples(),
+				List.of(new TrackSegment(2, false, 1.0), new TrackSegment(1, true, 0.5),
+						new TrackSegment(0, false, 1.0)));
+		assertTrue(spline.segment(1).broken);
+		assertEquals(0.5, spline.segment(1).health, 1e-9);
+		assertFalse(spline.segment(2).broken);
+		TrackAdvance move = spline.advance(25, -20);
+		assertTrue(move.stoppedAtBreak);
+		assertEquals(20, move.s, 1e-9);
+	}
+
+	@Test
+	void sampleAt_longTrackWithRepeatedPoint_findsEachPosition() {
+		List<double[]> points = new java.util.ArrayList<>();
+		for (int z = 0; z <= 2000; z++) {
+			points.add(new double[] {0, 64, z});
+			if (z == 1000) {
+				points.add(new double[] {0, 64, z});
+			}
+		}
+		TrackSpline spline = TrackSpline.fromPoints(UUID.randomUUID(), "world", false, points);
+		for (double s : new double[] {0, 0.25, 999.5, 1000, 1000.5, 1999.75, 2000}) {
+			assertEquals(s, spline.sampleAt(s).z, 1e-9);
+		}
+		assertEquals(2000, spline.sampleAt(2500).z, 1e-9);
+	}
+
+	@Test
+	void sampleAt_loopClosingEdge_runsBackToStart() {
+		TrackSpline spline = TrackSpline.fromPoints(
+				UUID.randomUUID(), "world", true,
+				List.of(new double[] {0, 0, 0}, new double[] {10, 0, 0}, new double[] {10, 0, 10},
+						new double[] {0, 0, 10}));
+		TrackPose closing = spline.sampleAt(35);
+		assertEquals(0, closing.x, 1e-9);
+		assertEquals(5, closing.z, 1e-9);
+	}
+
+	@Test
 	void advance_openClampsAtEnd() {
 		TrackSpline spline = TrackSpline.fromPoints(
 				UUID.randomUUID(), "world", false,

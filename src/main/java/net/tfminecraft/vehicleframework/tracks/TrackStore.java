@@ -6,9 +6,16 @@ import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -17,9 +24,73 @@ import net.tfminecraft.vehicleframework.VFLogger;
 
 public final class TrackStore {
 	private final File root;
+	// Latest pending write per track file; a newer save replaces an older one not yet written.
+	private final Map<File, Runnable> pending = new ConcurrentHashMap<>();
+	private ExecutorService writer;
 
 	public TrackStore(File dataFolder) {
 		this.root = new File(dataFolder, "data/tracks");
+	}
+
+	/**
+	 * Writes track files on a background thread from now on. Saving a long
+	 * track takes tens of milliseconds, too long for the server thread.
+	 */
+	public synchronized void writeInBackground() {
+		if (writer == null) {
+			writer = Executors.newSingleThreadExecutor(r -> {
+				Thread thread = new Thread(r, "VehicleFramework-TrackStore");
+				thread.setDaemon(true);
+				return thread;
+			});
+		}
+	}
+
+	/** Finishes pending writes and goes back to writing on the caller's thread. */
+	public void close() {
+		ExecutorService running;
+		synchronized (this) {
+			running = writer;
+			writer = null;
+		}
+		if (running == null) {
+			return;
+		}
+		running.shutdown();
+		try {
+			if (!running.awaitTermination(30, TimeUnit.SECONDS)) {
+				VFLogger.log("Track saves did not finish within 30 seconds");
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
+		for (File file : List.copyOf(pending.keySet())) {
+			Runnable write = pending.remove(file);
+			if (write != null) {
+				write.run();
+			}
+		}
+	}
+
+	private void submit(File file, Runnable write) {
+		ExecutorService running;
+		synchronized (this) {
+			running = writer;
+		}
+		if (running == null) {
+			pending.remove(file);
+			write.run();
+			return;
+		}
+		if (pending.put(file, write) != null) {
+			return;
+		}
+		running.execute(() -> {
+			Runnable latest = pending.remove(file);
+			if (latest != null) {
+				latest.run();
+			}
+		});
 	}
 
 	public static String sanitizeWorld(String world) {
@@ -38,11 +109,20 @@ public final class TrackStore {
 	}
 
 	public void save(TrackSpline spline) {
+		// Splines are immutable, so the writer thread can serialise this one safely.
 		File file = fileFor(spline);
+		submit(file, () -> write(file, spline));
+	}
+
+	private static void write(File file, TrackSpline spline) {
 		file.getParentFile().mkdirs();
-		JSONObject json = spline.toJson();
-		try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8)) {
-			writer.write(json.toJSONString());
+		File tmp = new File(file.getParentFile(), file.getName() + ".tmp");
+		try {
+			String json = spline.toJson().toJSONString();
+			try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(tmp), StandardCharsets.UTF_8)) {
+				writer.write(json);
+			}
+			Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
 		} catch (Exception e) {
 			VFLogger.log("Failed to save track " + spline.getId());
 			e.printStackTrace();
@@ -51,9 +131,11 @@ public final class TrackStore {
 
 	public void delete(TrackSpline spline) {
 		File file = fileFor(spline);
-		if (file.exists() && !file.delete()) {
-			VFLogger.log("Failed to delete track file " + file.getName());
-		}
+		submit(file, () -> {
+			if (file.exists() && !file.delete()) {
+				VFLogger.log("Failed to delete track file " + file.getName());
+			}
+		});
 	}
 
 	public File junctionFileFor(String world, UUID id) {

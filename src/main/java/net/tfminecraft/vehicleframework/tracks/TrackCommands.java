@@ -434,7 +434,8 @@ public final class TrackCommands {
 			player.sendMessage("§cA train is on this track. Move it before removing the rail.");
 			return;
 		}
-		applyDig(player, registry().digAt(target.get().spline(), target.get().index(), loc.getWorld()), loc);
+		TrackSpline before = target.get().spline();
+		applyDig(player, registry().digAt(before, target.get().index(), loc.getWorld()), loc, before);
 	}
 
 	private static boolean trainOn(TrackRegistry.DigTarget target) {
@@ -485,6 +486,11 @@ public final class TrackCommands {
 	}
 
 	public static void applyDig(Player player, DigResult result, Location at) {
+		applyDig(player, result, at, null);
+	}
+
+	/** {@code before} is the track as it was, so only the displays that changed are replaced. */
+	public static void applyDig(Player player, DigResult result, Location at, TrackSpline before) {
 		TrackDisplayManager displays = VehicleFramework.getTrackDisplayManager();
 		if (result.kind == DigResult.Kind.NONE) {
 			TrackLog.dig(player.getName(), result);
@@ -504,6 +510,10 @@ public final class TrackCommands {
 			if (Cache.trackBuildSwing) {
 				player.swingMainHand();
 			}
+		}
+		// Mid-build, the world shows only part of the stroke, so the old pieces are not known.
+		if (result.kept != null && TrackBuildAnimator.isBuilding(result.kept.getId())) {
+			before = null;
 		}
 		if (result.deletedId != null) {
 			TrackBuildAnimator.cancel(result.deletedId);
@@ -525,7 +535,9 @@ public final class TrackCommands {
 					&& !result.deletedId.equals(result.kept.getId())) {
 				displays.despawnSpline(result.deletedId);
 			}
-			rebake(result.kept.getId());
+			if (displays != null) {
+				displays.refreshSpline(before, result.kept.getId());
+			}
 			return;
 		}
 		if (displays != null) {
@@ -560,7 +572,10 @@ public final class TrackCommands {
 					result.spline().getId(),
 					TrackPieces.persistPoints(result.keepPoints(), result.stroke, append, paid));
 		}
-		rebake(result.spline().getId());
+		TrackDisplayManager displays = VehicleFramework.getTrackDisplayManager();
+		if (displays != null) {
+			displays.refreshSpline(result.before, result.spline().getId());
+		}
 		burstPlace(player, result);
 		return new Presented(remaining(result), paid, cost, false);
 	}
@@ -646,13 +661,6 @@ public final class TrackCommands {
 			yaw = last.yaw;
 		}
 		TrackFx.place(player.getWorld(), new TrackPose(p[0], p[1], p[2], yaw, 0));
-	}
-
-	private static void rebake(UUID id) {
-		TrackDisplayManager displays = VehicleFramework.getTrackDisplayManager();
-		if (displays != null) {
-			displays.rebakeSpline(id);
-		}
 	}
 
 	private static Optional<TrackSpline> resolveSpline(Player player, String[] args) {

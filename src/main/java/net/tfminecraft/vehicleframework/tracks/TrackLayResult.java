@@ -15,12 +15,16 @@ public final class TrackLayResult {
 	public final TrackSpline spline;
 	public final List<double[]> stroke;
 	public final int previousCount;
+	/** The extended track as it was before this lay, or null. */
+	public final TrackSpline before;
 
-	private TrackLayResult(Kind kind, TrackSpline spline, List<double[]> stroke, int previousCount) {
+	private TrackLayResult(
+			Kind kind, TrackSpline spline, List<double[]> stroke, int previousCount, TrackSpline before) {
 		this.kind = kind;
 		this.spline = spline;
 		this.stroke = stroke == null ? List.of() : copyPoints(stroke);
 		this.previousCount = Math.max(0, previousCount);
+		this.before = before;
 	}
 
 	public static TrackLayResult of(Kind kind, TrackSpline spline) {
@@ -28,7 +32,11 @@ public final class TrackLayResult {
 	}
 
 	public static TrackLayResult of(Kind kind, TrackSpline spline, List<double[]> stroke, int previousCount) {
-		return new TrackLayResult(kind, spline, stroke, previousCount);
+		return new TrackLayResult(kind, spline, stroke, previousCount, null);
+	}
+
+	public TrackLayResult withBefore(TrackSpline previous) {
+		return new TrackLayResult(kind, spline, stroke, previousCount, previous);
 	}
 
 	public TrackSpline spline() {

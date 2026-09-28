@@ -8,6 +8,14 @@ public final class TrackChunks {
 		return (int) Math.floor(block / 16.0);
 	}
 
+	public static long key(int chunkX, int chunkZ) {
+		return ((long) chunkX << 32) ^ (chunkZ & 0xffffffffL);
+	}
+
+	public static long keyAt(double x, double z) {
+		return key(chunkCoord(x), chunkCoord(z));
+	}
+
 	public static boolean inChunk(double x, double z, int chunkX, int chunkZ) {
 		return chunkCoord(x) == chunkX && chunkCoord(z) == chunkZ;
 	}

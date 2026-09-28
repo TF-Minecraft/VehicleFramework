@@ -45,6 +45,16 @@ public final class TrackRegistry {
 		} : listener;
 	}
 
+	/** Saves track files off the server thread until {@link #close()}. */
+	public void writeInBackground() {
+		store.writeInBackground();
+	}
+
+	/** Waits for pending track saves. */
+	public void close() {
+		store.close();
+	}
+
 	/** Tells the registry which splines have a train bound to them. */
 	public void occupiedBy(Predicate<UUID> test) {
 		occupied = test == null ? id -> false : test;
@@ -123,7 +133,8 @@ public final class TrackRegistry {
 						? TrackLayResult.Kind.PREPEND
 						: TrackLayResult.Kind.APPEND;
 				TrackLog.layOk(laid.spline, kind.name().toLowerCase());
-				return finishLay(TrackLayResult.of(kind, laid.spline, laid.stroke, laid.previousCount));
+				return finishLay(TrackLayResult.of(kind, laid.spline, laid.stroke, laid.previousCount)
+						.withBefore(atA.get().spline));
 			}
 			if (atB.isPresent()) {
 				StrokeLay laid = extend(atB.get(), ax, ay, az, bukkitWorld);
@@ -131,7 +142,8 @@ public final class TrackRegistry {
 						? TrackLayResult.Kind.PREPEND
 						: TrackLayResult.Kind.APPEND;
 				TrackLog.layOk(laid.spline, kind.name().toLowerCase());
-				return finishLay(TrackLayResult.of(kind, laid.spline, laid.stroke, laid.previousCount));
+				return finishLay(TrackLayResult.of(kind, laid.spline, laid.stroke, laid.previousCount)
+						.withBefore(atB.get().spline));
 			}
 			List<double[]> points = TrackCurve.between(
 					ax, ay, az, bx, by, bz,

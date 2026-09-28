@@ -185,6 +185,7 @@ public final class TrackBuildAnimator {
 		private final List<double[]> keep;
 		private final List<double[]> stroke;
 		private List<TrackVisual> baked = List.of();
+		private int bakedCount;
 		private int revealed;
 		private int ticksLeft;
 
@@ -200,9 +201,11 @@ public final class TrackBuildAnimator {
 		private void seedKeep() {
 			if (joinsAtKeepEnd() && keep.size() >= 2) {
 				baked = bakePoints(keep);
+				bakedCount = keep.size();
 				return;
 			}
 			baked = List.of();
+			bakedCount = 0;
 		}
 
 		private void sync(TrackDisplayManager displays, Chunk chunk) {
@@ -210,14 +213,19 @@ public final class TrackBuildAnimator {
 			if (world == null) {
 				return;
 			}
-			List<TrackVisual> next = bakePoints(visible());
 			if (chunk != null) {
-				displays.spawnVisuals(splineId, next, world, chunk);
-				baked = next;
+				// A chunk loading mid-build shows the pieces built so far. Baking
+				// here ran for every chunk a moving player loaded, and stalled
+				// Main for seconds on a long track.
+				displays.spawnVisuals(splineId, baked, world, chunk);
 				return;
 			}
+			// Only the end grows, so bake the new tail rather than the whole track.
+			List<double[]> points = visible();
+			List<TrackVisual> next = TrackVisualBake.bakeAppended(baked, bakedCount, points);
 			displays.replaceFrom(splineId, baked, next, world, null);
 			baked = next;
+			bakedCount = points.size();
 		}
 
 		private List<double[]> visible() {
