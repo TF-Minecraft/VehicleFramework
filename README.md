@@ -54,6 +54,25 @@ and preserve it when changing direction. Their configured forward/backward
 animation lists pair by order; each pair must be mirrored looping animations of
 one wheel turn. Wheel speed continues to follow travel speed and wheel diameter.
 
+## Laying curves
+
+Extending a track keeps its bends local. A stroke curves at `curve-radius`
+(`trains.yml`, 32 blocks by default) and runs straight elsewhere; a stroke too
+short for that radius curves tighter, down to the sharpest turn that
+`max-turn-degrees` allows over `min-lay-distance`.
+
+- A click just beside the row the rail is on (up to 3 blocks, within 8 degrees)
+  keeps the rail on its row and shifts it across on a reverse curve just before
+  the click. Laying 1,000 blocks with the end one block over leaves 990 blocks
+  on the row.
+- Turning onto a row curves at the corner where the two headings meet, with
+  straight track either side.
+- A track end left off the rows turns onto the row first when a corner would
+  leave a long run off it, then shifts across near the click.
+- Joining two track ends meets the far track along its own heading, without a kink.
+
+Other clicks lay a single arc, as before. Existing track is unchanged.
+
 ## Track ends
 
 Set `behaviour.train.wheel-bones` to the model bones at the frontmost and rearmost

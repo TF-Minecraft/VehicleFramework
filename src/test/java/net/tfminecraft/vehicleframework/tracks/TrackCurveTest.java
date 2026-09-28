@@ -137,6 +137,108 @@ class TrackCurveTest {
 		assertEquals(20f, endYaw(points), 0.05f);
 	}
 
+	@Test
+	void aligned_smallShiftAtFarClick_staysOnRowUntilTheEnd() throws TrackLayException {
+		// 1,000 blocks west with the click one block to the side: the old S-bend
+		// spread that block over the whole stroke, so the rail ran diagonally.
+		List<double[]> points = TrackCurve.layAligned(
+				0.5, 64, 0.5, 90f, -999.5, 64, -0.5, 8, 35, 32, 6, 10, 1.0);
+		double[] end = points.get(points.size() - 1);
+		assertEquals(-999.5, end[0], 1e-6);
+		assertEquals(-0.5, end[2], 1e-6);
+		assertEquals(90f, endYaw(points), 0.05f);
+		for (double[] p : points) {
+			if (p[0] > -980) {
+				assertEquals(0.5, p[2], 1e-9);
+			}
+		}
+		assertTrue(minRadius(points) >= 32 - 0.5);
+	}
+
+	@Test
+	void aligned_shortStroke_shiftsOnTighterCurve() throws TrackLayException {
+		// Eight blocks on, one to the side: too short for the curve radius, so
+		// the shift uses the tightest curve that fits instead of turning 14 degrees.
+		List<double[]> points = TrackCurve.layAligned(
+				0.5, 64, 0.5, 90f, -7.5, 64, -0.5, 8, 35, 32, 6, 10, 1.0);
+		double[] end = points.get(points.size() - 1);
+		assertEquals(-7.5, end[0], 1e-6);
+		assertEquals(-0.5, end[2], 1e-6);
+		assertEquals(90f, endYaw(points), 0.05f);
+		assertTrue(minRadius(points) >= TrackCurve.minRadius(8, 35) - 0.5);
+	}
+
+	@Test
+	void aligned_wideShift_crossesOnStraightAtTurnLimit() throws TrackLayException {
+		List<double[]> points = TrackCurve.layAligned(
+				0.5, 64, 0.5, 90f, -399.5, 64, -30.5, 8, 35, 32, 6, 10, 1.0);
+		double[] end = points.get(points.size() - 1);
+		assertEquals(-30.5, end[2], 1e-6);
+		assertEquals(90f, endYaw(points), 0.05f);
+		float steepest = 0;
+		for (int i = 1; i < points.size(); i++) {
+			steepest = Math.max(steepest, Math.abs(yaw(points.get(i - 1), points.get(i)) - 90f));
+		}
+		assertEquals(35f, steepest, 0.5f);
+	}
+
+	@Test
+	void aligned_offGridEndFarClick_turnsOntoRowFirst() throws TrackLayException {
+		// A single arc from 82 degrees would bend across all 300 blocks; the
+		// rail should be on the row heading within one curve of the start.
+		List<double[]> points = TrackCurve.layAligned(
+				0.5, 64, 0.5, 82f, -299.5, 64, 20.5, 8, 35, 32, 6, 10, 1.0);
+		double[] end = points.get(points.size() - 1);
+		assertEquals(-299.5, end[0], 1e-6);
+		assertEquals(20.5, end[2], 1e-6);
+		assertEquals(90f, endYaw(points), 0.05f);
+		for (int i = 1; i < points.size(); i++) {
+			double[] p = points.get(i);
+			if (p[0] < -10 && p[0] > -200) {
+				assertEquals(90f, yaw(points.get(i - 1), p), 0.01f);
+			}
+		}
+	}
+
+	@Test
+	void aligned_longTurn_curvesAtCornerOnly() throws TrackLayException {
+		// Finishing a bend onto a row far away: one curve of the curve radius
+		// at the corner, straight either side, rather than an arc the length of the stroke.
+		List<double[]> points = TrackCurve.layAligned(
+				0.5, 64, 0.5, 62f, -149.5, 64, 40.5, 8, 35, 32, 6, 10, 1.0);
+		assertEquals(90f, endYaw(points), 0.05f);
+		assertTrue(minRadius(points) >= 32 - 0.5);
+		int curved = 0;
+		for (int i = 2; i < points.size(); i++) {
+			float turn = yaw(points.get(i - 1), points.get(i)) - yaw(points.get(i - 2), points.get(i - 1));
+			if (Math.abs(turn) > 0.01f) {
+				curved++;
+			}
+		}
+		assertTrue(curved <= 20, "curved samples " + curved);
+	}
+
+	@Test
+	void join_arrivesOnFarTrackHeading() throws TrackLayException {
+		// A plain arc to the far end meets that track about 10 degrees off.
+		List<double[]> points = TrackCurve.join(
+				0.5, 64, 0.5, 90f, -119.5, 64, 10.5, 90f, 8, 35, 32, 6, 10, 1.0);
+		double[] end = points.get(points.size() - 1);
+		assertEquals(-119.5, end[0], 1e-6);
+		assertEquals(10.5, end[2], 1e-6);
+		assertEquals(90f, endYaw(points), 0.05f);
+		assertTrue(minRadius(points) >= TrackCurve.minRadius(8, 35) - 0.5);
+	}
+
+	@Test
+	void join_withoutSmoothFit_isPlainArc() throws TrackLayException {
+		double[] end = endOnArc(0, 0, 0f, 25, 12);
+		List<double[]> joined = TrackCurve.join(
+				0, 64, 0, 0f, end[0], 64, end[1], 170f, 8, 35, 32, 6, 10, 1.0);
+		List<double[]> plain = TrackCurve.lay(0, 64, 0, 0f, end[0], 64, end[1], 8, 35, 6, 10, 1.0);
+		assertEquals(plain.size(), joined.size());
+	}
+
 	private static float endYaw(List<double[]> points) {
 		int n = points.size();
 		return TrackCurve.endYaw(points.get(n - 3), points.get(n - 2), points.get(n - 1));

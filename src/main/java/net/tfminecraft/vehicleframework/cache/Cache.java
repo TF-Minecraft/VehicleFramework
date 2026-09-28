@@ -60,6 +60,7 @@ public class Cache {
 	public static long trackLayRetryMs = 3000;
 	public static double trackMaxTurnDegrees = 25;
 	public static double trackMinLayDistance = 8;
+	public static double trackCurveRadius = 32;
 	public static double trackJoinDistance = 1.5;
 	public static double trackPlaceKeepoutRadius = 1.5;
 	public static double trackMinJunctionSpacing = 16;
