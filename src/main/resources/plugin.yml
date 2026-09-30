@@ -1,5 +1,5 @@
 main: net.tfminecraft.vehicleframework.VehicleFramework
-api-version: '1.21.10'
+api-version: '1.21.4'
 name: VehicleFramework
 version: ${project.version}
 author: Drefvelin
