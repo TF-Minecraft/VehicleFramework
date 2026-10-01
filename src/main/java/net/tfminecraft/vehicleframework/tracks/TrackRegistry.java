@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -1025,6 +1026,27 @@ public final class TrackRegistry {
 			}
 		}
 		return out;
+	}
+
+	/**
+	 * Length in blocks of the shortest route along track from any point within
+	 * {@code radiusA} of {@code (ax, az)} to any point within {@code radiusB}
+	 * of {@code (bx, bz)} in {@code world}. Empty when no such route exists.
+	 * A broken segment blocks the route.
+	 * Other plugins reach this through {@link VehicleFramework#getTrackRegistry()}.
+	 * <p>
+	 * Call on the server thread. Splines and junctions live in separate maps
+	 * and are not one snapshot off that thread, so a route read elsewhere can
+	 * mix a new junction with an old spline. This does not load chunks, touch
+	 * entities, or modify the registry.
+	 */
+	public OptionalDouble shortestRouteLength(
+			String world,
+			double ax, double az, double radiusA,
+			double bx, double bz, double radiusB) {
+		return TrackRouteQuery.shortestRouteLength(
+				splines.values(), junctions.values(),
+				world, ax, az, radiusA, bx, bz, radiusB);
 	}
 
 	public void dumpToLog() {
