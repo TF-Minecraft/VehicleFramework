@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.block.Block;
@@ -22,7 +23,8 @@ import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 
 public final class TrackCommands {
 	private static final Map<UUID, Long> lastToolMs = new ConcurrentHashMap<>();
-	private static final LayRetryCooldown retry = new LayRetryCooldown();
+	private static final ToolCooldown retry = new ToolCooldown();
+	private static final ToolCooldown digWait = new ToolCooldown();
 
 	private TrackCommands() {
 	}
@@ -429,13 +431,34 @@ public final class TrackCommands {
 			applyDig(player, DigResult.none(), loc);
 			return;
 		}
+		if (waitingToDig(player)) {
+			return;
+		}
 		if (trainOn(target.get())) {
 			lastToolMs.put(player.getUniqueId(), System.currentTimeMillis());
 			player.sendMessage("§cA train is on this track. Move it before removing the rail.");
 			return;
 		}
 		TrackSpline before = target.get().spline();
-		applyDig(player, registry().digAt(before, target.get().index(), loc.getWorld()), loc, before);
+		DigResult result = registry().digAt(before, target.get().index(), loc.getWorld());
+		applyDig(player, result, loc, before);
+		if (result.kind != DigResult.Kind.NONE) {
+			startDigWait(player);
+		}
+	}
+
+	// Without a wait, holding the remover down while running clears rail as fast as you can run.
+	private static void startDigWait(Player player) {
+		if (player.getGameMode() == GameMode.CREATIVE || player.getGameMode() == GameMode.SPECTATOR) {
+			return;
+		}
+		digWait.start(player.getUniqueId(), System.currentTimeMillis(), Cache.trackRemoveCooldownMs);
+		TrackTools.showRemoverCooldown(player, Cache.trackRemoveCooldownMs);
+	}
+
+	// The remover's hotbar sweep shows the wait; the action bar belongs to the health and mana display.
+	private static boolean waitingToDig(Player player) {
+		return digWait.remainingMs(player.getUniqueId(), System.currentTimeMillis()) > 0;
 	}
 
 	private static boolean trainOn(TrackRegistry.DigTarget target) {

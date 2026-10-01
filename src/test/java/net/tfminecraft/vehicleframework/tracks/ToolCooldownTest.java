@@ -6,17 +6,17 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
-class LayRetryCooldownTest {
+class ToolCooldownTest {
     private final UUID player = UUID.randomUUID();
 
     @Test
     void noRefusalMeansNoWait() {
-        assertEquals(0, new LayRetryCooldown().remainingMs(player, 1000));
+        assertEquals(0, new ToolCooldown().remainingMs(player, 1000));
     }
 
     @Test
     void refusalBlocksUntilTheCooldownEnds() {
-        LayRetryCooldown retry = new LayRetryCooldown();
+        ToolCooldown retry = new ToolCooldown();
         retry.start(player, 1000, 3000);
         assertEquals(3000, retry.remainingMs(player, 1000));
         assertEquals(1, retry.remainingMs(player, 3999));
@@ -26,14 +26,14 @@ class LayRetryCooldownTest {
 
     @Test
     void zeroCooldownNeverBlocks() {
-        LayRetryCooldown retry = new LayRetryCooldown();
+        ToolCooldown retry = new ToolCooldown();
         retry.start(player, 1000, 0);
         assertEquals(0, retry.remainingMs(player, 1000));
     }
 
     @Test
     void cooldownIsPerPlayer() {
-        LayRetryCooldown retry = new LayRetryCooldown();
+        ToolCooldown retry = new ToolCooldown();
         retry.start(player, 1000, 3000);
         assertEquals(0, retry.remainingMs(UUID.randomUUID(), 1000));
     }

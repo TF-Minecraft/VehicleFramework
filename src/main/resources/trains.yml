@@ -23,6 +23,9 @@ clearance:
   height: 2.5
 # After a refused lay, seconds before the same player can try again (0 = no wait).
 lay-retry-seconds: 3
+# Survival / adventure: seconds between rail removals with the remover (0 = no wait).
+# The remover's hotbar slot shows the wait as an item cooldown; early clicks do nothing.
+remove-cooldown-seconds: 3
 min-lay-distance: 8
 # Radius, in blocks, of the bends in a laid stroke. A long stroke bends this tightly
 # near its corner or its end and is straight elsewhere; a short one bends tighter to fit,
