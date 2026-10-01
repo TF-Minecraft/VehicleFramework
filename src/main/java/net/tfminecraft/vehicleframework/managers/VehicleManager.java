@@ -430,7 +430,9 @@ public class VehicleManager implements Listener{
 		boolean hasTicket = VehicleTicketItems.inventoryHas(
 				p, ticketSource.getOwnerData().getTicketId());
 		if (!VehicleTicketRules.mayOpenSeatMenu(v.getOwnerData(), ticketSource.getOwnerData(), p.getName(), hasTicket)) {
-	    	p.sendMessage("§cThe owner has not allowed you aboard this vehicle.");
+	    	p.sendMessage(ticketSource.getOwnerData().isTicketsEnabled()
+	    			? "§cYou need a ticket to board this vehicle."
+	    			: "§cThe owner has not allowed you aboard this vehicle.");
 	    	return;
 	    }
 	    // Check if this player was ejected by the owner and is still on cooldown for this vehicle
