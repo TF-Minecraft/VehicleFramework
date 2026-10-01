@@ -127,7 +127,7 @@ public class Harness extends VehicleComponent{
 			break;
 		}
 		if(!mounted) {
-			p.sendMessage("§cNo free slots to mount the entity");
+			p.sendMessage("§cThere is no room to hitch the creature");
 		}
 	}
 	

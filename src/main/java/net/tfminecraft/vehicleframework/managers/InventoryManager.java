@@ -95,19 +95,19 @@ public class InventoryManager {
 		lore.add("§7Type: §e"+Text.capitalize(s.getType().toString().toLowerCase()));
 		if(s.getType().equals(SeatType.ENTITY)) {
 			if(s.isOccupied()) {
-				lore.add("§7Entity: §e"+Text.capitalize(s.getEntity().getType().name().toLowerCase().replace("_", " ")));
+				lore.add("§7Passenger: §e"+Text.capitalize(s.getEntity().getType().name().toLowerCase().replace("_", " ")));
 				lore.add("");
-				lore.add("§cClick to dismount entity");
+				lore.add("§cClick to dismount the passenger");
 			} else {
 				lore.add("");
-				lore.add("§aClick to select entity to mount");
+				lore.add("§aClick to choose a passenger to seat here");
 			}
 		}
 		if(v.hasContainers()) {
 			Container c = v.getContainerHandler().getBySeat(s.getBone());
 			if(c != null) {
 				lore.add("");
-				lore.add("§7Container: §f"+c.getName());
+				lore.add("§7Storage: §f"+c.getName());
 			}
 		}
 		m.setLore(lore);
