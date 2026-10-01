@@ -5,10 +5,10 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * After a refused lay, blocks further attempts for a short while. The refusal already
- * outlines what is in the way, and each attempt re-checks the whole stroke.
+ * Blocks a player's next use of a track tool for a short while: laying again after a
+ * refused lay, or removing more rail after a dig.
  */
-final class LayRetryCooldown {
+final class ToolCooldown {
 	private final Map<UUID, Long> until = new ConcurrentHashMap<>();
 
 	void start(UUID player, long nowMs, long cooldownMs) {
