@@ -200,7 +200,7 @@ public class TrainHandler {
 			return false;
 		}
 		if(!target.getBehaviourHandler().isTrain()) {
-			p.sendMessage("§cTarget vehicle is not a train type");
+			p.sendMessage("§cThat vehicle is not a train");
 			return false;
 		}
 		TrainHandler handler = target.getBehaviourHandler().getTrainHandler();

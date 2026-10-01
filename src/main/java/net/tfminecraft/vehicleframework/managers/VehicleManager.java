@@ -430,7 +430,9 @@ public class VehicleManager implements Listener{
 		boolean hasTicket = VehicleTicketItems.inventoryHas(
 				p, ticketSource.getOwnerData().getTicketId());
 		if (!VehicleTicketRules.mayOpenSeatMenu(v.getOwnerData(), ticketSource.getOwnerData(), p.getName(), hasTicket)) {
-	    	p.sendMessage("§cYou are not on this vehicle's whitelist.");
+	    	p.sendMessage(ticketSource.getOwnerData().isTicketsEnabled()
+	    			? "§cYou need a ticket to board this vehicle."
+	    			: "§cThe owner has not allowed you aboard this vehicle.");
 	    	return;
 	    }
 	    // Check if this player was ejected by the owner and is still on cooldown for this vehicle
@@ -461,7 +463,7 @@ public class VehicleManager implements Listener{
 			return;
 		}
 		if(!isEntityAllowed(entity, v.getEntitySeatWhitelist())) {
-			p.sendMessage("§cThat entity is not allowed in this seat");
+			p.sendMessage("§cThat creature cannot ride in this seat");
 			return;
 		}
 		Seat seat = v.getSeat(seatBone);
@@ -471,7 +473,7 @@ public class VehicleManager implements Listener{
 		}
 		MountResult mounted = v.addPassenger(entity, seat);
 		if (mounted == MountResult.MOUNTED) {
-			p.sendMessage("§aEntity mounted");
+			p.sendMessage("§aPassenger seated");
 			return;
 		}
 		if (mounted == MountResult.REJECTED) {
@@ -1250,7 +1252,7 @@ public class VehicleManager implements Listener{
 				Entity mounted = seat.getEntity();
 				v.dismountPassenger(mounted, false);
 				mounted.teleport(p.getLocation());
-				p.sendMessage("§eEntity dismounted");
+				p.sendMessage("§ePassenger dismounted");
 			}
 			p.closeInventory();
 			return;
@@ -1260,7 +1262,7 @@ public class VehicleManager implements Listener{
 			pendingEntityVehicle.put(p, v);
 			pendingEntitySeat.put(p, id);
 			p.closeInventory();
-			p.sendMessage("§eRight-click an entity to mount it in this seat");
+			p.sendMessage("§eRight-click a creature to seat it here");
 			return;
 		}
 		if(i.getType().equals(Material.YELLOW_CONCRETE)) {
@@ -1354,7 +1356,7 @@ public class VehicleManager implements Listener{
 			return;
 		}
 		e.setCancelled(true);
-		e.getWhoClicked().sendMessage("§cThat item is not allowed in this container.");
+		e.getWhoClicked().sendMessage("§cThat item cannot be stored here.");
 	}
 
 	@EventHandler
@@ -1377,7 +1379,7 @@ public class VehicleManager implements Listener{
 		for (int slot : e.getRawSlots()) {
 			if (slot < topSize) {
 				e.setCancelled(true);
-				e.getWhoClicked().sendMessage("§cThat item is not allowed in this container.");
+				e.getWhoClicked().sendMessage("§cThat item cannot be stored here.");
 				return;
 			}
 		}

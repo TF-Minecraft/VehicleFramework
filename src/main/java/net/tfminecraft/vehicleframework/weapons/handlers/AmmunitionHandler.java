@@ -219,7 +219,7 @@ public class AmmunitionHandler {
 		}
 		int count = getAmmoAmount();
 		if(i.getAmount() < count) {
-			p.sendMessage("§eWeapon needs "+count+" ammo items per reload");
+			p.sendMessage("§eYou need "+count+" of that ammunition to reload this weapon");
 			return;
 		}
 		if(reloadTime != -1) {
