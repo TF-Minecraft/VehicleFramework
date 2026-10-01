@@ -449,7 +449,7 @@ public final class TrackCommands {
 
 	// Without a wait, holding the remover down while running clears rail as fast as you can run.
 	private static void startDigWait(Player player) {
-		if (player.getGameMode() == GameMode.CREATIVE || player.getGameMode() == GameMode.SPECTATOR) {
+		if (!digWaitApplies(player)) {
 			return;
 		}
 		digWait.start(player.getUniqueId(), System.currentTimeMillis(), Cache.trackRemoveCooldownMs);
@@ -458,7 +458,12 @@ public final class TrackCommands {
 
 	// The remover's hotbar sweep shows the wait; the action bar belongs to the health and mana display.
 	private static boolean waitingToDig(Player player) {
-		return digWait.remainingMs(player.getUniqueId(), System.currentTimeMillis()) > 0;
+		return digWaitApplies(player)
+				&& digWait.remainingMs(player.getUniqueId(), System.currentTimeMillis()) > 0;
+	}
+
+	private static boolean digWaitApplies(Player player) {
+		return player.getGameMode() != GameMode.CREATIVE && player.getGameMode() != GameMode.SPECTATOR;
 	}
 
 	private static boolean trainOn(TrackRegistry.DigTarget target) {
