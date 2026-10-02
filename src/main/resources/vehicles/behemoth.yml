@@ -138,7 +138,7 @@ behemoth:
             health: 580.0
             repair-time: 100
             fuel-burn-rate: 12
-            fuel: arcane_fuel
+            fuel: coal
             fuel-capacity: 16000
             refuel-states:
                 - GROUND

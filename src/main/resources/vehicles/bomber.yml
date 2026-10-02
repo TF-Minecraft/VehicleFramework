@@ -126,7 +126,7 @@ bomber:
             health: 450.0
             repair-time: 60
             fuel-burn-rate: 5
-            fuel: arcane_fuel
+            fuel: coal
             fuel-capacity: 4500
             refuel-states:
                 - GROUND
