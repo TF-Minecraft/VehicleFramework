@@ -6,7 +6,3 @@ coal:
     sound: minecraft:block.lava.extinguish
     sound-volume: 1.0
     sound-pitch: 1.0
-arcane_fuel:
-    name: "#c4b99fArcane Fuel"
-    item: m.utils.arcane_fuel
-    amount: 100

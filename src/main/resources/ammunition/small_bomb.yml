@@ -21,9 +21,10 @@ small_bomb:
             spread: 0.1
             speed: 0.1
     model:
-        type: meg
-        model: small_bomb
-        animation: active
+        type: item
+        material: iron_nugget
+        small: true
+        model-data: 4203
 small_bomb_rack:
     name: "§eSmall Bomb"
     type: bomb
@@ -48,6 +49,7 @@ small_bomb_rack:
             spread: 0.1
             speed: 0.1
     model:
-        type: meg
-        model: small_bomb
-        animation: active
+        type: item
+        material: iron_nugget
+        small: true
+        model-data: 4203

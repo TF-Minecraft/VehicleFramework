@@ -147,7 +147,7 @@ monoplane:
             health: 200.0
             repair-time: 60
             fuel-burn-rate: 1
-            fuel: arcane_fuel
+            fuel: coal
             fuel-capacity: 900
             refuel-states:
                 - GROUND

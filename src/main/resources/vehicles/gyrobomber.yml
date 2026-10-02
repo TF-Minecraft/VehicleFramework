@@ -126,7 +126,7 @@ gyrobomber:
             health: 400.0
             repair-time: 60
             fuel-burn-rate: 5
-            fuel: arcane_fuel
+            fuel: coal
             fuel-capacity: 5000
             refuel-states:
                 - GROUND

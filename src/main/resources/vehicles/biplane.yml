@@ -150,7 +150,7 @@ biplane:
             health: 200.0
             repair-time: 60
             fuel-burn-rate: 3
-            fuel: arcane_fuel
+            fuel: coal
             fuel-capacity: 2200
             refuel-states:
                 - GROUND
