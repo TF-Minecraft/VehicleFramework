@@ -2,6 +2,7 @@ package net.tfminecraft.vehicleframework.database;
 
 import java.io.File;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
@@ -9,11 +10,14 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class VehicleSqliteBackup {
 	public static final int KEEP = 3;
 	public static final String FILE_PREFIX = "vehicles-";
 	private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
+	private static final Pattern SNAPSHOT_NAME = Pattern.compile("^" + FILE_PREFIX + "(\\d{8}-\\d{6})(?:-(\\d+))?\\.db$");
 
 	private VehicleSqliteBackup() {
 	}
@@ -41,10 +45,44 @@ public final class VehicleSqliteBackup {
 
 	public static void rotate(File backupDir) {
 		List<File> snapshots = listSnapshots(backupDir);
-		snapshots.sort(Comparator.comparingLong(File::lastModified).reversed());
+		snapshots.sort(Comparator.comparingLong(File::lastModified).reversed()
+				.thenComparing(VehicleSqliteBackup::compareSnapshotNames));
 		for (int i = KEEP; i < snapshots.size(); i++) {
 			snapshots.get(i).delete();
 		}
+	}
+
+	private static int compareSnapshotNames(File first, File second) {
+		ParsedSnapshotName firstName = parseSnapshotName(first.getName());
+		ParsedSnapshotName secondName = parseSnapshotName(second.getName());
+		if (firstName == null || secondName == null) {
+			if (firstName == null && secondName == null) {
+				return 0;
+			}
+			return firstName == null ? 1 : -1;
+		}
+		int stampComparison = secondName.stamp().compareTo(firstName.stamp());
+		if (stampComparison != 0) {
+			return stampComparison;
+		}
+		return secondName.sequence().compareTo(firstName.sequence());
+	}
+
+	private static ParsedSnapshotName parseSnapshotName(String name) {
+		Matcher matcher = SNAPSHOT_NAME.matcher(name);
+		if (!matcher.matches()) {
+			return null;
+		}
+		try {
+			LocalDateTime stamp = LocalDateTime.parse(matcher.group(1), STAMP);
+			BigInteger sequence = matcher.group(2) == null ? BigInteger.ONE : new BigInteger(matcher.group(2));
+			return new ParsedSnapshotName(stamp, sequence);
+		} catch (RuntimeException ignored) {
+			return null;
+		}
+	}
+
+	private record ParsedSnapshotName(LocalDateTime stamp, BigInteger sequence) {
 	}
 
 	public static List<File> listSnapshots(File backupDir) {

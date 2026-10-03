@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -215,7 +216,7 @@ class VehicleRepositoryTest {
 		VehicleRepository repository = VehicleRepository.open(dbFile);
 		try {
 			assertTrue(repository.saveLive(snapshot("u1", "world", 1, 2, 1)));
-			long time = System.currentTimeMillis();
+			long time = System.currentTimeMillis() - 60_000L;
 			for (int i = 0; i < 4; i++) {
 				assertTrue(repository.vacuumIntoBackup(backups));
 				List<File> snapshots = VehicleSqliteBackup.listSnapshots(backups);
@@ -227,6 +228,44 @@ class VehicleRepositoryTest {
 			assertEquals(VehicleSqliteBackup.KEEP, VehicleSqliteBackup.listSnapshots(backups).size());
 		} finally {
 			repository.close();
+		}
+	}
+
+	@Test
+	void rotateKeepsNewestNameWhenTimestampsTie() throws Exception {
+		File backups = tempDir.resolve("backups").toFile();
+		backups.mkdirs();
+		List<File> created = new ArrayList<>();
+		String stamp = null;
+		while (created.size() < 11) {
+			File snapshot = VehicleSqliteBackup.nextBackupFile(backups);
+			String snapshotStamp = snapshot.getName().substring(
+					VehicleSqliteBackup.FILE_PREFIX.length(), VehicleSqliteBackup.FILE_PREFIX.length() + 15);
+			if (stamp != null && !stamp.equals(snapshotStamp)) {
+				for (File previous : created) {
+					assertTrue(previous.delete());
+				}
+				created.clear();
+			}
+			stamp = snapshotStamp;
+			assertTrue(Files.createFile(snapshot.toPath()).toFile().exists());
+			created.add(snapshot);
+		}
+		assertTrue(created.get(9).getName().endsWith("-10.db"));
+		long time = System.currentTimeMillis() - 60_000L;
+		for (File snapshot : created) {
+			assertTrue(snapshot.setLastModified(time));
+		}
+
+		VehicleSqliteBackup.rotate(backups);
+
+		List<File> retained = VehicleSqliteBackup.listSnapshots(backups);
+		assertEquals(VehicleSqliteBackup.KEEP, retained.size());
+		for (int i = 0; i < created.size(); i++) {
+			boolean shouldBeRetained = i >= created.size() - VehicleSqliteBackup.KEEP;
+			String name = created.get(i).getName();
+			assertEquals(shouldBeRetained,
+					retained.stream().anyMatch(file -> file.getName().equals(name)));
 		}
 	}
 
