@@ -537,7 +537,7 @@ class TrainReversePlacementTest {
         loco.splineTick();
         assertEquals(branch.getId(), loco.getSplineId());
         assertEquals(junction.id.toString(), loco.toConsistData().getJunctionId());
-        assertEquals(40, loco.getChild().getTrainHandler().getS(), 1e-8);
+        assertEquals(40.1, loco.getChild().getTrainHandler().getS(), 1e-8);
     }
 
     @Test
@@ -589,7 +589,8 @@ class TrainReversePlacementTest {
         loco.v.getThrottle().setThrottle(-100);
         loco.v.getAccessPanel().setSpeed(-0.1);
         loco.splineTick();
-        assertEquals(0, loco.getChild().getTrainHandler().getS(), 1e-8);
+        assertEquals(stem.getId(), loco.getChild().getTrainHandler().getSplineId());
+        assertEquals(50, loco.getChild().getTrainHandler().getS(), 1e-8);
         assertEquals(-100, loco.v.getThrottle().getCurrent());
         loco.splineTick();
         assertEquals(stem.getId(), loco.getChild().getTrainHandler().getSplineId());
@@ -866,6 +867,311 @@ class TrainReversePlacementTest {
         assertEquals(20, target.spans().get(0).centreS(), 1e-8);
         assertEquals(1, target.spans().get(0).halfSpan(), 1e-8);
         assertEquals(track.getId(), target.spline().getId());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"1, false", "-1, false", "1, true", "-1, true"})
+    void wholeTrainTraversesEitherFacingTurnoutWithoutJumping(int facing, boolean reverse) {
+        TrackSpline stem = straightTrack(false);
+        TrackJunction junction = smoothTurnout(stem, 50, facing, false);
+        int orientation = reverse ? -facing : facing;
+        double start = 50 - facing * (reverse ? 38 : 8);
+        TrainHandler loco = wheeledConsist(stem, start);
+        loco.getChild().getTrainHandler().getChild().getTrainHandler().setChild(car(List.of("axle_front", "axle_back")).v);
+        loco.applyConsist(new ConsistData(null, null, stem.getId().toString(), start,
+                facing, null, null, orientation, java.util.Map.of()));
+        loco.placeLoadedCars();
+        registry.onJunctionOccupied(loco::holdsJunction);
+        List<float[]> rotations = captureRotations(loco);
+        double speed = reverse ? -0.25 : 0.25;
+        loco.v.getAccessPanel().setSpeed(speed);
+        // The current speed determines approach direction even when the throttle is braking.
+        loco.v.getThrottle().setThrottle(reverse ? 100 : -100);
+        loco.holdJunction(TrackJunction.Side.LEFT);
+        assertTrue(registry.getJunction(junction.id).orElseThrow().thrown);
+        int ticks = reverse ? 232 : 272;
+        boolean sawLocked = false;
+        for (int tick = 0; tick < ticks; tick++) {
+            List<Location> before = carLocations(loco);
+            loco.splineTick();
+            assertContinuousCoupled(loco, rotations, before, 1.1);
+            if (loco.holdsJunction(junction.id)) {
+                sawLocked = true;
+                assertFalse(registry.setThrown(junction.id, false), "An occupied switch must not move");
+            }
+        }
+        assertTrue(sawLocked);
+        assertFalse(loco.holdsJunction(junction.id), "Release the points after the whole train clears");
+        int i = 0;
+        for (TrainHandler car : cars(loco)) {
+            assertEquals(junction.branchSplineId, car.getSplineId());
+            assertEquals(reverse ? -1 : 1, car.getOrientation());
+            assertEquals(reverse ? 20 + i * 10 : 60 - i * 10, car.getS(), 1e-6);
+            i++;
+        }
+        assertTrue(registry.setThrown(junction.id, false));
+        // Leaving the branch is a trailing move: return along the same connected rails
+        // even if another train has since set the turnout through.
+        for (int tick = 0; tick < ticks; tick++) {
+            List<Location> before = carLocations(loco);
+            loco.v.getAccessPanel().setSpeed(-speed);
+            loco.splineTick();
+            assertContinuousCoupled(loco, rotations, before, 1.1);
+        }
+        assertEquals(stem.getId(), loco.getSplineId());
+        assertEquals(start, loco.getS(), 1e-6);
+        assertEquals(orientation, loco.getOrientation());
+        assertFalse(loco.holdsJunction(junction.id));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, -1})
+    void reverseMidTurnoutAndReloadRetracesTheChosenRoute(int facing) {
+        TrackSpline stem = straightTrack(false);
+        TrackJunction junction = smoothTurnout(stem, 50, facing, true);
+        double start = 50 - facing * 28;
+        TrainHandler loco = wheeledConsist(stem, start);
+        loco.applyConsist(new ConsistData(null, null, stem.getId().toString(), start,
+                facing, null, null, -facing, java.util.Map.of()));
+        loco.placeLoadedCars();
+        List<float[]> rotations = captureRotations(loco);
+        registry.onJunctionOccupied(loco::holdsJunction);
+        List<Location> initial = carLocations(loco);
+        for (int tick = 0; tick < 80; tick++) {
+            List<Location> before = carLocations(loco);
+            loco.v.getAccessPanel().setSpeed(-0.25);
+            loco.splineTick();
+            assertContinuousCoupled(loco, rotations, before, 1.1);
+        }
+        assertTrue(loco.holdsJunction(junction.id));
+        assertEquals(stem.getId(), loco.getSplineId(), "Engine has not entered yet");
+        assertEquals(junction.branchSplineId, cars(loco).get(2).getSplineId(), "Leading car already diverged");
+        List<Location> saved = carLocations(loco);
+        for (TrainHandler car : cars(loco)) {
+            org.json.simple.JSONObject json = new org.json.simple.JSONObject();
+            car.toConsistData().put(json);
+            car.applyConsist(ConsistData.fromJson(json));
+        }
+        loco.v.getAccessPanel().setSpeed(0);
+        loco.splineTick();
+        for (int i = 0; i < saved.size(); i++) { assertEquals(saved.get(i), carLocations(loco).get(i)); }
+        for (int tick = 0; tick < 80; tick++) {
+            List<Location> before = carLocations(loco);
+            loco.v.getAccessPanel().setSpeed(0.25);
+            loco.splineTick();
+            assertContinuousCoupled(loco, rotations, before, 1.1);
+        }
+        for (int i = 0; i < initial.size(); i++) {
+            assertEquals(0, initial.get(i).toVector().distance(carLocations(loco).get(i).toVector()), 1e-6);
+        }
+        assertFalse(loco.holdsJunction(junction.id));
+    }
+
+    @Test
+    void reversingTrainRetainsTwoAdjacentSwitchesUntilEachClears() {
+        TrackSpline stem = straightTrack(false);
+        TrackJunction first = smoothTurnout(stem, 70, -1, false);
+        TrackJunction second = smoothTurnout(stem, 55, -1, true);
+        TrainHandler loco = wheeledConsist(stem, 98);
+        registry.onJunctionOccupied(loco::holdsJunction);
+        List<float[]> rotations = captureRotations(loco);
+        boolean spannedBoth = false;
+        for (int tick = 0; tick < 244; tick++) {
+            List<Location> before = carLocations(loco);
+            loco.v.getAccessPanel().setSpeed(-0.25);
+            loco.splineTick();
+            assertContinuousCoupled(loco, rotations, before, 1.1);
+            spannedBoth |= loco.holdsJunction(first.id) && loco.holdsJunction(second.id);
+        }
+        assertTrue(spannedBoth);
+        for (TrainHandler car : cars(loco)) { assertEquals(second.branchSplineId, car.getSplineId()); }
+        assertFalse(loco.holdsJunction(first.id));
+        assertFalse(loco.holdsJunction(second.id));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, -1})
+    void oldOrOppositeFacingSavesStillRejectTrackReversedWhileUnloaded(int orientation) {
+        TrackSpline track = straightTrack(false);
+        TrainHandler loco = car();
+        loco.applyConsist(new ConsistData(null, null, track.getId().toString(), 50d,
+                -1, null, null, orientation, java.util.Map.of()));
+        loco.placeLoadedCars();
+        savedBoneYaw(loco, orientation < 0 ? 180 : 0);
+        inWorld(loco, "world");
+        loco.applyConsist(loco.toConsistData());
+        loco.splineTick();
+        assertTrue(loco.isBound(), "A saved -s orientation is valid on unchanged track");
+        List<double[]> points = new ArrayList<>(track.xyz());
+        Collections.reverse(points);
+        registry.replace(TrackSpline.fromPoints(track.getId(), "world", false, points));
+        loco.applyConsist(loco.toConsistData());
+        loco.splineTick();
+        assertFalse(loco.isBound(), "Reversing the underlying track still invalidates the saved pose");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"1, 2, -4", "-1, 4, -2"})
+    void asymmetricWheelsDoNotFreezeThroughBeforeLeadingWheelArrives(int facing, float front, float back) {
+        TrackSpline stem = straightTrack(false);
+        TrackJunction junction = smoothTurnout(stem, 50, facing, true);
+        TrainHandler loco = car(List.of("axle_front", "axle_back"));
+        connector(loco.v, loco.v.getModel(), "axle_front", front);
+        connector(loco.v, loco.v.getModel(), "axle_back", back);
+        loco.setSplineId(stem.getId());
+        loco.setS(50 - facing * 5);
+        loco.placeLoadedCars();
+        loco.v.getAccessPanel().setSpeed(facing * 0.25);
+        for (int tick = 0; tick < 24; tick++) { loco.splineTick(); }
+        assertEquals(junction.branchSplineId, loco.getSplineId());
+        assertEquals(1, loco.getS(), 1e-6);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, -1})
+    void routeSurvivesWhileUnloadedTailWaitsToRelink(int facing) {
+        TrackSpline stem = straightTrack(false);
+        TrackJunction junction = smoothTurnout(stem, 50, facing, true);
+        double start = 50 - facing * 28;
+        TrainHandler loco = wheeledConsist(stem, start);
+        loco.applyConsist(new ConsistData(null, null, stem.getId().toString(), start,
+                facing, null, null, -facing, java.util.Map.of()));
+        loco.placeLoadedCars();
+        loco.v.getAccessPanel().setSpeed(-0.25);
+        for (int tick = 0; tick < 80; tick++) { loco.splineTick(); }
+        TrainHandler child = loco.getChild().getTrainHandler();
+        TrainHandler tail = child.getChild().getTrainHandler();
+        assertEquals(junction.branchSplineId, tail.getSplineId());
+        Location tailAt = tail.v.getEntity().getLocation();
+        loco.setPendingChild(child.v.getUUID());
+        loco.setChild(null);
+        loco.v.getAccessPanel().setSpeed(0);
+        loco.splineTick();
+        assertTrue(loco.holdsJunction(junction.id), "The unloaded tail still occupies the chosen branch");
+        org.json.simple.JSONObject saved = new org.json.simple.JSONObject();
+        loco.toConsistData().put(saved);
+        loco.applyConsist(ConsistData.fromJson(saved));
+        loco.splineTick();
+        assertTrue(loco.holdsJunction(junction.id));
+        loco.setChild(child.v);
+        loco.placeLoadedCars();
+        assertEquals(tailAt, tail.v.getEntity().getLocation());
+        for (int tick = 0; tick < 140; tick++) {
+            loco.v.getAccessPanel().setSpeed(-0.25);
+            loco.splineTick();
+        }
+        assertFalse(loco.holdsJunction(junction.id), "Resolved snapshots must eventually release the lock");
+        assertTrue(tail.toConsistData().getJunctions().isEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, -1})
+    void childFirstLoadKeepsTheRouteUntilItsParentReturns(int facing) {
+        TrackSpline stem = straightTrack(false);
+        TrackJunction junction = smoothTurnout(stem, 50, facing, true);
+        double start = 50 - facing * 28;
+        TrainHandler loco = wheeledConsist(stem, start);
+        loco.applyConsist(new ConsistData(null, null, stem.getId().toString(), start,
+                facing, null, null, -facing, java.util.Map.of()));
+        loco.placeLoadedCars();
+        loco.v.getAccessPanel().setSpeed(-0.25);
+        for (int tick = 0; tick < 80; tick++) { loco.splineTick(); }
+        TrainHandler tail = cars(loco).get(2);
+        tail.setPendingParent(cars(loco).get(1).v.getUUID());
+        org.json.simple.JSONObject saved = new org.json.simple.JSONObject();
+        tail.toConsistData().put(saved);
+        ConsistData restored = ConsistData.fromJson(saved);
+        assertEquals(true, restored.getJunctions().get(junction.id.toString()));
+        // A car well beyond the frog may load before its parent which still spans it.
+        TrainHandler loaded = car();
+        loaded.applyConsist(new ConsistData(restored.getParent(), null, junction.branchSplineId.toString(),
+                30d, 1, null, null, -1, restored.getJunctions()));
+        loaded.splineTick();
+        assertTrue(loaded.holdsJunction(junction.id));
+        loaded.setPendingParent(null);
+        loaded.placeLoadedCars();
+        assertFalse(loaded.holdsJunction(junction.id));
+    }
+
+    @Test
+    void relinkRecoversCarriageSnapshotBeforePlacingTheTrain() {
+        TrackSpline stem = straightTrack(false);
+        TrackJunction junction = smoothTurnout(stem, 50, -1, false);
+        TrainHandler loco = car();
+        loco.applyConsist(new ConsistData(null, null, stem.getId().toString(), 58d, -1));
+        TrainHandler child = car();
+        child.applyConsist(new ConsistData(loco.v.getUUID(), null, junction.branchSplineId.toString(),
+                2d, 1, null, null, -1, java.util.Map.of(junction.id.toString(), true)));
+        child.splineTick();
+        loco.setChild(child.v);
+        child.setPendingParent(null);
+        loco.placeLoadedCars();
+        assertTrue(loco.holdsJunction(junction.id));
+        assertEquals(junction.branchSplineId, child.getSplineId());
+        assertEquals(2, child.getS(), 1e-6);
+    }
+
+    private TrackJunction smoothTurnout(TrackSpline stem, double at, int facing, boolean thrown) {
+        List<double[]> points = new ArrayList<>();
+        for (int i = 0; i <= 90; i++) {
+            double a = Math.toRadians(i);
+            points.add(new double[]{facing * 32 * (1 - Math.cos(a)), 64, at + facing * 32 * Math.sin(a)});
+        }
+        points.add(new double[]{facing * 132, 64, at + facing * 32});
+        TrackSpline branch = TrackSpline.fromPoints(UUID.randomUUID(), "world", false, points);
+        store.save(branch);
+        TrackJunction junction = new TrackJunction(UUID.randomUUID(), stem.getId(), at, facing,
+                TrackJunction.Side.LEFT, branch.getId(), thrown, 12);
+        store.saveJunction("world", junction);
+        registry.loadFromDisk();
+        return junction;
+    }
+
+    private List<TrainHandler> cars(TrainHandler loco) {
+        List<TrainHandler> cars = new ArrayList<>();
+        for (TrainHandler car = loco; car != null; car = car.hasChild() ? car.getChild().getTrainHandler() : null) {
+            cars.add(car);
+        }
+        return cars;
+    }
+
+    private List<Location> carLocations(TrainHandler loco) {
+        return cars(loco).stream().map(car -> car.v.getEntity().getLocation()).toList();
+    }
+
+    private List<float[]> captureRotations(TrainHandler loco) {
+        List<float[]> rotations = new ArrayList<>();
+        for (TrainHandler car : cars(loco)) {
+            float[] rotation = new float[2];
+            rotations.add(rotation);
+            BoneRotator rotator = stub(BoneRotator.class);
+            doAnswer(call -> {
+                rotation[0] = call.getArgument(0);
+                rotation[1] = call.getArgument(1);
+                return true;
+            }).when(rotator).rotateToTarget(org.mockito.ArgumentMatchers.anyFloat(),
+                    org.mockito.ArgumentMatchers.anyFloat(), org.mockito.ArgumentMatchers.anyFloat(),
+                    org.mockito.ArgumentMatchers.anyFloat(), org.mockito.ArgumentMatchers.anyBoolean(),
+                    org.mockito.ArgumentMatchers.anyBoolean(), org.mockito.ArgumentMatchers.anyBoolean());
+            BehaviourHandler behaviour = stub(BehaviourHandler.class);
+            when(behaviour.getRotator()).thenReturn(rotator);
+            when(car.v.getBehaviourHandler()).thenReturn(behaviour);
+        }
+        return rotations;
+    }
+
+    private void assertContinuousCoupled(TrainHandler loco, List<float[]> rotations, List<Location> before, double bound) {
+        List<TrainHandler> cars = cars(loco);
+        for (int i = 0; i < cars.size(); i++) {
+            assertTrue(before.get(i).toVector().distance(cars.get(i).v.getEntity().getLocation().toVector()) < bound, "Car jumped at a turnout");
+            if (i > 0) {
+                assertEquals(0, modelAnchor(cars.get(i - 1), rotations.get(i - 1), -5)
+                        .distance(modelAnchor(cars.get(i), rotations.get(i), 5)), 1e-5,
+                        "car=" + i + " s=" + cars.get(i).getS() + " orientation=" + cars.get(i).getOrientation()
+                        + " parent=" + cars.get(i - 1).getS() + " yaw=" + rotations.get(i)[0]
+                        + " parentYaw=" + rotations.get(i - 1)[0] + " speed=" + loco.v.getAccessPanel().getSpeed());
+            }
+        }
     }
 
     private void assertSequence(TrainHandler loco, TrackSpline track, double[] expected) {

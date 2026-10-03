@@ -16,6 +16,7 @@ public final class ThrottleTape {
 		public final double s;
 		public final int sign;
 		public final int throttle;
+		public final int orientation;
 		public int holdTicks;
 		public final String splineId;
 		public final String junctionId;
@@ -29,6 +30,11 @@ public final class ThrottleTape {
 		}
 
 		public Sample(double s, int sign, int throttle, int holdTicks, String splineId, String junctionId) {
+			this(s, sign, throttle, holdTicks, splineId, junctionId, 1);
+		}
+
+		public Sample(double s, int sign, int throttle, int holdTicks, String splineId, String junctionId, int orientation) {
+			this.orientation = orientation < 0 ? -1 : 1;
 			this.s = s;
 			this.sign = sign < 0 ? -1 : 1;
 			this.throttle = throttle;
@@ -120,21 +126,21 @@ public final class ThrottleTape {
 		}
 		matched.sort(Comparator.comparingDouble(a -> a.s));
 		if (s <= matched.get(0).s) {
-			return matched.get(0).throttle;
+			return matched.get(0).throttle * matched.get(0).orientation;
 		}
 		Sample last = matched.get(matched.size() - 1);
 		if (s >= last.s) {
-			return last.throttle;
+			return last.throttle * last.orientation;
 		}
 		for (int i = 0; i < matched.size() - 1; i++) {
 			Sample a = matched.get(i);
 			Sample b = matched.get(i + 1);
 			if (s >= a.s && s <= b.s) {
 				if (b.s == a.s) {
-					return a.throttle;
+					return a.throttle * a.orientation;
 				}
 				double t = (s - a.s) / (b.s - a.s);
-				return (int) Math.round(a.throttle + t * (b.throttle - a.throttle));
+				return (int) Math.round(a.throttle * a.orientation + t * (b.throttle * b.orientation - a.throttle * a.orientation));
 			}
 		}
 		return 0;
@@ -173,6 +179,11 @@ public final class ThrottleTape {
 		return targetWithDwell(s, sign, dwell, currentSpline == null ? splineId : currentSpline.toString());
 	}
 
+	/** Converts each recorded sample from its body frame, then into the current body's frame. */
+	public int targetWithDwell(double s, int sign, DwellState dwell, UUID currentSpline, int orientation) {
+		return targetWithDwell(s, sign, dwell, currentSpline) * (orientation < 0 ? -1 : 1);
+	}
+
 	public int targetWithDwell(double s, int sign, DwellState dwell, String currentSpline) {
 		int target = lookup(s, sign, currentSpline);
 		int hold = holdAt(s, sign, currentSpline);
@@ -200,6 +211,10 @@ public final class ThrottleTape {
 	}
 
 	public AppendResult tryAppend(double s, int sign, int throttle, String sampleSpline, String junctionId) {
+		return tryAppend(s, sign, throttle, sampleSpline, junctionId, 1);
+	}
+
+	public AppendResult tryAppend(double s, int sign, int throttle, String sampleSpline, String junctionId, int orientation) {
 		int nsign = sign < 0 ? -1 : 1;
 		String spline = blankToNull(sampleSpline);
 		if (spline == null) {
@@ -211,7 +226,7 @@ public final class ThrottleTape {
 			String lastSpline = last.resolvedSpline(this.splineId);
 			boolean splineChanged = !sameId(lastSpline, spline);
 			boolean junctionChanged = !sameId(last.junctionId, junction);
-			boolean throttleChanged = last.throttle != throttle || last.sign != nsign;
+			boolean throttleChanged = last.throttle != throttle || last.sign != nsign || last.orientation != orientation;
 			boolean far = Math.abs(s - last.s) >= HOLD_S;
 			if (!splineChanged && !junctionChanged && !throttleChanged && !far) {
 				last.holdTicks++;
@@ -221,7 +236,7 @@ public final class ThrottleTape {
 		if (samples.size() >= MAX_SAMPLES) {
 			return AppendResult.CAPPED;
 		}
-		samples.add(new Sample(s, nsign, throttle, 1, spline, junction));
+		samples.add(new Sample(s, nsign, throttle, 1, spline, junction, orientation));
 		if (samples.size() >= MAX_SAMPLES) {
 			return AppendResult.CAPPED;
 		}
@@ -238,6 +253,7 @@ public final class ThrottleTape {
 			o.put("s", sample.s);
 			o.put("sign", (long) sample.sign);
 			o.put("throttle", (long) sample.throttle);
+			if (sample.orientation < 0) { o.put("orientation", -1L); }
 			o.put("hold", (long) sample.holdTicks);
 			if (sample.splineId != null && !sample.splineId.equalsIgnoreCase(splineId)) {
 				o.put("splineId", sample.splineId);
@@ -277,7 +293,8 @@ public final class ThrottleTape {
 						(int) asDouble(o.get("throttle")),
 						hold,
 						stringOrNull(o.get("splineId")),
-						stringOrNull(o.get("junction"))));
+						stringOrNull(o.get("junction")),
+						o.get("orientation") == null ? 1 : (int) asDouble(o.get("orientation"))));
 			}
 		}
 		return new ThrottleTape(splineId, loaded);

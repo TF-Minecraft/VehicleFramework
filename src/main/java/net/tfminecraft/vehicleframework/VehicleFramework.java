@@ -68,6 +68,7 @@ public class VehicleFramework extends JavaPlugin{
 		trackRegistry = new TrackRegistry(getDataFolder());
 		trackRegistry.writeInBackground();
 		trackRegistry.onRebuilt(TrainHandler::retrackTrains);
+		trackRegistry.onJunctionOccupied(TrainHandler::junctionOccupied);
 		trackRegistry.occupiedBy(TrainHandler::anyTrainOn);
 		log = new LogWriter(getDataFolder());
 		VFLogger.info("Running checks...");

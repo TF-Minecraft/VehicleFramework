@@ -3,6 +3,7 @@ package net.tfminecraft.vehicleframework.vehicles.handlers;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -33,7 +34,8 @@ import net.tfminecraft.vehicleframework.enums.Direction;
 import net.tfminecraft.vehicleframework.managers.VehicleManager;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTape;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTapeItems;
-import net.tfminecraft.vehicleframework.tracks.TrackAdvance;
+import net.tfminecraft.vehicleframework.tracks.TrainRoute;
+import net.tfminecraft.vehicleframework.tracks.TrainRoute.Position;
 import net.tfminecraft.vehicleframework.tracks.TrainBlockCollision;
 import net.tfminecraft.vehicleframework.tracks.TrainSpaceHighlight;
 import net.kyori.adventure.text.Component;
@@ -76,6 +78,9 @@ public class TrainHandler {
 	// Track may have been edited while this train was unloaded.
 	private boolean checkLoadedPosition;
 	private int travelSign = 1;
+	// The nose direction on this spline, independent of forward/reverse movement.
+	private int orientation = 1;
+	private final Map<UUID, Boolean> junctionRoutes = new LinkedHashMap<>();
 	private UUID armedJunctionId;
 	private TrackJunction.Side armedSide;
 	private long lastNoFrogChatMs;
@@ -149,6 +154,8 @@ public class TrainHandler {
 			back = new Connector(v, another.getBack());
 		}
 		travelSign = another.travelSign;
+		orientation = another.orientation;
+		junctionRoutes.putAll(another.junctionRoutes);
 		armedJunctionId = another.armedJunctionId;
 		armedSide = another.armedSide;
 		routeJunctionId = another.routeJunctionId;
@@ -239,6 +246,16 @@ public class TrainHandler {
 		child = v;
 		if (v != null) {
 			pendingChild = null;
+			// A carriage can load before the locomotive. Recover its saved choices
+			// before the first placement crosses a turnout to reconstruct the chain.
+			ActiveVehicle loco = locoOf(this.v);
+			if (loco != null) {
+				TrainHandler root = loco.getTrainHandler();
+				for (ActiveVehicle car = v; car != null; car = car.getTrainHandler().child) {
+					car.getTrainHandler().junctionRoutes.forEach(root.junctionRoutes::putIfAbsent);
+				}
+				root.syncRoute();
+			}
 		}
 	}
 
@@ -292,6 +309,14 @@ public class TrainHandler {
 		s = consist.getS() == null ? 0 : consist.getS();
 		checkLoadedPosition = splineId != null;
 		travelSign = consist.getTravelSign();
+		orientation = consist.getOrientation();
+		junctionRoutes.clear();
+		consist.getJunctions().forEach((id, choice) -> {
+			try { junctionRoutes.put(UUID.fromString(id), choice); }
+			catch (IllegalArgumentException ignored) {
+				// A malformed route id must not prevent loading the remaining consist.
+			}
+		});
 		routeJunctionId = null;
 		takeBranch = consist.isDiverge();
 		if (consist.getJunctionId() != null) {
@@ -302,6 +327,7 @@ public class TrainHandler {
 				takeBranch = false;
 			}
 		}
+		syncRoute();
 		PersistenceLog.append("APPLY_CONSIST " + PersistenceLog.vehicle(v));
 	}
 
@@ -313,86 +339,77 @@ public class TrainHandler {
 		boolean loco = pendingParent == null && (v == null || !v.hasParent());
 		String junction = loco && routeJunctionId != null ? routeJunctionId.toString() : null;
 		Boolean diverge = junction == null ? null : takeBranch;
-		return new ConsistData(parentId, childId, spline, arc, splineId == null ? null : travelSign, junction, diverge);
+		Map<String, Boolean> routes = new LinkedHashMap<>();
+		junctionRoutes.forEach((id, choice) -> routes.put(id.toString(), choice));
+		return new ConsistData(parentId, childId, spline, arc, splineId == null ? null : travelSign,
+				junction, diverge, orientation, routes);
 	}
 
 	public void holdJunction(TrackJunction.Side side) {
-		if (side == null || v == null || v.hasParent()) {
-			return;
-		}
-		if (v.getAccessPanel() != null && v.getAccessPanel().getSpeed() < 0) {
-			clearArm();
-			tellCaptain("Junction arm cleared: reverse");
-			RecorderLog.arm(v, "clear-reverse", side, null, 0);
-			return;
-		}
-		TrackSpline spline = boundSpline();
-		if (spline == null) {
-			tellCaptain("Junction: not on a track");
+		if (side == null || v == null || v.hasParent() || boundSpline() == null) {
 			return;
 		}
 		TrackRegistry registry = VehicleFramework.getTrackRegistry();
 		if (registry == null) {
 			return;
 		}
-		if (armedJunctionId != null) {
-			TrackJunction armed = registry.getJunction(armedJunctionId).orElse(null);
-			if (armed != null && armed.stemSplineId.equals(splineId)
-					&& TrackJunctionTravel.facing(travelSign, armed.facingSign)) {
-				double ahead = TrackJunctionTravel.ahead(
-						s, armed.s, travelSign, spline.isLoop(), spline.length());
-				boolean stillBefore = ahead >= -1e-9
-						&& ahead <= Cache.trackJunctionArmDistance + 1e-9
-						&& (!spline.isLoop() || ahead <= spline.length() * 0.5 + 1e-9);
-				if (stillBefore) {
-					throwSwitch(registry, armed, side, ahead);
-					return;
-				}
-			}
-			clearArm();
+		Map<UUID, Boolean> used = new LinkedHashMap<>();
+		List<CarPlacement> cars = planCars(used);
+		retainRoutes(cars, used);
+		int direction = controlDirection();
+		Position lead = leadingPosition(cars, direction);
+		if (lead == null) {
+			return;
 		}
-		TrackJunction next = nextFrogInWindow(registry, spline);
-		if (next == null) {
-			TrackJunction far = nextFrogAhead(registry, spline, Double.POSITIVE_INFINITY);
+		TrackSpline spline = registry.get(lead.splineId()).orElse(null);
+		TrackJunction next = null;
+		double nearest = Double.POSITIVE_INFINITY;
+		for (TrackJunction junction : registry.junctionsOn(lead.splineId())) {
+			if (junction.branchSplineId == null || direction * lead.orientation() != junction.facingSign) {
+				continue;
+			}
+			double ahead = TrackJunctionTravel.ahead(lead.s(), junction.s, direction * lead.orientation(),
+					spline.isLoop(), spline.length());
+			if (ahead >= -1e-9 && ahead < nearest) {
+				next = junction;
+				nearest = ahead;
+			}
+		}
+		if (next == null || nearest > Cache.trackJunctionArmDistance) {
 			long now = System.currentTimeMillis();
 			if (now - lastNoFrogChatMs >= 1500) {
 				lastNoFrogChatMs = now;
-				if (far == null) {
-					tellCaptain("Junction: no turnout ahead on this track");
-					RecorderLog.arm(v, "no-frog", side, null, 0);
-				} else {
-					double ahead = TrackJunctionTravel.ahead(
-							s, far.s, travelSign, spline.isLoop(), spline.length());
-					tellCaptain("Junction: press A/D within "
-							+ (int) Cache.trackJunctionArmDistance
-							+ " of the frog. Next is "
-							+ far.side.name().toLowerCase()
-							+ " at s="
-							+ String.format(java.util.Locale.US, "%.0f", far.s)
-							+ " ("
-							+ String.format(java.util.Locale.US, "%.0f", ahead)
-							+ " ahead)");
-					RecorderLog.arm(v, "too-far", side, far, ahead);
-				}
+				tellCaptain(next == null ? "Junction: no facing turnout ahead of the leading car"
+						: "Junction: press A/D within " + (int) Cache.trackJunctionArmDistance
+						+ " of the leading wheels reaching the turnout");
 			}
 			return;
 		}
-		double ahead = TrackJunctionTravel.ahead(
-				s, next.s, travelSign, spline.isLoop(), spline.length());
-		throwSwitch(registry, next, side, ahead);
-	}
-
-	private void throwSwitch(TrackRegistry registry, TrackJunction frog, TrackJunction.Side side, double ahead) {
-		boolean first = armedJunctionId == null || !armedJunctionId.equals(frog.id);
-		boolean diverge = frog.side == side;
-		boolean changed = registry.setThrown(frog.id, diverge);
-		armedJunctionId = frog.id;
-		armedSide = side;
-		if (!first && !changed) {
+		boolean diverge = next.side == side;
+		if ((junctionRoutes.containsKey(next.id) || registry.junctionOccupied(next.id)) && next.thrown != diverge) {
+			if (System.currentTimeMillis() - lastNoFrogChatMs >= 1500) {
+				lastNoFrogChatMs = System.currentTimeMillis();
+				tellCaptain("Junction: points locked until the whole train clears");
+			}
 			return;
 		}
-		TrackJunction live = registry.getJunction(frog.id).orElse(frog);
-		tellArm(live, ahead, diverge ? "diverge" : "through");
+		boolean first = !next.id.equals(armedJunctionId);
+		boolean changed = registry.setThrown(next.id, diverge);
+		armedJunctionId = next.id;
+		armedSide = side;
+		if (first || changed) {
+			tellArm(registry.getJunction(next.id).orElse(next), nearest, diverge ? "diverge" : "through");
+		}
+	}
+
+	// Actual velocity wins while braking/coasting; throttle only chooses direction at rest.
+	private int controlDirection() {
+		double speed = v.getAccessPanel() == null ? 0 : v.getAccessPanel().getSpeed();
+		if (!TrackSplineMotion.stopped(speed)) {
+			return speed < 0 ? -1 : 1;
+		}
+		int throttle = v.getThrottle() == null ? 0 : v.getThrottle().getCurrent();
+		return throttle == 0 ? travelSign * orientation : throttle < 0 ? -1 : 1;
 	}
 
 	private void tellArm(TrackJunction frog, double ahead, String status) {
@@ -416,33 +433,6 @@ public class TrainHandler {
 		}
 	}
 
-	private TrackJunction nextFrogInWindow(TrackRegistry registry, TrackSpline spline) {
-		return nextFrogAhead(registry, spline, Cache.trackJunctionArmDistance);
-	}
-
-	private TrackJunction nextFrogAhead(TrackRegistry registry, TrackSpline spline, double maxAhead) {
-		TrackJunction best = null;
-		double bestAhead = Double.POSITIVE_INFINITY;
-		for (TrackJunction junction : registry.junctionsOn(splineId)) {
-			if (junction.branchSplineId == null) {
-				continue;
-			}
-			if (!TrackJunctionTravel.facing(travelSign, junction.facingSign)) {
-				continue;
-			}
-			double ahead = TrackJunctionTravel.ahead(
-					s, junction.s, travelSign, spline.isLoop(), spline.length());
-			if (ahead < -1e-9 || ahead > maxAhead) {
-				continue;
-			}
-			if (ahead < bestAhead) {
-				bestAhead = ahead;
-				best = junction;
-			}
-		}
-		return best;
-	}
-
 	private void clearArm() {
 		armedJunctionId = null;
 		armedSide = null;
@@ -457,6 +447,10 @@ public class TrainHandler {
 	
 	public int getTravelSign() {
 		return travelSign;
+	}
+
+	public int getOrientation() {
+		return orientation;
 	}
 
 	public boolean hasInstalledTape() {
@@ -503,7 +497,7 @@ public class TrainHandler {
 		recordTraveled = 0;
 		recordLength = spline.length();
 		int throttle = v != null && v.getThrottle() != null ? v.getThrottle().getCurrent() : 0;
-		recordingTape.tryAppend(s, travelSign, throttle, splineId.toString(), null);
+		recordingTape.tryAppend(s, travelSign, throttle, splineId.toString(), null, orientation);
 		RecorderLog.append("RECORD_START player=" + (player == null ? "none" : player.getName())
 				+ " length=" + recordLength + " " + RecorderLog.train(v));
 	}
@@ -533,12 +527,10 @@ public class TrainHandler {
 		}
 		recordPrevS = s;
 		recordPrevSpline = spline.getId();
-		String junction = null;
-		if (!onOrigin && routeJunctionId != null) {
-			junction = routeJunctionId.toString();
-		}
+		String junction = onOrigin ? null : registry.junctionByBranch(splineId)
+				.map(branch -> branch.id.toString()).orElse(null);
 		ThrottleTape.AppendResult result = recordingTape.tryAppend(
-				s, travelSign, throttle, spline.getId().toString(), junction);
+				s, travelSign, throttle, spline.getId().toString(), junction, orientation);
 		int hold = recordingTape.getSamples().isEmpty()
 				? 0
 				: recordingTape.getSamples().get(recordingTape.getSamples().size() - 1).holdTicks;
@@ -606,7 +598,7 @@ public class TrainHandler {
 			RecorderLog.playback(v, "captain", null, tapeDwell);
 			return null;
 		}
-		int target = installedTape.targetWithDwell(s, travelSign, tapeDwell, splineId);
+		int target = installedTape.targetWithDwell(s, travelSign, tapeDwell, splineId, orientation);
 		RecorderLog.playback(v, "ok", target, tapeDwell);
 		return target;
 	}
@@ -621,6 +613,8 @@ public class TrainHandler {
 		splineId = null;
 		s = 0;
 		travelSign = 1;
+		orientation = 1;
+		junctionRoutes.clear();
 		clearArm();
 		routeJunctionId = null;
 		takeBranch = false;
@@ -630,6 +624,8 @@ public class TrainHandler {
 			car.getTrainHandler().splineId = null;
 			car.getTrainHandler().s = 0;
 			car.getTrainHandler().travelSign = 1;
+			car.getTrainHandler().orientation = 1;
+			car.getTrainHandler().junctionRoutes.clear();
 		}
 	}
 
@@ -640,6 +636,7 @@ public class TrainHandler {
 		Location loc = v.getEntity().getLocation();
 		splineId = spline.getId();
 		s = spline.nearestS(loc.getX(), loc.getY(), loc.getZ());
+		orientation = 1;
 		travelSign = facingSign(loc, spline.sampleAt(s));
 		applyPose(v, spline.sampleAt(s));
 		placeLoadedCars();
@@ -745,9 +742,6 @@ public class TrainHandler {
 			return;
 		}
 		double speed = v.getAccessPanel() == null ? 0 : v.getAccessPanel().getSpeed();
-		if (speed < 0) {
-			clearArm();
-		}
 		if (TrackSplineMotion.stopped(speed)) {
 			animateMove(Direction.STILL);
 			if (keepBound()) {
@@ -764,7 +758,7 @@ public class TrainHandler {
 			still();
 			return;
 		}
-		travelSign = speed < 0 ? -1 : 1;
+		travelSign = (speed < 0 ? -1 : 1) * orientation;
 		splineStep(speed);
 	}
 
@@ -774,7 +768,10 @@ public class TrainHandler {
 			checkLoadedPosition = false;
 			followTrackUnderEntity();
 		}
-		applyPlacements(planCars());
+		Map<UUID, Boolean> used = new LinkedHashMap<>();
+		List<CarPlacement> placements = planCars(used);
+		retainRoutes(placements, used);
+		applyPlacements(placements);
 	}
 
 	/**
@@ -794,7 +791,7 @@ public class TrainHandler {
 		Float facing = savedModelYaw();
 		if (current != null) {
 			TrackPose saved = current.sampleAt(s);
-			if (onTrack(saved, at) && (facing == null || facesAlong(facing, saved))) {
+			if (onTrack(saved, at) && (facing == null || facesAlong(facing, TrainRoute.facing(saved, orientation)))) {
 				return;
 			}
 		}
@@ -807,113 +804,54 @@ public class TrainHandler {
 		moveTo(registry, match);
 	}
 
-	private record CarPlacement(ActiveVehicle vehicle, TrackSpline spline, double s, int sign,
+	private record CarPlacement(ActiveVehicle vehicle, TrackSpline spline, double s, int sign, int orientation,
 			double missingSpacing, TrackPose pose, TrackPose[] bogieRails, double[] missingRail) {
+		Position position() { return new Position(spline.getId(), s, orientation); }
 	}
 
-	// The junction route the consist is placed along, so bogies can straddle a junction.
-	private record Route(TrackRegistry registry, boolean takeBranch, UUID stemId, UUID branchId,
-			double junctionS, int facingSign, double stemLength, boolean stemLoop, double branchLength) {
-		/** Distance a support lies beyond real track; branch tips do not reconnect to the stem. */
-		double missingRail(UUID splineId, double s, double offset) {
-			TrackSpline spline = registry.get(splineId).orElse(null);
-			if (spline == null) {
-				return Math.abs(offset);
-			}
-			if (splineId.equals(branchId) && s + offset > spline.length()) {
-				return s + offset - spline.length();
-			}
-			// The leading wheels can reach a thrown turnout before the car's centre
-			// selects it. In particular, a turnout at the stem end still supplies rail.
-			if (!splineId.equals(branchId) && Math.abs(offset) > 1e-9) {
-				int direction = offset > 0 ? 1 : -1;
-				TrackJunction first = null;
-				double nearest = Double.POSITIVE_INFINITY;
-				for (TrackJunction junction : registry.junctionsOn(splineId)) {
-					boolean selected = takeBranch && junction.branchSplineId != null
-							&& junction.branchSplineId.equals(branchId);
-					double distance = TrackJunctionTravel.ahead(s, junction.s, direction,
-							spline.isLoop(), spline.length());
-					if ((selected || junction.thrown) && junction.facingSign == direction
-							&& junction.branchSplineId != null && distance >= -1e-9
-							&& distance <= Math.abs(offset) && distance < nearest) {
-						first = junction;
-						nearest = distance;
-					}
-				}
-				if (first != null) {
-					TrackSpline branch = registry.get(first.branchSplineId).orElse(null);
-					if (branch != null) {
-						return Math.max(0, Math.abs(offset) - nearest - branch.length());
-					}
-				}
-			}
-			return TrackJunctionTravel.rewind(splineId, s, offset > 0 ? -1 : 1,
-					Math.abs(offset), takeBranch || splineId.equals(branchId),
-					stemId == null ? splineId : stemId, branchId, junctionS,
-					facingSign, stemLength, stemLoop, branchLength).missingSpacing;
-		}
+	private Position position() { return new Position(splineId, s, orientation); }
 
-		/** The rail at {@code offset} along the track from {@code s}, following the route. */
-		TrackPose rail(UUID splineId, double s, double offset) {
-			TrackJunctionTravel.Pose at = TrackJunctionTravel.rewind(splineId, s, offset > 0 ? -1 : 1,
-					Math.abs(offset), takeBranch, stemId == null ? splineId : stemId, branchId, junctionS,
-					facingSign, stemLength, stemLoop, branchLength);
-			TrackSpline spline = at.splineId == null ? null : registry.get(at.splineId).orElse(null);
-			if (spline == null) {
-				return null;
-			}
-			if (at.missingSpacing <= 1e-9) {
-				return spline.sampleAt(at.s);
-			}
-			// Past the end of the route: carry on straight off that end.
-			double outwards = at.s <= 1e-9 ? -1 : 1;
-			return Bogies.rail(spline, at.s + outwards * at.missingSpacing);
-		}
-	}
+	private TrainRoute route() { return new TrainRoute(VehicleFramework.getTrackRegistry(), junctionRoutes); }
 
-	// A bogie car's two rails along the route, or null to place it as a rigid car.
-	private TrackPose[] bogieRails(Route route, UUID onSpline, double at) {
-		if (!onBogies() || route == null) {
-			return null;
-		}
-		double[] offsets = bogies.offsets();
-		TrackPose[] rails = new TrackPose[offsets.length];
-		for (int i = 0; i < offsets.length; i++) {
-			rails[i] = route.rail(onSpline, at, offsets[i]);
-			if (rails[i] == null) {
-				return null;
-			}
-		}
-		return rails;
-	}
-
-	// Resolve the outer axle bones in model space, including the current model scale.
-	// Older configurations retain bogie support checks, or centre checks for rigid cars.
-	private double[] missingWheelRail(Route route, UUID onSpline, double at) {
-		double[] missing = new double[2];
-		if (route == null) {
-			return missing;
-		}
+	// Model offsets remain in the body frame even when the body faces -s.
+	private double[] supportOffsets() {
+		List<Double> offsets = new ArrayList<>();
 		if (onBogies()) {
-			for (double offset : bogies.offsets()) {
-				int end = offset < 0 ? 0 : 1;
-				missing[end] = Math.max(missing[end], route.missingRail(onSpline, at, offset));
-			}
+			for (double offset : bogies.offsets()) { offsets.add(offset); }
 		}
 		for (String name : wheelBones) {
 			try {
 				ActiveModel model = v.getModel();
-				double offset = model.getBone(name).orElseThrow().getBlueprintBone()
-						.getRotatedGlobalPosition().z() * model.getScale().z();
-				int end = offset < 0 ? 0 : 1;
-				missing[end] = Math.max(missing[end], route.missingRail(onSpline, at, offset));
-			} catch (RuntimeException notLoaded) {
-				// The model or this bone is not available yet.
-			}
+				offsets.add((double) model.getBone(name).orElseThrow().getBlueprintBone()
+						.getRotatedGlobalPosition().z() * model.getScale().z());
+			} catch (RuntimeException notLoaded) { }
+		}
+		return offsets.isEmpty() ? new double[] {0} : offsets.stream().mapToDouble(Double::doubleValue).toArray();
+	}
+
+	private TrackPose[] bogieRails(TrainRoute route, Position at) {
+		if (!onBogies()) { return null; }
+		double[] offsets = bogies.offsets();
+		TrackPose[] rails = new TrackPose[offsets.length];
+		for (int i = 0; i < offsets.length; i++) {
+			rails[i] = route.rail(at, offsets[i]);
+			if (rails[i] == null) { return null; }
+		}
+		return rails;
+	}
+
+	private double[] missingWheelRail(TrainRoute route, Position at, Map<UUID, Boolean> used) {
+		double[] missing = new double[2];
+		for (double offset : supportOffsets()) {
+			TrainRoute.Walk walked = route.walk(at, offset);
+			if (used != null) { used.putAll(walked.junctions()); }
+			int end = offset < 0 ? 0 : 1;
+			missing[end] = Math.max(missing[end], walked.missing());
 		}
 		return missing;
 	}
+
+	private boolean onBogies() { return bogies != null && bogies.isReady(); }
 
 	private void applyPlacements(List<CarPlacement> placements) {
 		for (CarPlacement placement : placements) {
@@ -921,6 +859,12 @@ public class TrainHandler {
 			train.splineId = placement.spline.getId();
 			train.s = placement.s;
 			train.travelSign = placement.sign;
+			train.orientation = placement.orientation;
+			if (train != this) {
+				train.junctionRoutes.clear();
+				train.junctionRoutes.putAll(junctionRoutes);
+				train.syncRoute();
+			}
 			applyPose(placement.vehicle, placement.pose());
 			if (placement.bogieRails() != null) {
 				train.bogies.follow(placement.bogieRails(), placement.pose());
@@ -928,99 +872,117 @@ public class TrainHandler {
 		}
 	}
 
-	private boolean onBogies() {
-		return bogies != null && bogies.isReady();
-	}
+	private List<CarPlacement> planCars() { return planCars(null); }
 
-	private List<CarPlacement> planCars() {
+	private List<CarPlacement> planCars(Map<UUID, Boolean> used) {
 		List<CarPlacement> placements = new ArrayList<>();
-		TrackSpline spline = boundSpline();
-		if (spline == null) {
-			return placements;
-		}
 		TrackRegistry registry = VehicleFramework.getTrackRegistry();
-		TrackJunction route = registry == null ? null : routeJunction();
-		UUID stemId = route == null ? null : route.stemSplineId;
-		UUID branchId = route == null ? null : route.branchSplineId;
-		double junctionS = route == null ? 0 : route.s;
-		int facingSign = route == null ? 1 : route.facingSign;
-		TrackSpline stem = stemId == null || registry == null ? null : registry.get(stemId).orElse(null);
-		TrackSpline branch = branchId == null || registry == null ? null : registry.get(branchId).orElse(null);
-		double stemLength = stem == null ? spline.length() : stem.length();
-		boolean stemLoop = stem != null ? stem.isLoop() : spline.isLoop();
-		double branchLength = branch == null ? 0 : branch.length();
-		Route along = registry == null ? null : new Route(registry, takeBranch && route != null,
-				stemId, branchId, junctionS, facingSign, stemLength, stemLoop, branchLength);
-		TrackPose[] locoRails = bogieRails(along, splineId, s);
-		placements.add(new CarPlacement(v, spline, s, travelSign, 0,
-				locoRails == null ? spline.sampleAt(s) : bogies.bodyPose(locoRails), locoRails,
-				missingWheelRail(along, splineId, s)));
-		if (registry == null) {
-			return placements;
-		}
-		UUID parentSpline = splineId;
-		double parentS = s;
-		// Models face the +s tangent even in reverse. Couplers stay on that
-		// physical side; using travelSign here swaps the cars across the loco.
-		int parentPlacementSign = 1;
-		ActiveVehicle parentCar = v;
-		ActiveVehicle car = child;
+		if (registry == null || boundSpline() == null) { return placements; }
+		TrainRoute route = route();
+		Position at = position();
+		ActiveVehicle car = v;
+		CarPlacement parent = null;
+		double missing = 0;
+		int bodyTravel = travelSign * orientation;
 		while (car != null) {
-			TrainHandler parentTrain = parentCar.getTrainHandler();
-			TrainHandler carTrain = car.getTrainHandler();
-			double gap = spacing(parentTrain, carTrain);
-			TrackJunctionTravel.Pose pose = TrackJunctionTravel.rewind(
-					parentSpline,
-					parentS,
-					parentPlacementSign,
-					gap,
-					takeBranch && route != null,
-					stemId == null ? splineId : stemId,
-					branchId,
-					junctionS,
-					facingSign,
-					stemLength,
-					stemLoop,
-					branchLength);
-			int carTravelSign;
-			int carPlacementSign = 1;
-			if (branchId != null && branchId.equals(pose.splineId)) {
-				carTravelSign = 1;
-			} else {
-				carTravelSign = travelSign;
-				if (takeBranch && route != null && splineId != null && splineId.equals(branchId)) {
-					carTravelSign = facingSign;
-					carPlacementSign = facingSign;
-				}
+			TrainHandler train = car.getTrainHandler();
+			TrackSpline spline = registry.get(at.splineId()).orElse(null);
+			if (spline == null) { return List.of(); }
+			TrackPose[] rails = train.bogieRails(route, at);
+			TrackPose pose = rails == null ? TrainRoute.facing(spline.sampleAt(at.s()), at.orientation())
+					: train.bogies.bodyPose(rails);
+			if (parent != null && rails == null && parent.vehicle.getTrainHandler().canHaveAttached()
+					&& train.isAttachable() && missing <= 1e-9) {
+				try {
+					pose = train.getFront().coupledPose(pose,
+							parent.vehicle.getTrainHandler().getBack().positionAt(parent.pose()));
+				} catch (RuntimeException notLoaded) { }
 			}
-			TrackSpline carSpline = pose.splineId == null ? null : registry.get(pose.splineId).orElse(null);
-			if (carSpline != null) {
-				TrackPose[] rails = carTrain.bogieRails(along, pose.splineId, pose.s);
-				TrackPose carPose = rails == null ? carSpline.sampleAt(pose.s) : carTrain.bogies.bodyPose(rails);
-				// A car on bogies follows its own rails; its couplers swing to meet, as real ones do.
-				if (rails == null && parentTrain.canHaveAttached() && carTrain.isAttachable()
-						&& pose.missingSpacing <= 1e-9) {
-					// Arc spacing locates the car on the route; rigid couplers must meet
-					// in world space. A separate tangent at each centre opens a gap on bends.
-					TrackPose parentPose = placements.get(placements.size() - 1).pose();
-					try {
-						carPose = carTrain.getFront().coupledPose(carPose, parentTrain.getBack().positionAt(parentPose));
-					} catch (RuntimeException ignored) {
-						// Keep the sampled pose until connector blueprints and model transforms load.
-					}
-				}
-				placements.add(new CarPlacement(car, carSpline, pose.s, carTravelSign, pose.missingSpacing, carPose, rails,
-						carTrain.missingWheelRail(along, pose.splineId, pose.s)));
-			} else {
-				return List.of();
+			CarPlacement placement = new CarPlacement(car, spline, at.s(), bodyTravel * at.orientation(),
+					at.orientation(), missing, pose, rails, train.missingWheelRail(route, at, used));
+			placements.add(placement);
+			parent = placement;
+			car = train.child;
+			if (car != null) {
+				TrainRoute.Walk walk = route.walk(at, -spacing(train, car.getTrainHandler()));
+				if (used != null) { used.putAll(walk.junctions()); }
+				at = walk.position();
+				missing = walk.missing();
 			}
-			parentSpline = pose.splineId;
-			parentS = pose.s;
-			parentCar = car;
-			parentPlacementSign = carPlacementSign;
-			car = carTrain.child;
 		}
 		return placements;
+	}
+
+	private Position leadingPosition(List<CarPlacement> cars, int direction) {
+		if (cars.isEmpty()) { return null; }
+		CarPlacement car = direction > 0 ? cars.get(0) : cars.get(cars.size() - 1);
+		double offset = 0;
+		for (double wheel : car.vehicle.getTrainHandler().supportOffsets()) {
+			offset = direction > 0 ? Math.max(offset, wheel) : Math.min(offset, wheel);
+		}
+		return route().walk(car.position(), offset).position();
+	}
+
+	/** Retain each occupied switch, including adjacent switches spanned by one consist. */
+	private void retainRoutes(List<CarPlacement> cars, Map<UUID, Boolean> used) {
+		TrackRegistry registry = VehicleFramework.getTrackRegistry();
+		if (registry == null) { return; }
+		Map<UUID, Boolean> occupied = new LinkedHashMap<>();
+		// Missing cars may still straddle points. Keep their snapshot until the
+		// links resolve or are explicitly removed, then trim it normally again.
+		if ((pendingParent != null && !v.hasParent()) || cars.stream().anyMatch(car -> {
+			TrainHandler train = car.vehicle.getTrainHandler();
+			return train.pendingChild != null && train.child == null;
+		})) {
+			occupied.putAll(junctionRoutes);
+		}
+		used.forEach(occupied::putIfAbsent);
+		for (CarPlacement car : cars) {
+			TrainHandler train = car.vehicle.getTrainHandler();
+			double low = 0;
+			double high = 0;
+			for (double offset : train.supportOffsets()) {
+				low = Math.min(low, offset * car.orientation);
+				high = Math.max(high, offset * car.orientation);
+			}
+			for (TrackJunction junction : registry.junctionsOn(car.spline.getId())) {
+				double padding = junctionRoutes.containsKey(junction.id) ? reach(train) : 0;
+				boolean ahead = TrackJunctionTravel.inArmWindow(car.s, junction.s, 1,
+						car.spline.isLoop(), car.spline.length(), Math.max(high, padding) + 1e-9);
+				boolean behind = TrackJunctionTravel.inArmWindow(car.s, junction.s, -1,
+						car.spline.isLoop(), car.spline.length(), Math.max(-low, padding) + 1e-9);
+				if (ahead || behind) {
+					occupied.putIfAbsent(junction.id, junctionRoutes.getOrDefault(junction.id, false));
+				}
+			}
+			TrackJunction branch = registry.junctionByBranch(car.spline.getId()).orElse(null);
+			double padding = branch != null && junctionRoutes.containsKey(branch.id) ? reach(train) : 0;
+			if (branch != null && car.s - Math.max(-low, padding) <= branch.turnoutEndS + 1e-9) {
+				occupied.put(branch.id, true);
+			}
+		}
+		junctionRoutes.clear();
+		junctionRoutes.putAll(occupied);
+		syncRoute();
+	}
+
+	private void syncRoute() {
+		routeJunctionId = junctionRoutes.isEmpty() ? null : junctionRoutes.keySet().iterator().next();
+		takeBranch = routeJunctionId != null && junctionRoutes.get(routeJunctionId);
+	}
+
+	public boolean holdsJunction(UUID id) {
+		return v != null && !v.hasParent() && boundSpline() != null && junctionRoutes.containsKey(id);
+	}
+
+	public static boolean junctionOccupied(UUID id) {
+		VehicleManager vehicles = VehicleFramework.getVehicleManager();
+		if (vehicles != null) {
+			for (ActiveVehicle vehicle : vehicles.get().values()) {
+				if (vehicle.isTrain() && vehicle.getTrainHandler().holdsJunction(id)) { return true; }
+			}
+		}
+		return false;
 	}
 
 	private boolean keepBound() {
@@ -1109,8 +1071,8 @@ public class TrainHandler {
 
 	/**
 	 * The closest point on these tracks that counts as the same place,
-	 * preferring the current track. With {@code facing}, only track whose +s
-	 * runs the way the model faces qualifies; the consist cannot face -s.
+	 * preferring the current track. With {@code facing}, the saved body orientation
+	 * must still match the rail; reversing an unloaded train's track is rejected.
 	 */
 	private TrackMatch nearestTrack(Collection<TrackSpline> candidates, TrackPose was, Float facing) {
 		TrackMatch best = null;
@@ -1118,7 +1080,7 @@ public class TrainHandler {
 		for (TrackSpline candidate : candidates) {
 			double candidateS = candidate.nearestS(was.x, was.y, was.z);
 			TrackPose at = candidate.sampleAt(candidateS);
-			if (!onTrack(at, was) || (facing != null && !facesAlong(facing, at))) {
+			if (!onTrack(at, was) || (facing != null && !facesAlong(facing, TrainRoute.facing(at, orientation)))) {
 				continue;
 			}
 			double d = Math.pow(at.x - was.x, 2) + Math.pow(at.y - was.y, 2) + Math.pow(at.z - was.z, 2);
@@ -1133,7 +1095,7 @@ public class TrainHandler {
 
 	/**
 	 * World yaw the model faced when saved. applyPose turns the bone to the
-	 * track's +s heading relative to the entity, so undo that. Null without a rotator.
+	 * body's heading relative to the entity, so undo that. Null without a rotator.
 	 */
 	private Float savedModelYaw() {
 		if (v == null || v.getEntity() == null || v.getBehaviourHandler() == null) {
@@ -1163,6 +1125,7 @@ public class TrainHandler {
 		if (!target.equals(splineId) && registry != null && !routeTouches(registry, target)) {
 			routeJunctionId = null;
 			takeBranch = false;
+			junctionRoutes.clear();
 		}
 		PersistenceLog.append("RETRACK " + PersistenceLog.vehicle(v)
 				+ " from=" + splineId + "@" + s + " to=" + target + "@" + match.s());
@@ -1171,12 +1134,13 @@ public class TrainHandler {
 	}
 
 	private boolean routeTouches(TrackRegistry registry, UUID trackId) {
-		if (routeJunctionId == null) {
-			return false;
+		for (UUID id : junctionRoutes.keySet()) {
+			TrackJunction route = registry.getJunction(id).orElse(null);
+			if (route != null && (trackId.equals(route.stemSplineId) || trackId.equals(route.branchSplineId))) {
+				return true;
+			}
 		}
-		TrackJunction route = registry.getJunction(routeJunctionId).orElse(null);
-		return route != null
-				&& (trackId.equals(route.stemSplineId) || trackId.equals(route.branchSplineId));
+		return false;
 	}
 
 	/**
@@ -1225,71 +1189,72 @@ public class TrainHandler {
 	private static final long STOPPED_SHOW_MS = 2000;
 	private long stoppedShownMs;
 
-	private record StepState(UUID splineId, double s, int travelSign, UUID routeJunctionId,
-			boolean takeBranch, UUID armedJunctionId, TrackJunction.Side armedSide) {
-	}
+	private record StepState(UUID splineId, double s, int travelSign, int orientation,
+			Map<UUID, Boolean> routes, UUID armedJunctionId, TrackJunction.Side armedSide) { }
 
 	private StepState stepState() {
-		return new StepState(splineId, s, travelSign, routeJunctionId, takeBranch, armedJunctionId, armedSide);
+		return new StepState(splineId, s, travelSign, orientation, new LinkedHashMap<>(junctionRoutes),
+				armedJunctionId, armedSide);
 	}
 
 	private void restoreStep(StepState state) {
 		splineId = state.splineId;
 		s = state.s;
 		travelSign = state.travelSign;
-		routeJunctionId = state.routeJunctionId;
-		takeBranch = state.takeBranch;
+		orientation = state.orientation;
+		junctionRoutes.clear();
+		junctionRoutes.putAll(state.routes);
+		syncRoute();
 		armedJunctionId = state.armedJunctionId;
 		armedSide = state.armedSide;
 	}
 
-	private void splineStep(double ds) {
-		if (boundSpline() == null) {
-			unbind();
-			still();
-			return;
-		}
-		// Plan short steps for every car. Commit only the last clear plan, so a
-		// blocked carriage cannot leave the locomotive moving independently.
-		List<CarPlacement> accepted = planCars();
+	private void splineStep(double distance) {
+		if (boundSpline() == null) { unbind(); still(); return; }
+		Map<UUID, Boolean> used = new LinkedHashMap<>();
+		List<CarPlacement> accepted = planCars(used);
+		retainRoutes(accepted, used);
 		List<Runnable> afterMove = new ArrayList<>();
-		// Block shapes looked up for this tick only; blocks can change between ticks.
 		Map<Long, List<BoundingBox>> shapes = new HashMap<>();
-		int steps = Math.max(1, (int) Math.ceil(Math.abs(ds) / 0.25));
-		double step = ds / steps;
+		int steps = Math.max(1, (int) Math.ceil(Math.abs(distance) / 0.25));
+		double step = distance / steps;
+		int direction = distance < 0 ? -1 : 1;
 		double moved = 0;
 		boolean blocked = false;
 		boolean trackEnd = false;
 		for (int i = 0; i < steps; i++) {
 			StepState before = stepState();
-			TrackSpline spline = boundSpline();
-			TrackAdvance advance = spline.advance(s, step);
-			TrackRegistry registry = VehicleFramework.getTrackRegistry();
-			List<Runnable> junctionEvents = new ArrayList<>();
-			if (!applyJunctionStep(registry, spline, s, advance.s, step, junctionEvents)) {
-				s = advance.s;
-			}
-			List<CarPlacement> next = planCars();
+			Position lead = leadingPosition(accepted, direction);
+			TrainRoute.Walk leading = route().walk(lead, step, true, false);
+			leading.junctions().forEach(junctionRoutes::putIfAbsent);
+			TrainRoute.Walk advance = route().walk(position(), step, false, true);
+			advance.junctions().forEach(junctionRoutes::putIfAbsent);
+			splineId = advance.position().splineId();
+			s = advance.position().s();
+			orientation = advance.position().orientation();
+			travelSign = direction * orientation;
+			syncRoute();
+			used.clear();
+			List<CarPlacement> next = planCars(used);
 			if (!clearStep(accepted, next, shapes)) {
 				restoreStep(before);
 				blocked = true;
 				trackEnd = compressesConsist(accepted, next) || losesWheelSupport(accepted, next);
 				break;
 			}
-			trackEnd = reachesTrackEnd(accepted, next);
+			for (Map.Entry<UUID, Boolean> entry : junctionRoutes.entrySet()) {
+				if (!before.routes.containsKey(entry.getKey())) {
+					UUID id = entry.getKey();
+					boolean diverge = entry.getValue();
+					afterMove.add(() -> RecorderLog.junction(v, diverge, id, "leading-wheels"));
+					if (id.equals(armedJunctionId)) { clearArm(); }
+				}
+			}
+			trackEnd = reachesTrackEnd(accepted, next) || advance.missing() > 1e-9 || advance.broken();
 			accepted = next;
-			afterMove.addAll(junctionEvents);
-			if (splineId.equals(before.splineId) && Math.abs(s - before.s) < 1e-9) {
-				blocked = true;
-				trackEnd = !spline.isLoop();
-				break;
-			}
-			moved += Math.abs(step);
-			if (trackEnd || advance.stoppedAtBreak) {
-				blocked = true;
-				trackEnd = true;
-				break;
-			}
+			retainRoutes(accepted, used);
+			moved += Math.max(0, Math.abs(step) - advance.missing());
+			if (trackEnd) { blocked = true; break; }
 		}
 		if (moved > 0) {
 			applyPlacements(accepted);
@@ -1298,17 +1263,11 @@ public class TrainHandler {
 		}
 		if (blocked) {
 			if (trackEnd) {
-				if (v.getThrottle() != null) {
-					v.getThrottle().setThrottle(0);
-				}
-				if (v.getAccessPanel() != null) {
-					v.getAccessPanel().setSpeed(0);
-				}
+				if (v.getThrottle() != null) { v.getThrottle().setThrottle(0); }
+				if (v.getAccessPanel() != null) { v.getAccessPanel().setSpeed(0); }
 			}
 			animateMove(Direction.STILL);
-			for (CarPlacement car : accepted) {
-				car.vehicle.getEntity().setVelocity(new Vector(0, 0, 0));
-			}
+			for (CarPlacement car : accepted) { car.vehicle.getEntity().setVelocity(new Vector(0, 0, 0)); }
 		}
 	}
 
@@ -1399,96 +1358,6 @@ public class TrainHandler {
 		// Cars attached at a track boundary may already lack space. Allow them
 		// to pull away and recover their gaps, but never compress them further.
 		return after > 1e-9 && after >= before - 1e-9;
-	}
-
-	private boolean applyJunctionStep(
-			TrackRegistry registry,
-			TrackSpline spline,
-			double from,
-			double to,
-			double ds,
-			List<Runnable> afterMove) {
-		TrackJunction asBranch = registry.junctionByBranch(splineId).orElse(null);
-		if (asBranch != null && !spline.isLoop() && ds < 0 && to <= 1e-6) {
-			TrackSpline stem = registry.get(asBranch.stemSplineId).orElse(null);
-			if (stem == null) {
-				return false;
-			}
-			splineId = stem.getId();
-			s = asBranch.s;
-			travelSign = -asBranch.facingSign;
-			routeJunctionId = asBranch.id;
-			takeBranch = true;
-			return true;
-		}
-		if (asBranch != null) {
-			return false;
-		}
-		for (TrackJunction junction : registry.junctionsOn(splineId)) {
-			if (junction.branchSplineId == null) {
-				continue;
-			}
-			if (!TrackJunctionTravel.crosses(from, to, junction.s, travelSign, spline.isLoop(), spline.length())) {
-				continue;
-			}
-			if (!TrackJunctionTravel.facing(travelSign, junction.facingSign)) {
-				continue;
-			}
-			TrackJunction live = registry.getJunction(junction.id).orElse(junction);
-			boolean diverge = live.thrown;
-			String reason = diverge ? "switch-diverge" : "switch-through";
-			if (armedJunctionId != null && armedJunctionId.equals(junction.id)) {
-				clearArm();
-			}
-			routeJunctionId = junction.id;
-			takeBranch = diverge;
-			String detail = reason
-					+ " thrown="
-				+ live.thrown
-				+ " frog=" + live.side.name()
-					+ " facing=" + junction.facingSign
-					+ " travel=" + travelSign;
-			afterMove.add(() -> {
-				if (RecorderLog.throttle("junc:" + v.getUUID() + ":" + junction.id, 2000)) {
-					RecorderLog.junction(v, diverge, junction.id, detail);
-					if (diverge) {
-						tellCaptain("Junction: diverge (" + reason.replace('-', ' ') + ")");
-					} else {
-						tellCaptain("Junction: through (" + reason.replace('-', ' ') + ")");
-					}
-				}
-			});
-			if (!diverge) {
-				continue;
-			}
-			TrackSpline branch = registry.get(junction.branchSplineId).orElse(null);
-			if (branch == null) {
-				takeBranch = false;
-				continue;
-			}
-			splineId = branch.getId();
-			s = 0;
-			travelSign = 1;
-			return true;
-		}
-		return false;
-	}
-
-	private TrackJunction routeJunction() {
-		TrackRegistry registry = VehicleFramework.getTrackRegistry();
-		if (registry == null) {
-			return null;
-		}
-		if (routeJunctionId != null) {
-			TrackJunction stored = registry.getJunction(routeJunctionId).orElse(null);
-			if (stored != null) {
-				return stored;
-			}
-		}
-		if (splineId == null) {
-			return null;
-		}
-		return registry.junctionByBranch(splineId).orElse(null);
 	}
 
 	private void maybeClack(double ds) {

@@ -1,5 +1,8 @@
 package net.tfminecraft.vehicleframework.database;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import org.json.simple.JSONObject;
 
 public final class ConsistData {
@@ -10,6 +13,8 @@ public final class ConsistData {
 	private final Integer travelSign;
 	private final String junctionId;
 	private final Boolean diverge;
+	private final int orientation;
+	private final Map<String, Boolean> junctions;
 
 	public ConsistData(String parent, String child, String splineId, Double s) {
 		this(parent, child, splineId, s, null, null, null);
@@ -27,6 +32,11 @@ public final class ConsistData {
 			Integer travelSign,
 			String junctionId,
 			Boolean diverge) {
+		this(parent, child, splineId, s, travelSign, junctionId, diverge, 1, Map.of());
+	}
+
+	public ConsistData(String parent, String child, String splineId, Double s, Integer travelSign,
+			String junctionId, Boolean diverge, int orientation, Map<String, Boolean> junctions) {
 		this.parent = blankToNull(parent);
 		this.child = blankToNull(child);
 		this.splineId = blankToNull(splineId);
@@ -34,6 +44,15 @@ public final class ConsistData {
 		this.travelSign = this.splineId == null ? null : normalizeSign(travelSign);
 		this.junctionId = this.splineId == null ? null : blankToNull(junctionId);
 		this.diverge = this.junctionId == null ? null : diverge;
+		this.orientation = normalizeSign(orientation);
+		Map<String, Boolean> routes = new LinkedHashMap<>();
+		if (this.junctionId != null) {
+			routes.put(this.junctionId, Boolean.TRUE.equals(diverge));
+		}
+		if (this.splineId != null && junctions != null) {
+			routes.putAll(junctions);
+		}
+		this.junctions = Map.copyOf(routes);
 	}
 
 	public static ConsistData unbound() {
@@ -51,7 +70,9 @@ public final class ConsistData {
 				numberOrNull(json, "s"),
 				intOrNull(json, "travelSign"),
 				stringOrNull(json, "junction"),
-				boolOrNull(json, "diverge"));
+				boolOrNull(json, "diverge"),
+				normalizeSign(intOrNull(json, "orientation")),
+				readJunctions(json));
 	}
 
 	@SuppressWarnings("unchecked")
@@ -71,6 +92,14 @@ public final class ConsistData {
 				json.put("s", s);
 			}
 			json.put("travelSign", (long) (travelSign == null ? 1 : travelSign));
+			if (orientation < 0) {
+				json.put("orientation", -1L);
+			}
+			if (!junctions.isEmpty()) {
+				JSONObject routes = new JSONObject();
+				routes.putAll(junctions);
+				json.put("junctions", routes);
+			}
 			if (junctionId != null) {
 				json.put("junction", junctionId);
 				if (Boolean.TRUE.equals(diverge)) {
@@ -110,6 +139,26 @@ public final class ConsistData {
 
 	public boolean isDiverge() {
 		return Boolean.TRUE.equals(diverge);
+	}
+
+	public int getOrientation() {
+		return orientation;
+	}
+
+	public Map<String, Boolean> getJunctions() {
+		return junctions;
+	}
+
+	private static Map<String, Boolean> readJunctions(JSONObject json) {
+		Map<String, Boolean> routes = new LinkedHashMap<>();
+		if (json.get("junctions") instanceof JSONObject raw) {
+			for (Object key : raw.keySet()) {
+				if (key instanceof String id && raw.get(key) instanceof Boolean choice) {
+					routes.put(id, choice);
+				}
+			}
+		}
+		return routes;
 	}
 
 	private static Integer intOrNull(JSONObject json, String key) {

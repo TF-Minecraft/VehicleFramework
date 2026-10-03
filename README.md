@@ -73,6 +73,24 @@ short for that radius curves tighter, down to the sharpest turn that
 
 Other clicks lay a single arc, as before. Existing track is unchanged.
 
+## Junctions in reverse
+
+Hold A or D to choose a turnout within `junction-arm-distance` of the leading
+wheels. Left and right are viewed in the direction the train is travelling.
+While stopped, the throttle selects the approach direction; at zero throttle,
+the train remembers its last direction.
+
+Choose before the first wheels enter. The points stay locked until the whole
+train clears, including when the last carriage leads while reversing. Stopping,
+reversing midway, or saving and loading keeps every coupled car on the same
+route. Closely spaced junctions retain their own choices while the train spans
+them. Coming out of a branch follows its connection back onto the main track.
+
+Train facing and occupied junction choices are saved with the consist. Existing
+saves and throttle tapes remain readable. Before downgrading this version,
+restore the matching vehicle-data backup: older versions cannot represent a
+train facing the opposite way along a track.
+
 ## Track ends
 
 Set `behaviour.train.wheel-bones` to the model bones at the frontmost and rearmost
