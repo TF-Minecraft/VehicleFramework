@@ -1028,18 +1028,23 @@ public final class TrackRegistry {
 		return out;
 	}
 
-	/** Samples every spline in the world by arc length, with non-positive spacing defaulting to 4 blocks. */
+	private static final double MIN_SAMPLE_SPACING = 0.5;
+
+	/** Samples every spline in the world by arc length, defaulting invalid spacing to 4 blocks and enforcing a 0.5-block minimum. */
 	public List<TrackSamplePoint> sampleTrack(String world, double spacing) {
 		if (world == null || world.isBlank()) {
 			return List.of();
 		}
-		if (spacing <= 0) {
+		if (!Double.isFinite(spacing) || spacing <= 0) {
 			spacing = 4;
+		} else {
+			spacing = Math.max(spacing, MIN_SAMPLE_SPACING);
 		}
 		List<TrackSamplePoint> out = new ArrayList<>();
 		for (TrackSpline spline : inWorld(world)) {
 			double len = spline.length();
-			for (double s = 0; s < len; s += spacing) {
+			for (int i = 0; i * spacing < len - 1e-9; i++) {
+				double s = i * spacing;
 				TrackPose pose = spline.sampleAt(s);
 				out.add(new TrackSamplePoint(spline.getId(), pose.x, pose.y, pose.z));
 			}

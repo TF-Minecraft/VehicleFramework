@@ -126,6 +126,40 @@ class TrackRegistrySampleTest {
 		}
 	}
 
+	@Test
+	void sampleTrack_smallSpacingIsRaisedToHalfBlock(@TempDir java.nio.file.Path dir) {
+		TrackRegistry registry = new TrackRegistry(dir.toFile());
+		registry.replace(TrackSpline.fromPoints(
+				UUID.randomUUID(), "world", false,
+				List.of(new double[] {0, 64, 0}, new double[] {0, 64, 10})));
+		List<TrackSamplePoint> points = registry.sampleTrack("world", 0.1);
+		assertEquals(21, points.size());
+		for (int i = 0; i < points.size(); i++) {
+			for (int j = i + 1; j < points.size(); j++) {
+				assertTrue(distance(points.get(i), points.get(j)) >= 1e-6);
+			}
+		}
+	}
+
+	@Test
+	void sampleTrack_spacingNearExactMultipleDoesNotDuplicateEnd(@TempDir java.nio.file.Path dir) {
+		TrackRegistry registry = new TrackRegistry(dir.toFile());
+		registry.replace(TrackSpline.fromPoints(
+				UUID.randomUUID(), "world", false,
+				List.of(new double[] {0, 64, 0}, new double[] {0, 64, 7})));
+		assertEquals(11, registry.sampleTrack("world", 0.7).size());
+	}
+
+	@Test
+	void sampleTrack_nanSpacingDefaultsToFour(@TempDir java.nio.file.Path dir) {
+		TrackRegistry registry = new TrackRegistry(dir.toFile());
+		registry.replace(TrackSpline.fromPoints(
+				UUID.randomUUID(), "world", false,
+				List.of(new double[] {0, 64, 0}, new double[] {0, 64, 10})));
+		assertEquals(List.of(0.0, 4.0, 8.0, 10.0),
+				registry.sampleTrack("world", Double.NaN).stream().map(TrackSamplePoint::z).toList());
+	}
+
 	private static double distance(TrackSamplePoint a, TrackSamplePoint b) {
 		double dx = b.x() - a.x();
 		double dy = b.y() - a.y();
