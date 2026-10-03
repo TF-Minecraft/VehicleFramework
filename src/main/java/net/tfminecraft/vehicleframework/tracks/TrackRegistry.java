@@ -1028,6 +1028,30 @@ public final class TrackRegistry {
 		return out;
 	}
 
+	/** Samples every spline in the world by arc length, with non-positive spacing defaulting to 4 blocks. */
+	public List<TrackSamplePoint> sampleTrack(String world, double spacing) {
+		if (world == null || world.isBlank()) {
+			return List.of();
+		}
+		if (spacing <= 0) {
+			spacing = 4;
+		}
+		List<TrackSamplePoint> out = new ArrayList<>();
+		for (TrackSpline spline : inWorld(world)) {
+			double len = spline.length();
+			for (double s = 0; s < len; s += spacing) {
+				TrackPose pose = spline.sampleAt(s);
+				out.add(new TrackSamplePoint(spline.getId(), pose.x, pose.y, pose.z));
+			}
+			// A loop's end is the start again, so only open tracks need it.
+			if (!spline.isLoop()) {
+				TrackPose end = spline.sampleAt(len);
+				out.add(new TrackSamplePoint(spline.getId(), end.x, end.y, end.z));
+			}
+		}
+		return out;
+	}
+
 	/**
 	 * Length in blocks of the shortest route along track from any point within
 	 * {@code radiusA} of {@code (ax, az)} to any point within {@code radiusB}
