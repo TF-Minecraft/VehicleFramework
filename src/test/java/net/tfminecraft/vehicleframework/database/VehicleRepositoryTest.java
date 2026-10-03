@@ -215,7 +215,7 @@ class VehicleRepositoryTest {
 		VehicleRepository repository = VehicleRepository.open(dbFile);
 		try {
 			assertTrue(repository.saveLive(snapshot("u1", "world", 1, 2, 1)));
-			long time = System.currentTimeMillis();
+			long time = System.currentTimeMillis() - 60_000L;
 			for (int i = 0; i < 4; i++) {
 				assertTrue(repository.vacuumIntoBackup(backups));
 				List<File> snapshots = VehicleSqliteBackup.listSnapshots(backups);
@@ -228,6 +228,28 @@ class VehicleRepositoryTest {
 		} finally {
 			repository.close();
 		}
+	}
+
+	@Test
+	void rotateKeepsNewestNameWhenTimestampsTie() throws Exception {
+		File backups = tempDir.resolve("backups").toFile();
+		backups.mkdirs();
+		for (int i = 0; i <= VehicleSqliteBackup.KEEP; i++) {
+			Files.createFile(VehicleSqliteBackup.nextBackupFile(backups).toPath());
+		}
+		List<File> snapshots = VehicleSqliteBackup.listSnapshots(backups);
+		snapshots.sort(java.util.Comparator.comparing(File::getName));
+		long time = System.currentTimeMillis() - 60_000L;
+		for (File snapshot : snapshots) {
+			assertTrue(snapshot.setLastModified(time));
+		}
+
+		VehicleSqliteBackup.rotate(backups);
+
+		List<File> retained = VehicleSqliteBackup.listSnapshots(backups);
+		assertEquals(VehicleSqliteBackup.KEEP, retained.size());
+		assertTrue(retained.stream().anyMatch(file -> file.getName().equals(snapshots.get(3).getName())));
+		assertFalse(retained.stream().anyMatch(file -> file.getName().equals(snapshots.get(0).getName())));
 	}
 
 	@Test

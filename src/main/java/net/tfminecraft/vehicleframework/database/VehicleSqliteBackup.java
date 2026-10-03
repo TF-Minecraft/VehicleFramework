@@ -41,7 +41,8 @@ public final class VehicleSqliteBackup {
 
 	public static void rotate(File backupDir) {
 		List<File> snapshots = listSnapshots(backupDir);
-		snapshots.sort(Comparator.comparingLong(File::lastModified).reversed());
+		snapshots.sort(Comparator.comparingLong(File::lastModified).reversed()
+				.thenComparing(File::getName, Comparator.reverseOrder()));
 		for (int i = KEEP; i < snapshots.size(); i++) {
 			snapshots.get(i).delete();
 		}
