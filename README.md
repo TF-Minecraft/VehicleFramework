@@ -39,8 +39,8 @@ mvn -B --no-transfer-progress clean verify
 
 JUnit 5 and Mockito cover track geometry, train routing and placement, persistence,
 locomotive behaviour and other logic that runs without a server. They do not start a
-live Paper server or load ModelEngine models. The Build workflow runs the suite on every
-pull request and push to `main` and uploads the Surefire reports. No coverage gate is
+live Paper server or load ModelEngine models. The Build workflow runs the suite on pull
+requests targeting `main` and on pushes to `main` and uploads the Surefire reports. No coverage gate is
 enforced.
 
 ## License
