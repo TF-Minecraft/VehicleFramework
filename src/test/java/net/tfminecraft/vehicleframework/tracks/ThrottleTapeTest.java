@@ -12,6 +12,22 @@ import org.junit.jupiter.api.Test;
 class ThrottleTapeTest {
 
 	@Test
+	void samplesConvertBodyOrientationWithoutConfusingBrakingWithReverseTravel() {
+		java.util.UUID stem = java.util.UUID.randomUUID();
+		java.util.UUID branch = java.util.UUID.randomUUID();
+		ThrottleTape tape = new ThrottleTape(stem.toString());
+		// Body faces +s and rolls backwards while positive throttle brakes it.
+		tape.tryAppend(20, -1, 40, stem.toString(), null, 1);
+		// After the turnout, the body faces -s and the same reverse motion rolls +s.
+		tape.tryAppend(5, 1, 40, branch.toString(), null, -1);
+		ThrottleTape loaded = ThrottleTape.fromJson(tape.toJson());
+		assertEquals(40, loaded.targetWithDwell(20, -1, null, stem, 1));
+		assertEquals(-40, loaded.targetWithDwell(20, -1, null, stem, -1));
+		assertEquals(40, loaded.targetWithDwell(5, 1, null, branch, -1));
+		assertEquals(-40, loaded.targetWithDwell(5, 1, null, branch, 1));
+	}
+
+	@Test
 	void emptyTape_lookupZero() {
 		assertEquals(0, ThrottleTape.lookup(List.of(), 10.0, 1));
 		assertTrue(new ThrottleTape("spline").isEmpty());

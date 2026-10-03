@@ -11,6 +11,23 @@ import org.junit.jupiter.api.Test;
 class ConsistDataTest {
 
 	@Test
+	void orientationAndMultipleOccupiedJunctionsRoundTripWithoutReinterpretingOldReverseSaves() {
+		ConsistData old = new ConsistData(null, null, "track", 12d, -1, "first", true);
+		JSONObject oldJson = new JSONObject();
+		old.put(oldJson);
+		assertEquals(1, ConsistData.fromJson(oldJson).getOrientation());
+		assertFalse(oldJson.containsKey("orientation"));
+		ConsistData current = new ConsistData(null, null, "track", 12d, 1, "first", true,
+				-1, java.util.Map.of("first", true, "second", false));
+		JSONObject json = new JSONObject();
+		current.put(json);
+		ConsistData loaded = ConsistData.fromJson(json);
+		assertEquals(-1, loaded.getOrientation());
+		assertEquals(1, loaded.getTravelSign());
+		assertEquals(current.getJunctions(), loaded.getJunctions());
+	}
+
+	@Test
 	void put_omitsKeysWhenUnbound() {
 		JSONObject json = new JSONObject();
 		ConsistData.unbound().put(json);

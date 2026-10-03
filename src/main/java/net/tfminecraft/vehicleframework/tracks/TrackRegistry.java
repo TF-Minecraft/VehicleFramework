@@ -31,9 +31,18 @@ public final class TrackRegistry {
 	private BiConsumer<TrackSpline, List<TrackSpline>> rebuilt = (old, next) -> {
 	};
 	private Predicate<UUID> occupied = id -> false;
+	private Predicate<UUID> junctionOccupied = id -> false;
 
 	public TrackRegistry(File dataFolder) {
 		this.store = new TrackStore(dataFolder);
+	}
+
+	public void onJunctionOccupied(Predicate<UUID> occupied) {
+		junctionOccupied = occupied == null ? id -> false : occupied;
+	}
+
+	public boolean junctionOccupied(UUID id) {
+		return junctionOccupied.test(id);
 	}
 
 	/**
@@ -836,7 +845,7 @@ public final class TrackRegistry {
 		if (junction == null) {
 			return false;
 		}
-		if (junction.thrown == thrown) {
+		if (junction.thrown == thrown || junctionOccupied(id)) {
 			return false;
 		}
 		TrackJunction next = junction.withThrown(thrown);
