@@ -1087,6 +1087,31 @@ public final class TrackRegistry {
 				world, ax, az, radiusA, bx, bz, radiusB);
 	}
 
+	/**
+	 * The shortest route along track from any point within {@code radiusA}
+	 * of {@code (ax, az)} to any point within {@code radiusB} of {@code (bx, bz)}
+	 * in {@code world}, with points ordered from A to B and sampled by arc length.
+	 * Empty when no such route exists. A broken segment blocks the route.
+	 * Invalid spacing defaults to 4 blocks, with a minimum of 0.5 blocks.
+	 * Each spline piece's exit is included; overlapping areas give one point
+	 * and length 0. Height is ignored when finding the areas on track.
+	 * Other plugins reach this through {@link VehicleFramework#getTrackRegistry()}.
+	 * <p>
+	 * Call on the server thread. Splines and junctions live in separate maps
+	 * and are not one snapshot off that thread, so a route read elsewhere can
+	 * mix a new junction with an old spline. This does not load chunks, touch
+	 * entities, or modify the registry.
+	 */
+	public Optional<TrackRoute> shortestRoute(
+			String world,
+			double ax, double az, double radiusA,
+			double bx, double bz, double radiusB,
+			double spacing) {
+		return TrackRouteQuery.shortestRoute(
+				splines.values(), junctions.values(),
+				world, ax, az, radiusA, bx, bz, radiusB, spacing);
+	}
+
 	public void dumpToLog() {
 		TrackLog.append("DUMP splines=" + splines.size() + " junctions=" + junctions.size());
 		for (TrackSpline spline : splines.values()) {

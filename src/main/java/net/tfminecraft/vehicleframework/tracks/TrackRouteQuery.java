@@ -3,10 +3,12 @@ package net.tfminecraft.vehicleframework.tracks;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.PriorityQueue;
 import java.util.UUID;
@@ -41,11 +43,71 @@ public final class TrackRouteQuery {
 			String world,
 			double ax, double az, double radiusA,
 			double bx, double bz, double radiusB) {
+		Optional<Path> path = findRoute(splines, junctions, world, ax, az, radiusA, bx, bz, radiusB);
+		return path.isEmpty() ? OptionalDouble.empty() : OptionalDouble.of(path.get().length);
+	}
+
+	/**
+	 * The shortest route measured by {@link #shortestRouteLength}, with points
+	 * ordered from A to B and sampled by arc length. Each spline piece's exit
+	 * is included. Overlapping areas give one point and length 0. Invalid
+	 * spacing defaults to 4 blocks, with a minimum of 0.5 blocks.
+	 * The splines and junctions are read only; no chunks or entities are touched.
+	 */
+	public static Optional<TrackRoute> shortestRoute(
+			Collection<TrackSpline> splines,
+			Collection<TrackJunction> junctions,
+			String world,
+			double ax, double az, double radiusA,
+			double bx, double bz, double radiusB,
+			double spacing) {
+		if (!Double.isFinite(spacing) || spacing <= 0) {
+			spacing = 4;
+		} else {
+			spacing = Math.max(spacing, 0.5);
+		}
+		Optional<Path> found = findRoute(splines, junctions, world, ax, az, radiusA, bx, bz, radiusB);
+		if (found.isEmpty()) {
+			return Optional.empty();
+		}
+		Path path = found.get();
+		List<TrackSamplePoint> points = new ArrayList<>();
+		for (Leg leg : path.legs) {
+			TrackSamplePoint start = samplePoint(leg.spline, leg.from);
+			if (points.isEmpty() || !points.getLast().equals(start)) {
+				points.add(start);
+			}
+			if (path.length == 0) {
+				break;
+			}
+			double span = Math.abs(leg.to - leg.from);
+			double sign = Math.signum(leg.to - leg.from);
+			for (int i = 1; i * spacing < span - EPS; i++) {
+				points.add(samplePoint(leg.spline, leg.from + sign * i * spacing));
+			}
+			if (span > 0) {
+				points.add(samplePoint(leg.spline, leg.to));
+			}
+		}
+		return Optional.of(new TrackRoute(path.length, points));
+	}
+
+	private static TrackSamplePoint samplePoint(TrackSpline spline, double s) {
+		TrackPose pose = spline.sampleAt(s);
+		return new TrackSamplePoint(spline.getId(), pose.x, pose.y, pose.z);
+	}
+
+	private static Optional<Path> findRoute(
+			Collection<TrackSpline> splines,
+			Collection<TrackJunction> junctions,
+			String world,
+			double ax, double az, double radiusA,
+			double bx, double bz, double radiusB) {
 		if (world == null || splines == null || junctions == null) {
-			return OptionalDouble.empty();
+			return Optional.empty();
 		}
 		if (!(radiusA >= 0) || !(radiusB >= 0)) {
-			return OptionalDouble.empty();
+			return Optional.empty();
 		}
 		Map<UUID, TrackSpline> byId = new HashMap<>();
 		for (TrackSpline spline : splines) {
@@ -54,7 +116,7 @@ public final class TrackRouteQuery {
 			}
 		}
 		if (byId.isEmpty()) {
-			return OptionalDouble.empty();
+			return Optional.empty();
 		}
 
 		List<Touch> touches = new ArrayList<>();
@@ -72,7 +134,7 @@ public final class TrackRouteQuery {
 			touches.add(new Touch(spline, nearA, nearB));
 		}
 		if (!sawA || !sawB) {
-			return OptionalDouble.empty();
+			return Optional.empty();
 		}
 
 		List<TrackJunction> linked = new ArrayList<>();
@@ -108,44 +170,42 @@ public final class TrackRouteQuery {
 			double stemS = TrackJunction.wrapS(junction.s, stem.length(), stem.isLoop());
 			anchor(anchors, stem.getId(), stemS, stemNode);
 			anchor(anchors, branch.getId(), 0, branchNode);
-			link(adj, stemNode, branchNode, 0);
+			link(adj, stemNode, branchNode, 0, null);
 		}
 
 		for (Touch touch : touches) {
 			linkSpline(adj, touch.spline, touch.nearA, touch.nearB, anchors.get(touch.spline.getId()));
 		}
 
-		double best = dijkstra(adj, SRC, DST);
-		if (!Double.isFinite(best)) {
-			return OptionalDouble.empty();
-		}
-		return OptionalDouble.of(best);
+		return dijkstra(adj, SRC, DST);
 	}
 
 	private static void anchor(Map<UUID, List<Anchor>> anchors, UUID splineId, double s, int node) {
 		anchors.computeIfAbsent(splineId, id -> new ArrayList<>()).add(new Anchor(s, node));
 	}
 
-	private static void link(List<List<Edge>> adj, int a, int b, double weight) {
-		oneWay(adj, a, b, weight);
-		oneWay(adj, b, a, weight);
+	private static void link(List<List<Edge>> adj, int a, int b, double weight, Leg leg) {
+		oneWay(adj, a, b, weight, leg);
+		oneWay(adj, b, a, weight, leg == null ? null : leg.reverse());
 	}
 
-	private static void oneWay(List<List<Edge>> adj, int from, int to, double weight) {
+	private static void oneWay(List<List<Edge>> adj, int from, int to, double weight, Leg leg) {
 		if (from == to || !Double.isFinite(weight)) {
 			return;
 		}
 		if (weight < 0) {
 			weight = 0;
 		}
-		adj.get(from).add(new Edge(to, weight));
+		adj.get(from).add(new Edge(to, weight, leg));
 	}
 
-	private static double dijkstra(List<List<Edge>> adj, int src, int dst) {
+	private static Optional<Path> dijkstra(List<List<Edge>> adj, int src, int dst) {
 		double[] dist = new double[adj.size()];
 		Arrays.fill(dist, Double.POSITIVE_INFINITY);
 		dist[src] = 0;
 		boolean[] done = new boolean[adj.size()];
+		int[] previous = new int[adj.size()];
+		Edge[] incoming = new Edge[adj.size()];
 		PriorityQueue<Walk> queue = new PriorityQueue<>(Comparator.comparingDouble(step -> step.dist));
 		queue.add(new Walk(src, 0));
 		while (!queue.isEmpty()) {
@@ -155,17 +215,26 @@ public final class TrackRouteQuery {
 			}
 			done[step.node] = true;
 			if (step.node == dst) {
-				return step.dist;
+				List<Leg> legs = new ArrayList<>();
+				for (int at = dst; at != src; at = previous[at]) {
+					if (incoming[at].leg != null) {
+						legs.add(incoming[at].leg);
+					}
+				}
+				Collections.reverse(legs);
+				return Optional.of(new Path(step.dist, legs));
 			}
 			for (Edge edge : adj.get(step.node)) {
 				double next = step.dist + edge.weight;
 				if (next < dist[edge.to]) {
 					dist[edge.to] = next;
+					previous[edge.to] = step.node;
+					incoming[edge.to] = edge;
 					queue.add(new Walk(edge.to, next));
 				}
 			}
 		}
-		return dist[dst];
+		return Optional.empty();
 	}
 
 	private static List<Interval> cover(TrackSpline spline, double x, double z, double radius) {
@@ -254,31 +323,49 @@ public final class TrackRouteQuery {
 		return out;
 	}
 
-	private static double separation(List<Interval> a, List<Interval> b, double length, boolean loop) {
-		double best = Double.POSITIVE_INFINITY;
+	private static Span separation(List<Interval> a, List<Interval> b, double length, boolean loop) {
+		Span best = null;
 		for (Interval left : a) {
 			for (Interval right : b) {
-				best = Math.min(best, separation(left, right, length, loop));
+				Span next = separation(left, right, length, loop);
+				if (best == null || next.length < best.length) {
+					best = next;
+				}
 			}
 		}
 		return best;
 	}
 
-	private static double separation(Interval a, Interval b, double length, boolean loop) {
+	private static Span separation(Interval a, Interval b, double length, boolean loop) {
 		if (overlaps(a, b, length, loop)) {
-			return 0;
+			if (a.hi + EPS >= b.lo && b.hi + EPS >= a.lo) {
+				double s = Math.max(a.lo, b.lo);
+				return new Span(s, s, 0);
+			}
+			return new Span(0, 0, 0);
 		}
 		if (!loop) {
 			if (a.hi < b.lo) {
-				return b.lo - a.hi;
+				return new Span(a.hi, b.lo, b.lo - a.hi);
 			}
-			return a.lo - b.hi;
+			return new Span(a.lo, b.hi, a.lo - b.hi);
 		}
-		double best = TrackJunction.arcDistance(a.lo, b.lo, length, true);
-		best = Math.min(best, TrackJunction.arcDistance(a.lo, b.hi, length, true));
-		best = Math.min(best, TrackJunction.arcDistance(a.hi, b.lo, length, true));
-		best = Math.min(best, TrackJunction.arcDistance(a.hi, b.hi, length, true));
+		Span best = arc(a.lo, b.lo, length);
+		for (Span next : List.of(arc(a.lo, b.hi, length), arc(a.hi, b.lo, length), arc(a.hi, b.hi, length))) {
+			if (next.length < best.length) {
+				best = next;
+			}
+		}
 		return best;
+	}
+
+	private static Span arc(double from, double to, double length) {
+		double delta = to - from;
+		double distance = TrackJunction.arcDistance(from, to, length, true);
+		if (length > 0 && Math.abs(delta) > length / 2) {
+			delta += delta > 0 ? -length : length;
+		}
+		return new Span(from, from + delta, distance);
 	}
 
 	private static boolean overlaps(Interval a, Interval b, double length, boolean loop) {
@@ -291,27 +378,34 @@ public final class TrackRouteQuery {
 		return (a.hi >= length - EPS && b.lo <= EPS) || (b.hi >= length - EPS && a.lo <= EPS);
 	}
 
-	private static double distanceTo(double s, List<Interval> covered, double length, boolean loop) {
-		double best = Double.POSITIVE_INFINITY;
+	private static Span distanceTo(double s, List<Interval> covered, double length, boolean loop) {
+		Span best = null;
 		for (Interval interval : covered) {
-			best = Math.min(best, distanceTo(s, interval, length, loop));
+			Span next;
+			if (s >= interval.lo - EPS && s <= interval.hi + EPS) {
+				next = new Span(s, s, 0);
+			} else if (!loop) {
+				double to = s < interval.lo ? interval.lo : interval.hi;
+				next = new Span(s, to, Math.abs(to - s));
+			} else {
+				Span lo = arc(s, interval.lo, length);
+				Span hi = arc(s, interval.hi, length);
+				next = lo.length <= hi.length ? lo : hi;
+			}
+			if (best == null || next.length < best.length) {
+				best = next;
+			}
 		}
 		return best;
 	}
 
-	private static double distanceTo(double s, Interval interval, double length, boolean loop) {
-		if (s >= interval.lo - EPS && s <= interval.hi + EPS) {
-			return 0;
+	private static void oneWay(
+			List<List<Edge>> adj, int from, int to,
+			TrackSpline spline, Piece piece, Span span) {
+		if (span != null) {
+			double origin = piece.circular ? 0 : piece.start;
+			oneWay(adj, from, to, span.length, new Leg(spline, origin + span.from, origin + span.to));
 		}
-		if (!loop) {
-			if (s < interval.lo) {
-				return interval.lo - s;
-			}
-			return s - interval.hi;
-		}
-		return Math.min(
-				TrackJunction.arcDistance(s, interval.lo, length, true),
-				TrackJunction.arcDistance(s, interval.hi, length, true));
 	}
 
 	private static void linkSpline(
@@ -323,7 +417,7 @@ public final class TrackRouteQuery {
 		double length = spline.length();
 		for (Piece piece : pieces(spline)) {
 			if (!nearA.isEmpty() && !nearB.isEmpty()) {
-				oneWay(adj, SRC, DST, pieceSeparation(piece, nearA, nearB, length));
+				oneWay(adj, SRC, DST, spline, piece, pieceSeparation(piece, nearA, nearB, length));
 			}
 			if (onSpline == null || onSpline.isEmpty()) {
 				continue;
@@ -339,28 +433,30 @@ public final class TrackRouteQuery {
 				Anchor prev = onPiece.get(i - 1);
 				Anchor next = onPiece.get(i);
 				link(adj, prev.node, next.node,
-						along(piece, next.s, length) - along(piece, prev.s, length));
+						along(piece, next.s, length) - along(piece, prev.s, length),
+						new Leg(spline, piece.start + along(piece, prev.s, length), piece.start + along(piece, next.s, length)));
 			}
 			if (piece.circular && onPiece.size() >= 2) {
 				Anchor first = onPiece.get(0);
 				Anchor last = onPiece.get(onPiece.size() - 1);
-				link(adj, last.node, first.node, length - last.s + first.s);
+				link(adj, last.node, first.node, length - last.s + first.s,
+						new Leg(spline, last.s, length + first.s));
 			}
 			List<Interval> localA = piece.circular ? nearA : clip(nearA, piece, length);
 			List<Interval> localB = piece.circular ? nearB : clip(nearB, piece, length);
 			for (Anchor at : onPiece) {
 				double atS = along(piece, at.s, length);
 				if (!nearA.isEmpty()) {
-					double d = piece.circular
+					Span span = piece.circular
 							? distanceTo(at.s, nearA, length, true)
 							: distanceTo(atS, localA, piece.span, false);
-					oneWay(adj, SRC, at.node, d);
+					oneWay(adj, SRC, at.node, spline, piece, span == null ? null : span.reverse());
 				}
 				if (!nearB.isEmpty()) {
-					double d = piece.circular
+					Span span = piece.circular
 							? distanceTo(at.s, nearB, length, true)
 							: distanceTo(atS, localB, piece.span, false);
-					oneWay(adj, at.node, DST, d);
+					oneWay(adj, at.node, DST, spline, piece, span);
 				}
 			}
 		}
@@ -463,7 +559,7 @@ public final class TrackRouteQuery {
 		return s;
 	}
 
-	private static double pieceSeparation(Piece piece, List<Interval> a, List<Interval> b, double length) {
+	private static Span pieceSeparation(Piece piece, List<Interval> a, List<Interval> b, double length) {
 		if (piece.circular) {
 			return separation(a, b, length, true);
 		}
@@ -524,7 +620,23 @@ public final class TrackRouteQuery {
 	private record Anchor(double s, int node) {
 	}
 
-	private record Edge(int to, double weight) {
+	private record Edge(int to, double weight, Leg leg) {
+	}
+
+	private record Span(double from, double to, double length) {
+		Span reverse() {
+			return new Span(to, from, length);
+		}
+	}
+
+	// Unwrapped s preserves travel direction through the seam and broken loops.
+	private record Leg(TrackSpline spline, double from, double to) {
+		Leg reverse() {
+			return new Leg(spline, to, from);
+		}
+	}
+
+	private record Path(double length, List<Leg> legs) {
 	}
 
 	private record Walk(int node, double dist) {
