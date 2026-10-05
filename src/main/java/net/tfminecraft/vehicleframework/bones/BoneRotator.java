@@ -70,7 +70,13 @@ public class BoneRotator {
 
 	public void rawSet(float x, float y, float z, float w) {
 		animator.getRotation().set(x, y, z, w);
+		syncDriveYaw();
 		//animator.animate(bone);
+	}
+
+	// Turning steps from driveYaw, so a stale value snaps the bone back to it.
+	private void syncDriveYaw() {
+		driveYaw = new ConvertedAngle(animator.getRotation()).getYaw();
 	}
 	
 	public void rotateEntity(float yaw, float pitch) {
@@ -110,6 +116,7 @@ public class BoneRotator {
 	public void reset() {
 		Quaternionf q = new Quaternionf();
 		animator.getRotation().set(q.x, q.y, q.z, q.w);
+		syncDriveYaw();
 	    //animator.animate(bone);
 	}
 	
