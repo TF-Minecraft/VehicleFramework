@@ -3,7 +3,9 @@ package net.tfminecraft.vehicleframework.vehicles.handlers.container;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -15,7 +17,7 @@ import org.bukkit.inventory.ItemStack;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import com.ticxo.modelengine.api.model.bone.ModelBone;
 
 import de.tr7zw.nbtapi.NBT;
@@ -42,6 +44,11 @@ public class Container {
     private List<ItemStack> items = new ArrayList<>();
     private List<String> allowItems = new ArrayList<>();
     private Inventory live;
+    // Saved entries that did not load; written back unchanged on the next save.
+    private List<JsonArray> unreadEntries = new ArrayList<>();
+
+    private static final Pattern TYPED_NUMBER =
+            Pattern.compile("[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?[bBsSlLfFdD]");
 
     public Container(String key, ConfigurationSection config) {
         id = key;
@@ -272,9 +279,12 @@ public class Container {
 
             JsonArray entry = new JsonArray();
             entry.add(i); // slot index
-            entry.add(JsonParser.parseString(nbt.toString())); // SNBT to JSON
+            entry.add(nbt.toString()); // SNBT kept as a string so typed numbers (0b, 1.0d) survive
 
             itemsArray.add(entry);
+        }
+        for (JsonArray entry : unreadEntries) {
+            itemsArray.add(entry.deepCopy());
         }
 
         root.add("items", itemsArray);
@@ -284,6 +294,7 @@ public class Container {
     public void loadFromJson(JsonObject json) {
 
         items.clear();
+        unreadEntries.clear();
         for (int i = 0; i < size; i++) {
             items.add(null);
         }
@@ -297,21 +308,134 @@ public class Container {
             if (entry.size() != 2) continue;
 
             int slot = entry.get(0).getAsInt();
-            String snbt = entry.get(1).toString(); // SNBT string
-
-            try {
-                ReadWriteNBT nbt = NBT.parseNBT(snbt);
-                ItemStack stack = NBT.itemStackFromNBT(nbt);
-
-                if (slot >= 0 && slot < size) {
-                    items.set(slot, stack);
-                }
-            } catch (Exception e) {
-                e.printStackTrace(); // or log cleanly
+            ItemStack stack = readItem(slot, entry.get(1));
+            int target = stack == null ? -1 : freeSlot(slot);
+            if (target < 0) {
+                // Keep the saved data so a failed load never deletes the item.
+                unreadEntries.add(entry.deepCopy());
+                continue;
             }
+            items.set(target, stack);
         }
         pushLive();
         updateBoneVisibility();
+    }
+
+    private ItemStack readItem(int slot, JsonElement saved) {
+        Exception failure = null;
+        for (String snbt : snbtCandidates(saved)) {
+            try {
+                ItemStack stack = NBT.itemStackFromNBT(NBT.parseNBT(snbt));
+                if (!isEmpty(stack)) {
+                    return stack;
+                }
+            } catch (Exception e) {
+                failure = e;
+            }
+        }
+        String reason = failure == null ? "empty item" : String.valueOf(failure.getMessage());
+        VFLogger.log("Container " + id + " could not load the item in slot " + slot
+                + "; keeping its saved data: " + reason.substring(0, Math.min(reason.length(), 300)));
+        return null;
+    }
+
+    private int freeSlot(int preferred) {
+        if (preferred >= 0 && preferred < items.size() && items.get(preferred) == null) {
+            return preferred;
+        }
+        return items.indexOf(null);
+    }
+
+    /**
+     * New saves hold the item SNBT as a string. Older saves ran the SNBT through a lenient JSON
+     * parse, which turned typed numbers such as {@code 0b} or {@code 1.0d} into strings. Those
+     * are read with the types restored first, then as saved in case the restore misjudged text.
+     */
+    static List<String> snbtCandidates(JsonElement saved) {
+        if (saved.isJsonPrimitive() && saved.getAsJsonPrimitive().isString()) {
+            return List.of(saved.getAsString());
+        }
+        return List.of(legacySnbt(saved), saved.toString());
+    }
+
+    static String legacySnbt(JsonElement element) {
+        StringBuilder out = new StringBuilder();
+        appendLegacy(element, out);
+        return out.toString();
+    }
+
+    private static void appendLegacy(JsonElement element, StringBuilder out) {
+        if (element.isJsonObject()) {
+            out.append('{');
+            boolean first = true;
+            for (Map.Entry<String, JsonElement> e : element.getAsJsonObject().entrySet()) {
+                if (e.getValue().isJsonNull()) continue;
+                if (!first) out.append(',');
+                first = false;
+                appendQuoted(e.getKey(), out);
+                out.append(':');
+                appendLegacy(e.getValue(), out);
+            }
+            out.append('}');
+            return;
+        }
+        if (element.isJsonArray()) {
+            JsonArray array = element.getAsJsonArray();
+            String prefix = typedArrayPrefix(array);
+            out.append('[');
+            boolean first = true;
+            if (prefix != null) {
+                out.append(prefix).append(';');
+            }
+            for (int i = prefix == null ? 0 : 1; i < array.size(); i++) {
+                if (array.get(i).isJsonNull()) continue;
+                if (!first) out.append(',');
+                first = false;
+                appendLegacy(array.get(i), out);
+            }
+            out.append(']');
+            return;
+        }
+        JsonPrimitive primitive = element.getAsJsonPrimitive();
+        if (primitive.isString() && !TYPED_NUMBER.matcher(primitive.getAsString()).matches()) {
+            appendQuoted(primitive.getAsString(), out);
+        } else {
+            out.append(primitive.getAsString());
+        }
+    }
+
+    // [I; 1, 2] came out of the lenient parse as ["I", 1, 2].
+    private static String typedArrayPrefix(JsonArray array) {
+        if (array.size() < 2 || !array.get(0).isJsonPrimitive()) {
+            return null;
+        }
+        String head = array.get(0).getAsString();
+        if (!head.equals("B") && !head.equals("I") && !head.equals("L")) {
+            return null;
+        }
+        for (int i = 1; i < array.size(); i++) {
+            JsonElement value = array.get(i);
+            if (!value.isJsonPrimitive()) {
+                return null;
+            }
+            JsonPrimitive primitive = value.getAsJsonPrimitive();
+            if (!primitive.isNumber() && !TYPED_NUMBER.matcher(primitive.getAsString()).matches()) {
+                return null;
+            }
+        }
+        return head;
+    }
+
+    private static void appendQuoted(String text, StringBuilder out) {
+        out.append('"');
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '"' || c == '\\') {
+                out.append('\\');
+            }
+            out.append(c);
+        }
+        out.append('"');
     }
 
     public void updateBoneVisibility() {
@@ -352,7 +476,11 @@ public class Container {
     public void destroy(Location loc) {
         pullLive();
         for(ItemStack item : items) {
+            if (isEmpty(item)) continue;
             loc.getWorld().dropItem(loc, item);
+        }
+        for (JsonArray entry : unreadEntries) {
+            VFLogger.log("Container " + id + " was destroyed with an item it could not load: " + entry);
         }
     }
 
