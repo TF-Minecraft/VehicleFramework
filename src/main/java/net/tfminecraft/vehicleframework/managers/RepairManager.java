@@ -167,7 +167,7 @@ public class RepairManager implements Listener{
 	}
 
 	public void repairComponent(Player p, ItemMeta m, NamespacedKey key, ActiveVehicle v ) {
-		Component type = Component.valueOf(m.getPersistentDataContainer().get(key, PersistentDataType.STRING).toUpperCase());
+		Component type = Component.valueOf(m.getPersistentDataContainer().get(key, PersistentDataType.STRING).toUpperCase(java.util.Locale.ROOT));
 		VehicleComponent c = v.getComponent(type);
 		if(c == null) return;
 		if(isBeingRepaired(c)) {

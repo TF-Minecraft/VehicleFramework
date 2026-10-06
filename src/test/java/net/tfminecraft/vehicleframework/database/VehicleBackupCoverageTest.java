@@ -274,9 +274,13 @@ class VehicleBackupCoverageTest {
     @Test void restoreWriteFailureKeepsTheOriginalFailureAndDatabaseBytes() throws Exception {
         Path backups = Files.createDirectory(folder.resolve("backups")); database(backups.resolve("vehicles-20260101-000000.db"));
         Path restricted = Files.createDirectory(folder.resolve("read-only")); Path live = Files.writeString(restricted.resolve("vehicles.db"), "corrupt but preserved");
+        org.junit.jupiter.api.Assumptions.assumeTrue(Files.getFileStore(restricted).supportsFileAttributeView("posix"),
+                "Requires POSIX directory permissions");
         Set<java.nio.file.attribute.PosixFilePermission> original = Files.getPosixFilePermissions(restricted);
         Files.setPosixFilePermissions(restricted, java.nio.file.attribute.PosixFilePermissions.fromString("r-x------"));
         try {
+            org.junit.jupiter.api.Assumptions.assumeFalse(Files.isWritable(restricted),
+                    "Requires enforced write permissions (not a privileged process)");
             RuntimeException failure = assertThrows(RuntimeException.class, () -> VehicleRepository.openWithRestore(live.toFile(), backups.toFile()));
             assertTrue(failure.getSuppressed().length > 0); assertEquals("corrupt but preserved", Files.readString(live));
         } finally { Files.setPosixFilePermissions(restricted, original); }

@@ -8,6 +8,7 @@ import java.io.File;
 import java.nio.file.*;
 import java.util.*;
 import java.util.logging.Logger;
+import org.bstats.bukkit.Metrics;
 import org.bukkit.*;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.event.Listener;
@@ -92,7 +93,12 @@ class VehicleFrameworkCoverageTest {
     }
 
     @Test void startupCreatesDefaultsRegistersSystemsAndClosesItsDatabase() throws Exception {
+        MockedConstruction<Metrics> metrics = keep(mockConstruction(Metrics.class, (mock, context) -> {
+            assertSame(plugin, context.arguments().get(0));
+            assertEquals(Integer.valueOf(26823), context.arguments().get(1));
+        }));
         plugin.onEnable();
+        assertEquals(1, metrics.constructed().size());
         assertSame(plugin, VehicleFramework.getInstance()); assertNotNull(VehicleFramework.getVehicleRepository());
         assertNotNull(VehicleFramework.getTrackRegistry()); assertNotNull(VehicleFramework.getTrackDisplayManager());
         assertNotNull(VehicleFramework.getPacketListener()); assertNotNull(VehicleFramework.getLog());
@@ -128,6 +134,30 @@ class VehicleFrameworkCoverageTest {
         Files.createDirectory(temp.resolve("plugin/vehicles/nested")); Files.createDirectory(temp.resolve("plugin/ammunition/nested"));
         plugin.loadConfigs(); assertEquals("user.changed", Cache.skinItem);
         assertTrue(VehicleLoader.get().isEmpty()); assertTrue(AmmunitionLoader.get().isEmpty());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"vehicles/old.yml", "ammunition/old.yml", "fuel.yml"})
+    void malformedReloadRetainsTheLastWorkingDefinitions(String failedFile) throws Exception {
+        plugin.createFolders();
+        plugin.createConfigs();
+        Files.writeString(temp.resolve("plugin/vehicles/old.yml"),
+                "old_cart: {model: default, skins: {}, states: {}, components: {}, seats: []}\n");
+        Files.writeString(temp.resolve("plugin/ammunition/old.yml"), "old_shell: {}\n");
+        Files.writeString(temp.resolve("plugin/fuel.yml"), "old_fuel: {}\n");
+        plugin.onEnable();
+        Object previous = failedFile.startsWith("vehicles") ? VehicleLoader.getByString("old_cart")
+                : failedFile.startsWith("ammunition") ? AmmunitionLoader.getByString("old_shell")
+                : FuelLoader.getByString("old_fuel");
+        assertNotNull(previous);
+
+        Files.writeString(temp.resolve("plugin/" + failedFile), "broken: [unterminated\n");
+        assertDoesNotThrow(plugin::reload);
+
+        Object retained = failedFile.startsWith("vehicles") ? VehicleLoader.getByString("old_cart")
+                : failedFile.startsWith("ammunition") ? AmmunitionLoader.getByString("old_shell")
+                : FuelLoader.getByString("old_fuel");
+        assertSame(previous, retained, "A failed load must not discard the last usable registry");
     }
 
     @Test void databaseOpenFailureDisablesThePluginBeforeRegisteringListeners() throws Exception {

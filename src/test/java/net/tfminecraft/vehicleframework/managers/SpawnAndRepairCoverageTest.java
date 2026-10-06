@@ -101,6 +101,21 @@ class SpawnAndRepairCoverageTest {
         assertNull(repairs.getRepairTarget(player));
     }
 
+    @ParameterizedTest @ValueSource(strings = {"engine", "wings"})
+    void componentRepairTagsAreIndependentOfTheServerLocale(String tag) {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            VehicleComponent target = component(Component.valueOf(tag.toUpperCase(Locale.ROOT)));
+            repairs.repair(player, vehicle);
+            assertDoesNotThrow(() -> repairs.repairEvent(repairClick(tagged("vf_component_type", tag))));
+            assertTrue(repairs.isBeingRepaired(target));
+            assertSame(vehicle, repairs.getRepairTarget(player));
+        } finally {
+            Locale.setDefault(previous);
+        }
+    }
+
     @Test void onePlayerCannotStartTwoComponentRepairsAtOnce() {
         VehicleComponent hull = component(Component.HULL), pump = component(Component.PUMP); startComponent(player, hull);
         repairs.repairComponent(player, tagged("vf_component_type", "pump"), key("vf_component_type"), vehicle);

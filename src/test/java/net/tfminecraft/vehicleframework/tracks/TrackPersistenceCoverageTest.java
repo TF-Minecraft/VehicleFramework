@@ -49,10 +49,14 @@ class TrackPersistenceCoverageTest {
         TrackSpline track = line(0, 20, 0); store.save(track);
         Path root = directory.resolve("data/tracks"), world = root.resolve("world"), junctions = world.resolve("junctions");
         Files.createDirectories(junctions);
+        org.junit.jupiter.api.Assumptions.assumeTrue(Files.getFileStore(root).supportsFileAttributeView("posix"),
+                "Requires POSIX directory permissions");
         for (Path unreadable : List.of(root, world, junctions)) {
             Set<PosixFilePermission> old = Files.getPosixFilePermissions(unreadable);
             try {
                 Files.setPosixFilePermissions(unreadable, Set.of());
+                org.junit.jupiter.api.Assumptions.assumeTrue(unreadable.toFile().listFiles() == null,
+                        "Requires enforced read permissions (not a privileged process)");
                 assertTrue(store.loadAllJunctions().isEmpty());
                 if (!unreadable.equals(junctions)) assertTrue(store.loadAll().isEmpty());
             } finally { Files.setPosixFilePermissions(unreadable, old); }
@@ -155,7 +159,13 @@ class TrackPersistenceCoverageTest {
         TrackJunction junction = registry.junctionByBranch(branch.getId()).orElseThrow();
         assertEquals(-1, junction.facingSign);
         assertThrows(TrackLayException.class, () -> registry.layBranch(junction.id, "world", null, 3, 64, 20));
-        assertTrue(registry.digTarget("world", branch.first().x, 64, branch.first().z).isPresent());
+        // The frog overlaps the stem; use the distinct branch endpoint so UUID/map order
+        // cannot select the stem and silently bypass turnout protection.
+        TrackSample end = branch.last();
+        TrackRegistry.DigTarget target = registry.digTarget("world", end.x, end.y, end.z).orElseThrow();
+        assertEquals(branch.getId(), target.spline().getId());
+        assertEquals(branch.getSamples().size() - 1, target.index());
+        assertEquals(List.of(new TrackRegistry.Span(branch.getId(), branch.length()/2, branch.length()/2 + TrackGenerate.STEP)), target.spans());
     }
 
     @Test void legacyClosedPolylinesArePromotedAndForwardLoopClosurePreservesDirection() throws Exception {

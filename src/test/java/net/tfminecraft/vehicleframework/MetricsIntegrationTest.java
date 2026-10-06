@@ -19,13 +19,13 @@ class MetricsIntegrationTest {
         Path config=directory.resolve("bStats/config.yml"); Files.createDirectories(config.getParent());
         String original="enabled: false\nserverUuid: retained-server-id\nlogFailedRequests: true\n";
         Files.writeString(config,original);
-        Metrics metrics=new Metrics(plugin(),23136);
+        Metrics metrics=new Metrics(plugin(),26823);
         try { assertEquals(original,Files.readString(config)); }
         finally { metrics.shutdown(); }
     }
 
     @Test void dependencyCreatesACompatibleConfigurationOnFirstStartup() {
-        Metrics metrics=new Metrics(plugin(),23136);
+        Metrics metrics=new Metrics(plugin(),26823);
         try {
             YamlConfiguration config=YamlConfiguration.loadConfiguration(directory.resolve("bStats/config.yml").toFile());
             assertTrue(config.getBoolean("enabled")); assertNotNull(config.getString("serverUuid"));
