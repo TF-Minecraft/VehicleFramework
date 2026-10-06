@@ -29,7 +29,7 @@ public final class ConsistRelinker {
 			if (child == null) {
 				PersistenceLog.append("TRY_LINK child-missing pending=" + childId + " uuid=" + vehicle.getUUID());
 			}
-			if (child != null && child.isTrain() && !child.equals(vehicle)) {
+			if (child != null && child.isTrain() && canLink(vehicle, child)) {
 				train.setChild(child);
 				child.setParent(vehicle);
 				train.setPendingChild(null);
@@ -42,7 +42,7 @@ public final class ConsistRelinker {
 			if (parent == null) {
 				PersistenceLog.append("TRY_LINK parent-missing pending=" + parentId + " uuid=" + vehicle.getUUID());
 			}
-			if (parent != null && parent.isTrain() && !parent.equals(vehicle)) {
+			if (parent != null && parent.isTrain() && canLink(parent, vehicle)) {
 				parent.getTrainHandler().setChild(vehicle);
 				vehicle.setParent(parent);
 				train.setPendingParent(null);
@@ -50,13 +50,25 @@ public final class ConsistRelinker {
 			}
 		}
 		ActiveVehicle loco = vehicle;
+		java.util.Set<ActiveVehicle> visited = new java.util.HashSet<>();
 		while (loco != null && loco.hasParent()) {
+			if (!visited.add(loco)) return;
 			loco = loco.getParent();
 		}
 		if (loco != null && loco.isTrain() && loco.getTrainHandler().isBound()) {
 			loco.getTrainHandler().placeLoadedCars();
 		}
 		PersistenceLog.tryLink("after", vehicle);
+	}
+
+	private static boolean canLink(ActiveVehicle parent, ActiveVehicle child) {
+		java.util.Set<ActiveVehicle> visited = new java.util.HashSet<>();
+		ActiveVehicle ancestor = parent;
+		while (ancestor != null) {
+			if (ancestor.equals(child) || !visited.add(ancestor)) return false;
+			ancestor = ancestor.hasParent() ? ancestor.getParent() : null;
+		}
+		return true;
 	}
 
 	public static void onRemove(ActiveVehicle vehicle, VehicleRemovePayload payload) {

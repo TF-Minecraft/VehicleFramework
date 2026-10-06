@@ -43,8 +43,8 @@ public class VehicleSpawner {
 				}
 			} else {
 				ArmorStand a = loc.getWorld().spawn(loc, ArmorStand.class);
-				a.setVisible(false);
 				e = a;
+				a.setVisible(false);
 			}
 
 			// SQLite owns persistence; never let Bukkit/ME independently restore this runtime entity.

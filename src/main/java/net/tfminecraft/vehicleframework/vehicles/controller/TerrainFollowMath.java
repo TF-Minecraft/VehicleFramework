@@ -64,15 +64,12 @@ public final class TerrainFollowMath {
 	}
 
 	/**
-	 * Farthest distance in [0, maxDist] that is not blocked, sampled every {@code step}.
-	 * Full {@code maxDist} is used when it is clear. {@code blockedAtDist} is true when that distance clips.
+	 * Farthest distance in [0, maxDist] with a clear path, sampled every {@code step}.
+	 * Full {@code maxDist} is used only when all samples are clear. {@code blockedAtDist} is true when that distance clips.
 	 */
 	public static double farthestUnblocked(double maxDist, double step, DoublePredicate blockedAtDist) {
 		if (maxDist <= 1e-9 || blockedAtDist == null) {
 			return 0;
-		}
-		if (!blockedAtDist.test(maxDist)) {
-			return maxDist;
 		}
 		double lastClear = 0;
 		double increment = Math.max(1e-6, step);
@@ -82,7 +79,7 @@ public final class TerrainFollowMath {
 			}
 			lastClear = d;
 		}
-		return lastClear;
+		return blockedAtDist.test(maxDist) ? lastClear : maxDist;
 	}
 
 	public static double approachY(double currentY, double targetY, double maxDelta) {

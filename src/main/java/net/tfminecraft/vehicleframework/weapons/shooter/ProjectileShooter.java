@@ -63,6 +63,10 @@ public class ProjectileShooter implements Shooter {
 			Integer i = 0;
 			public void run()
 			   {
+				if (b.getType() != Material.LIGHT) {
+					cancel();
+					return;
+				}
 				if(i == 1) {
 					level.setLevel(15);
 					b.setBlockData(level, true);

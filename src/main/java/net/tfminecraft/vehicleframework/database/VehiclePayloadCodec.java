@@ -86,7 +86,7 @@ public final class VehiclePayloadCodec {
 							? asInt(componentData.get("sinkprogress"))
 							: 0;
 					try {
-						Component c = Component.valueOf(componentType.toUpperCase());
+						Component c = Component.valueOf(componentType.toUpperCase(java.util.Locale.ROOT));
 						switch (c) {
 							case ENGINE:
 								if (componentData.containsKey("throttle")) {
@@ -247,7 +247,7 @@ public final class VehiclePayloadCodec {
 				if (type == Component.GEARED_ENGINE) {
 					componentData.put("gear", (long) vehicle.getGear());
 				}
-				componentsObject.put(type.toString().toLowerCase(), componentData);
+				componentsObject.put(type.toString().toLowerCase(java.util.Locale.ROOT), componentData);
 			}
 		}
 		json.put("components", componentsObject);
@@ -353,13 +353,15 @@ public final class VehiclePayloadCodec {
 
 	private static float asFloat(Object value) {
 		if (value instanceof Number number) {
-			return number.floatValue();
+			float result = number.floatValue();
+			return Float.isFinite(result) ? result : 0f;
 		}
 		if (value == null) {
 			return 0f;
 		}
 		try {
-			return Float.parseFloat(String.valueOf(value));
+			float result = Float.parseFloat(String.valueOf(value));
+			return Float.isFinite(result) ? result : 0f;
 		} catch (NumberFormatException ex) {
 			return 0f;
 		}
@@ -367,13 +369,15 @@ public final class VehiclePayloadCodec {
 
 	private static double asDouble(Object value) {
 		if (value instanceof Number number) {
-			return number.doubleValue();
+			double result = number.doubleValue();
+			return Double.isFinite(result) ? result : 0d;
 		}
 		if (value == null) {
 			return 0d;
 		}
 		try {
-			return Double.parseDouble(String.valueOf(value));
+			double result = Double.parseDouble(String.valueOf(value));
+			return Double.isFinite(result) ? result : 0d;
 		} catch (NumberFormatException ex) {
 			return 0d;
 		}

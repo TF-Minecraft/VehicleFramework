@@ -14,7 +14,7 @@ public class Throttle {
 	
 	public Throttle(String name, int x, int n, VehicleComponent en) {
 		if(name != null) this.name = name;
-		else name = "Throttle";
+		else this.name = "Throttle";
 		max = x;
 		min = n;
 		current = 0;

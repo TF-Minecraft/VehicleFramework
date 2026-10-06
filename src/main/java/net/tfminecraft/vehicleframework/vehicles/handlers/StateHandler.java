@@ -120,7 +120,7 @@ public class StateHandler {
 			swapState(State.FLOATING, "water");
 		} else if (VehicleStateRules.shouldSwapToFlying(
 				flying != null && !flying.isDefault(),
-				checkAllBlocks(blocksBelow, "air"))) {
+				allBlocksInAir(blocksBelow))) {
 	        swapState(State.FLYING, "air");
 	    } else {
 	        swapState(State.GROUND, "ground");
@@ -160,22 +160,14 @@ public class StateHandler {
 		return blocks;
 	}
 
-	private boolean checkAllBlocks(Set<Block> blocks, String type) {
-		if(type.equalsIgnoreCase("air")) {
-			for (Block block : blocks) {
-		        if(!LocationChecker.isInAir(block.getLocation())) return false;
-		    }
-		} else if(type.equalsIgnoreCase("water")) {
-			for (Block block : blocks) {
-		        if(!LocationChecker.isInWater(block.getLocation())) return false;
-		    }
+	private boolean allBlocksInAir(Set<Block> blocks) {
+		for (Block block : blocks) {
+			if (!LocationChecker.isInAir(block.getLocation())) return false;
 		}
-	    
-	    return true;
+		return true;
 	}
-	
 
-	
+
 	private void swapState(State s, String reason) {
 		if(!hasState(s)) return;
 		if(states.get(s) == state) return;

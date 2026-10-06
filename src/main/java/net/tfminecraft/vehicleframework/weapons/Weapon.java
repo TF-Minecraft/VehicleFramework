@@ -72,7 +72,7 @@ public class Weapon {
 			projectileDamage = config.getInt("projectile-damage");
 		}
 		if (config.contains("projectile-damage-type")) {
-			projectileDamageType = config.getString("projectile-damage-type").toUpperCase();
+			projectileDamageType = config.getString("projectile-damage-type").toUpperCase(java.util.Locale.ROOT);
 		}
 		if (config.contains("projectile-speed")) {
 			projectileSpeed = config.getDouble("projectile-speed");

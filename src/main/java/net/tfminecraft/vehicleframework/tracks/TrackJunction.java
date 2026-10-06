@@ -174,7 +174,7 @@ public final class TrackJunction {
 			throw new IllegalArgumentException("junction needs side");
 		}
 		try {
-			return Side.valueOf(String.valueOf(raw).trim().toUpperCase());
+			return Side.valueOf(String.valueOf(raw).trim().toUpperCase(java.util.Locale.ROOT));
 		} catch (IllegalArgumentException e) {
 			throw new IllegalArgumentException("junction side must be LEFT or RIGHT");
 		}

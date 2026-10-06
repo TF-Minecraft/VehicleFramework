@@ -23,7 +23,7 @@ public class LightEffect {
 		new BukkitRunnable()
 		{
 			public void run() {
-				b.setType(Material.AIR);
+				if (b.getType() == Material.LIGHT) b.setType(Material.AIR);
 				Cache.lightLocations.remove(loc);
 			}
 		}.runTaskLater(VehicleFramework.plugin, 2L);

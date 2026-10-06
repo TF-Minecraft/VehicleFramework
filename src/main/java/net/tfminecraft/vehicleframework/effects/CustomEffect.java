@@ -98,7 +98,7 @@ public class CustomEffect {
 	}
 	
 	private void particle(List<Player> players, ActiveModel m, String info) {
-		Particle particle = Particle.valueOf(info.split("\\;")[0].toUpperCase());
+		Particle particle = Particle.valueOf(info.split("\\;")[0].toUpperCase(java.util.Locale.ROOT));
 		VectorBone bone = new VectorBone(m.getBone(info.split("\\;")[1].split("\\.")[0]).get(), m.getBone(info.split("\\;")[1].split("\\.")[1]).get());
 		int amount = Integer.parseInt(info.split("\\;")[2]);
 		double spread = Double.parseDouble(info.split("\\;")[3]);
@@ -142,14 +142,12 @@ public class CustomEffect {
 	}
 	
 	private void death(ActiveVehicle v, String death) {
-		if(VehicleDeath.valueOf(death.toUpperCase()) == null) return;
 		if(v.isDestroyed()) return;
-		v.kill(VehicleDeath.valueOf(death.toUpperCase()));
+		v.kill(VehicleDeath.valueOf(death.toUpperCase(java.util.Locale.ROOT)));
 	}
 	
 	private void startFire(ActiveVehicle v, String component) {
-		Component c = Component.valueOf(component.toUpperCase());
-		if(c == null) return;
+		Component c = Component.valueOf(component.toUpperCase(java.util.Locale.ROOT));
 		if(v.hasComponent(c) && !v.getComponent(c).isOnFire()) v.getComponent(c).startFire();
 	}
 	

@@ -14,23 +14,13 @@ public class Ammunition {
 	
 	public static Ammunition create(String key, ConfigurationSection config) {
 		String t = config.getString("type", "CANNONBALL");
-		if(Projectile.valueOf(t.toUpperCase()) == null) VFLogger.log(key+" ammunition has malformed type");
-		Projectile type = Projectile.valueOf(t.toUpperCase());
-		switch(type) {
-			case BULLET:
-				return new Bullet(key, config);
-			case CANNONBALL:
-				return new Ammunition(key, config);
-			case CLUSTER:
-				return new ClusterBomb(key, config);
-			case TORPEDO:
-				return new FusedExplosive(key, config);
-			case BOMB:
-				return new FusedExplosive(key, config);
-			default:
-				return new Ammunition(key, config);
-			
-		}
+		Projectile type = Projectile.valueOf(t.toUpperCase(java.util.Locale.ROOT));
+		return switch (type) {
+			case BULLET -> new Bullet(key, config);
+			case CANNONBALL -> new Ammunition(key, config);
+			case CLUSTER -> new ClusterBomb(key, config);
+			case TORPEDO, BOMB -> new FusedExplosive(key, config);
+		};
 	}
 	
 	public Ammunition (String key, ConfigurationSection config) {
@@ -38,8 +28,7 @@ public class Ammunition {
 		name = config.getString("name", key);
 		data = new AmmunitionData(config);
 		String t = config.getString("type", "CANNONBALL");
-		if(Projectile.valueOf(t.toUpperCase()) == null) VFLogger.log(key+" ammunition has malformed type");
-		type = Projectile.valueOf(t.toUpperCase());
+		type = Projectile.valueOf(t.toUpperCase(java.util.Locale.ROOT));
 	}
 	
 	public Projectile getType() {

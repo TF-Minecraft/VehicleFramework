@@ -368,7 +368,6 @@ public class ActiveVehicle {
 		initializeRotations(inc.getRotations());
 		initializeContainers(inc.getContainers());
 		name = inc.getName();
-		uuid = inc.getUUID();
 		ownerData.setOwner(inc.getOwner());
 		ownerData.setWhiteListed(inc.isWhitelisted());
 		ownerData.setWhiteList(inc.getWhitelist());

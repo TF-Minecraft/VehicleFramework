@@ -27,17 +27,17 @@ public class Seat {
 	private String bone;
 	
 	public Seat(String s, String id) {
-		if(s.split("\\(").length < 2) VFLogger.log("invalid seat detected for vehicle "+id);
-		
-		String t = s.split("\\(")[0];
-		String seat = s.split("\\(")[1].replace(")", "");
-		
-		if(SeatType.valueOf(t.toUpperCase()) == null) {
-			type = SeatType.PASSENGER; //handles malinput in config
-		} else {
-			type = SeatType.valueOf(t.toUpperCase());
+		int open = s.indexOf('(');
+		if (open <= 0 || !s.endsWith(")") || open == s.length() - 2) {
+			throw new IllegalArgumentException("Invalid seat '" + s + "' for vehicle " + id);
 		}
-		bone = seat;
+		String seatType = s.substring(0, open).trim();
+		try {
+			type = SeatType.valueOf(seatType.toUpperCase(java.util.Locale.ROOT));
+		} catch (IllegalArgumentException invalidType) {
+			type = SeatType.PASSENGER;
+		}
+		bone = s.substring(open + 1, s.length() - 1);
 	}
 	
 	public Seat(SeatType t, String bone) {
@@ -60,6 +60,7 @@ public class Seat {
 		return e;
 	}
 	public void mount(ActiveVehicle v, ActiveVehicle parent) {
+		if (isOccupied()) return;
 		mount(v.getEntity());
 		mountedVehicle = v;
 		v.setParent(parent);

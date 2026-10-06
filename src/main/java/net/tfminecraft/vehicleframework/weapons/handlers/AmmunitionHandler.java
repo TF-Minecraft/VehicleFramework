@@ -62,7 +62,7 @@ public class AmmunitionHandler {
 		if(config.contains("reload-states")) {
 			for(String s : config.getStringList("reload-states")) {
 				try {
-		            reloadStates.add(State.valueOf(s.toUpperCase()));
+		            reloadStates.add(State.valueOf(s.toUpperCase(java.util.Locale.ROOT)));
 		        } catch (IllegalArgumentException e) {
 		            System.out.println("Invalid state in reload-states: " + s);
 		        }
@@ -81,16 +81,18 @@ public class AmmunitionHandler {
 		reloadTime = -1;
 		baseReloadTime = another.getBaseReloadTime();
 		cooldown = another.getCooldown();
+		delay = another.delay;
 		activeCooldown = 0L;
 		currentBone = 0;
 		reloadStates = another.getReloadStates();
 		for(String bone : bones) {
-			if(!bone.contains(".")) {
+			String[] parts = bone.split("\\.", -1);
+			if(parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
 				VFLogger.log(weapon.getId()+" has an invalid exit bone: "+bone);
 				continue;
 			}
-			String base = bone.split("\\.")[0];
-			String alignment = bone.split("\\.")[1];
+			String base = parts[0];
+			String alignment = parts[1];
 			if(m.getBone(base).isEmpty()) {
 				VFLogger.log(weapon.getId()+" has an invalid exit bone "+base);
 				continue;
@@ -177,6 +179,7 @@ public class AmmunitionHandler {
 	}
 	
 	public void reloadStart(Player p, Ammunition a) {
+		if (exitBones.isEmpty()) return;
 		reloadTime = WeaponPerformance.effectiveReloadSeconds(
 				baseReloadTime, w.getHealthData(), Cache.weaponDegradedReloadMultiplier);
 		playSound(exitBones.get(0), SoundArg.RELOAD_START);
@@ -199,6 +202,7 @@ public class AmmunitionHandler {
 	}
 	
 	public void load(Player p, ItemStack i, boolean message) {
+		if (exitBones.isEmpty()) return;
 		if(i.getType().equals(Material.AIR)) return;
 		@SuppressWarnings("deprecation")
 		ItemAPI api = TLibs.getItemAPI();
@@ -206,7 +210,7 @@ public class AmmunitionHandler {
 		if(AmmunitionLoader.getByInput(input) == null) return;
 		Ammunition a = AmmunitionLoader.getByInput(input);
 		if(!reloadStates.contains(v.getCurrentState().getType())) {
-			if(message) p.sendMessage("§cCannot reload in the "+v.getCurrentState().getType().toString().toLowerCase().replace("_", " ")+ " state");
+			if(message) p.sendMessage("§cCannot reload in the "+v.getCurrentState().getType().toString().toLowerCase(java.util.Locale.ROOT).replace("_", " ")+ " state");
 			return;
 		}
 		if(hasAmmo()) {
@@ -240,11 +244,12 @@ public class AmmunitionHandler {
 			w.getAnimationHandler().animate(Animation.SHOOT);
 		}
 		VectorBone bone = exitBones.get(currentBone);
+		Ammunition shotAmmo = ammo;
         if(delay > 0) {
 			new BukkitRunnable() {
 				@Override
 		        public void run() {
-		        	projectileShooter.shoot(nearby, v.getEntity(), bone.getBaseLocation(), bone.getVector(), ammo, w);
+				projectileShooter.shoot(nearby, v.getEntity(), bone.getBaseLocation(), bone.getVector(), shotAmmo, w);
 					particle(bone);
 					playSound(bone, SoundArg.SHOOT);
 		        }	       
@@ -265,6 +270,7 @@ public class AmmunitionHandler {
 		v.updateBoard();
 	}
 	public void shoot(Player p, List<Player> nearby) {
+		if (exitBones.isEmpty()) return;
 		if(!hasAmmo()) {
 			p.sendMessage("§cNo ammo");
 			return;

@@ -412,7 +412,8 @@ public final class TrackCommands {
 					a.getWorld().getName(),
 					a.getWorld(),
 					a.getX(), a.getY(), a.getZ(),
-					b.getX(), b.getY(), b.getZ());
+					b.getX(), b.getY(), b.getZ(),
+					TrackPieces.pays(player) ? TrackPieces.count(player) : Integer.MAX_VALUE);
 			TrackAnchorSession.clear(player);
 			announceLay(player, result, presentLay(player, result), false);
 		} catch (TrackLayException e) {
@@ -581,9 +582,6 @@ public final class TrackCommands {
 	}
 
 	private static Presented presentLay(Player player, TrackLayResult result) {
-		if (result == null || result.spline() == null) {
-			return Presented.none();
-		}
 		int cost = TrackPieces.cost(result.stroke);
 		if (result.sequential() && TrackBuildAnimator.sequential(player)) {
 			boolean started = TrackBuildAnimator.start(
@@ -609,9 +607,6 @@ public final class TrackCommands {
 	}
 
 	private static Optional<TrackSpline> remaining(TrackLayResult result) {
-		if (result == null || result.spline() == null) {
-			return Optional.empty();
-		}
 		return registry().get(result.spline().getId())
 				.filter(spline -> spline.getSamples().size() >= 2);
 	}
@@ -621,9 +616,6 @@ public final class TrackCommands {
 			TrackLayResult result,
 			Presented presented,
 			boolean branch) {
-		if (player == null || result == null || presented == null) {
-			return;
-		}
 		Optional<TrackSpline> now = presented.spline;
 		if (now.isPresent()) {
 			TrackSpline spline = now.get();
@@ -666,15 +658,9 @@ public final class TrackCommands {
 			this.sequential = sequential;
 		}
 
-		private static Presented none() {
-			return new Presented(Optional.empty(), 0, 0, false);
-		}
 	}
 
 	private static void burstPlace(Player player, TrackLayResult result) {
-		if (player == null || player.getWorld() == null || result == null) {
-			return;
-		}
 		double[] p;
 		float yaw = 0;
 		if (result.stroke != null && result.stroke.size() >= 1) {

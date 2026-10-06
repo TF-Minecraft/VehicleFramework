@@ -347,17 +347,23 @@ public final class TerrainFollowEngine {
 		rt.vz = tick.vz;
 		double dx = rt.vx;
 		double dz = rt.vz;
-		double destY = current.getY() + rt.vy;
-		boolean yBlocked = destinationBlocked(entity, current, locAt(current, current.getX(), destY, current.getZ()));
+		double verticalDistance = Math.abs(rt.vy);
+		double verticalDirection = Math.signum(rt.vy);
+		double clearVertical = TerrainFollowMath.farthestUnblocked(
+				verticalDistance,
+				TerrainFollowMath.SLIDE_STEP,
+				d -> destinationBlocked(entity, current,
+						locAt(current, current.getX(), current.getY() + verticalDirection * d, current.getZ())));
+		double destY = current.getY() + verticalDirection * clearVertical;
+		boolean yBlocked = clearVertical + 1e-6 < verticalDistance;
 		if (yBlocked) {
-			destY = current.getY();
 			rt.vy = 0;
 		}
 		final double slideY = destY;
 		double dist = Math.hypot(dx, dz);
 		double ox = 0;
 		double oz = 0;
-		boolean aabbBlocked = false;
+		boolean aabbBlocked = yBlocked;
 		if (dist > 1e-9) {
 			double far = TerrainFollowMath.farthestUnblocked(
 					dist,
@@ -368,7 +374,7 @@ public final class TerrainFollowEngine {
 							locAt(current, current.getX() + dx * d / dist, slideY, current.getZ() + dz * d / dist)));
 			ox = dx * far / dist;
 			oz = dz * far / dist;
-			aabbBlocked = far + 1e-6 < dist;
+			aabbBlocked |= far + 1e-6 < dist;
 			rt.vx = ox;
 			rt.vz = oz;
 		}
@@ -500,9 +506,6 @@ public final class TerrainFollowEngine {
 	}
 
 	private static void spawnEndRod(List<Player> nearby, Location loc) {
-		if (loc == null || loc.getWorld() == null) {
-			return;
-		}
 		for (Player p : nearby) {
 			if (p == null || !p.isOnline() || p.getWorld() == null) {
 				continue;
@@ -515,9 +518,6 @@ public final class TerrainFollowEngine {
 	}
 
 	private static RayTraceResult rayDown(Location start) {
-		if (start == null || start.getWorld() == null) {
-			return null;
-		}
 		RayTraceResult down = start.getWorld().rayTraceBlocks(
 				start,
 				new Vector(0, -1, 0),

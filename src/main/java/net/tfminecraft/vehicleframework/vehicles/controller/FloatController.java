@@ -105,10 +105,6 @@ public class FloatController {
 		}
 
 		Entity entity = v.getEntity();
-		if (entity == null || !entity.isValid()) {
-			return 0;
-		}
-
 		Location loc = entity.getLocation();
 		Vector forward = loc.getDirection().clone();
 		forward.setY(0);

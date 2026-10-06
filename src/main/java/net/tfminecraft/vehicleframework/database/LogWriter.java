@@ -74,7 +74,10 @@ public class LogWriter {
             }
 
             // Check if rotation is needed
-            long lineCount = Files.lines(logFile.toPath()).count();
+            long lineCount;
+            try (var lines = Files.lines(logFile.toPath())) {
+                lineCount = lines.count();
+            }
             if (lineCount > 400) {
                 rotateLog();
             }

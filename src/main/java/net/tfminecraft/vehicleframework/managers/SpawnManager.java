@@ -38,7 +38,6 @@ public class SpawnManager implements Listener {
 
 	private VehicleManager vehicleManager;
 	private BukkitTask spawnTickTask;
-	private final Set<String> spawning = new HashSet<>();
 
 	public SpawnManager(VehicleManager m) {
 		vehicleManager = m;
@@ -88,7 +87,6 @@ public class SpawnManager implements Listener {
 
 	public void reload() {
 		spawns.clear();
-		spawning.clear();
 		enqueueLoadedChunks();
 		startTickCycle();
 	}
@@ -106,9 +104,6 @@ public class SpawnManager implements Listener {
 	}
 
 	private void enqueueChunk(Chunk chunk) {
-		if (chunk == null || chunk.getWorld() == null) {
-			return;
-		}
 		VehiclePersistence persistence = VehiclePersistence.current();
 		if (persistence == null) {
 			return;
@@ -161,15 +156,7 @@ public class SpawnManager implements Listener {
 					if (!loc.hasNearby()) {
 						continue;
 					}
-					String uuid = stripJson(loc.getFile());
-					if (uuid == null || !spawning.add(uuid)) {
-						continue;
-					}
-					try {
-						trySpawn(loc);
-					} finally {
-						spawning.remove(uuid);
-					}
+					trySpawn(loc);
 				}
 			}
 		}.runTaskTimer(VehicleFramework.plugin, 0L, 20L);

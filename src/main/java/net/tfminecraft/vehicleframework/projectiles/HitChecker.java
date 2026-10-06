@@ -113,37 +113,37 @@ public class HitChecker {
 		Location loc = e.getLocation();
 	    Block blockAtLocation = loc.getBlock();
 	    
-	    if (check(blockAtLocation, true)) {
+	    if (check(blockAtLocation)) {
 	        return true;
 	    }
 
 	    Block below = loc.clone().subtract(0, 1, 0).getBlock();
-	    if (check(below, true)) {
+	    if (check(below)) {
 	        return true;
 	    }
 
 	    Block above = loc.clone().add(0, 1, 0).getBlock();
-	    if (check(above, true)) {
+	    if (check(above)) {
 	        return true;
 	    }
 
 	    Block north = loc.clone().add(0, 0, -1).getBlock();
-	    if (check(north, true)) {
+	    if (check(north)) {
 	        return true;
 	    }
 
 	    Block south = loc.clone().add(0, 0, 1).getBlock();
-	    if (check(south, true)) {
+	    if (check(south)) {
 	        return true;
 	    }
 
 	    Block west = loc.clone().add(-1, 0, 0).getBlock();
-	    if (check(west, true)) {
+	    if (check(west)) {
 	        return true;
 	    }
 
 	    Block east = loc.clone().add(1, 0, 0).getBlock();
-	    if (check(east, true)) {
+	    if (check(east)) {
 	        return true;
 	    }
 	    
@@ -162,10 +162,7 @@ public class HitChecker {
 	    return false;
 	}
 	
-	private boolean check(Block b, boolean ignoreWater) {
-		if(!ignoreWater) {
-			return b.getType() != Material.AIR && b.getType() != Material.LIGHT;
-		}
+	private boolean check(Block b) {
 		return b.getType() != Material.AIR && b.getType() != Material.LIGHT && !waterBlocks.contains(b.getType()) && !(b.getBlockData() instanceof Waterlogged && ((Waterlogged) b.getBlockData()).isWaterlogged());
 		
 	}

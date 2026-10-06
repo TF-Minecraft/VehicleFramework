@@ -12,17 +12,15 @@ public class InputHandler {
 	
 	public InputHandler(ConfigurationSection config) {
 		for (Keybind keybind : Keybind.values()) {
-	        String enumString = keybind.name();
-	        if (config.contains(enumString)) {
-	        	if(Input.valueOf(config.getString(enumString).toUpperCase()) != null) {
-	        		keybinds.put(keybind, Input.valueOf(config.getString(enumString).toUpperCase()));
-	        	}
-	        } else {
-	        	keybinds.put(keybind, Input.NONE);
-	        }
-	    }
+			String enumString = keybind.name();
+			if (config.contains(enumString)) {
+				keybinds.put(keybind, Input.valueOf(config.getString(enumString).toUpperCase(java.util.Locale.ROOT)));
+			} else {
+				keybinds.put(keybind, Input.NONE);
+			}
+		}
 	}
-	
+
 	public InputHandler() {
 		for (Keybind keybind : Keybind.values()) {
 			keybinds.put(keybind, Input.NONE);

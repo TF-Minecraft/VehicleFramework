@@ -99,8 +99,8 @@ public class BehaviourHandler {
 		if(!shouldFloat) return;
 		if(config.contains("float-in")) {
 			for(String s : config.getStringList("float-in")) {
-				if(Material.valueOf(s.toUpperCase()) == null) continue;
-				floatsIn.add(Material.valueOf(s.toUpperCase()));
+				Material material = Material.matchMaterial(s);
+				if (material != null) floatsIn.add(material);
 			}
 		} else {
 			floatsIn.add(Material.WATER);

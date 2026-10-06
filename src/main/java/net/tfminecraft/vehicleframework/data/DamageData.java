@@ -12,7 +12,7 @@ public class DamageData {
 			return;
 		}
 		for(String s : list) {
-			String type = s.split("\\(")[0].toUpperCase();
+			String type = s.split("\\(")[0].toUpperCase(java.util.Locale.ROOT);
 			Double damage = Double.parseDouble(s.split("\\(")[1].replace(")", ""));
 			modifiers.put(type, damage);
 		}
@@ -26,7 +26,7 @@ public class DamageData {
 			if (entry.getKey() == null || entry.getValue() == null) {
 				continue;
 			}
-			modifiers.put(entry.getKey().toUpperCase(), toDouble(entry.getValue()));
+			modifiers.put(entry.getKey().toUpperCase(java.util.Locale.ROOT), toDouble(entry.getValue()));
 		}
 	}
 

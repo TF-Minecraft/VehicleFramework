@@ -2,6 +2,7 @@ package net.tfminecraft.vehicleframework.loaders;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Locale;
 
 import org.bukkit.Material;
 import org.bukkit.configuration.InvalidConfigurationException;
@@ -20,11 +21,16 @@ public class ConfigLoader {
         	config.load(configFile);
         } catch (IOException | InvalidConfigurationException e) {
             e.printStackTrace();
+            return;
         }
+        Cache.ignoreExplode.clear();
+        Cache.ignoreLands.clear();
+        Cache.ignoreGround.clear();
+        Cache.convertExplode.clear();
         if(config.contains("ignore-explosion")) {
         	for(String s : config.getStringList("ignore-explosion")) {
 				try {
-					Cache.ignoreExplode.add(Material.valueOf(s.toUpperCase()));
+					Cache.ignoreExplode.add(Material.valueOf(s.toUpperCase(Locale.ROOT)));
 				} catch (Exception e) {
 					VFLogger.log(s+" is not a material");
 				}
@@ -33,7 +39,7 @@ public class ConfigLoader {
         if(config.contains("ignore-landing")) {
 			for(String s : config.getStringList("ignore-landing")) {
 				try {
-					Cache.ignoreLands.add(Material.valueOf(s.toUpperCase()));
+					Cache.ignoreLands.add(Material.valueOf(s.toUpperCase(Locale.ROOT)));
 				} catch (Exception e) {
 					VFLogger.log(s+" is not a material");
 				}
@@ -43,7 +49,7 @@ public class ConfigLoader {
 		if(config.contains("ignore-ground")) {
 			for(String s : config.getStringList("ignore-ground")) {
 				try {
-					Cache.ignoreGround.add(Material.valueOf(s.toUpperCase()));
+					Cache.ignoreGround.add(Material.valueOf(s.toUpperCase(Locale.ROOT)));
 				} catch (Exception e) {
 					VFLogger.log(s+" is not a material");
 				}
@@ -52,13 +58,17 @@ public class ConfigLoader {
         
         if(config.contains("convert-explosion")) {
 			for(String s : config.getStringList("convert-explosion")) {
-				String from = s.split("\\.")[0];
-				String to = s.split("\\.")[1];
-				try {
-					Cache.convertExplode.put(Material.valueOf(from.toUpperCase()), Material.valueOf(to.toUpperCase()));
-				} catch (Exception e) {
-					VFLogger.log("either "+from+" or "+s+" is not a material");
-				}
+                try {
+                    String[] parts = s.split("\\.", -1);
+                    if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
+                        VFLogger.log("Invalid explosion conversion: " + s);
+                        continue;
+                    }
+                    Cache.convertExplode.put(Material.valueOf(parts[0].trim().toUpperCase(Locale.ROOT)),
+                            Material.valueOf(parts[1].trim().toUpperCase(Locale.ROOT)));
+                } catch (IllegalArgumentException e) {
+                    VFLogger.log("Invalid explosion conversion: " + s);
+                }
 			}
         }
 

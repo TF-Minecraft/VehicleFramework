@@ -77,7 +77,7 @@ public class SinkableHull extends Hull{
 	    	sinking = false;
 	        if(sinkProgress > 0) {
 	        	if(hasPump()) {
-	        		sinkProgress -= pump.getPower()/10;
+				sinkProgress = Math.max(0, sinkProgress - pump.getPower()/10);
 	        	} else {
 	        		sinkProgress -= 1;
 	        	}

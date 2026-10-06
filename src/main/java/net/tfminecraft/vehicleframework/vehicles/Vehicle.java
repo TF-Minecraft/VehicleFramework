@@ -75,18 +75,20 @@ public class Vehicle {
 	
 	public Vehicle(String key, ConfigurationSection config) {
 		id = key;
+		for (String required : List.of("skins", "states", "components")) {
+			if (!config.isConfigurationSection(required)) {
+				throw new IllegalArgumentException("Vehicle '" + key + "' requires a " + required + " section");
+			}
+		}
 		name = config.getString("name", key);
 		fixed = config.getBoolean("fixed", false);
 		towable = config.getBoolean("towable", false);
 		if(!config.contains("model")) VFLogger.log(key+" does not contain a model field");
 		model = config.getString("model");
-		if(!config.isConfigurationSection("skins")) VFLogger.log(key+" has no skins section");
 		skinHandler = new SkinHandler(model, config.getConfigurationSection("skins"));
 		
-		if(!config.isConfigurationSection("states")) VFLogger.log(key+" has no states section");
 		stateHandler = new StateHandler(config.getConfigurationSection("states"));
 		
-		if(!config.isConfigurationSection("components")) VFLogger.log(key+" has no components section");
 		componentHandler = new ComponentHandler(config.getConfigurationSection("components"));
 		
 		if(!config.contains("seats")) VFLogger.log(key+" has no seats section");
@@ -143,6 +145,9 @@ public class Vehicle {
 		if(config.isConfigurationSection("sink")) {
 			ConfigurationSection sink = config.getConfigurationSection("sink");
 			deathData.add(new DeathData(VehicleDeath.SINK, sink));
+		}
+		if(config.isConfigurationSection("die")) {
+			deathData.add(new DeathData(VehicleDeath.DIE, config.getConfigurationSection("die")));
 		}
 		if(config.isConfigurationSection("crash")) {
 			ConfigurationSection crash = config.getConfigurationSection("crash");

@@ -479,10 +479,6 @@ public final class TrackDisplayManager implements Listener {
 	}
 
 	private void spawnSplineInChunk(TrackSpline spline, Chunk chunk) {
-		if (TrackBuildAnimator.isBuilding(spline.getId())) {
-			TrackBuildAnimator.spawnIntoChunk(spline, chunk);
-			return;
-		}
 		int cx = chunk.getX();
 		int cz = chunk.getZ();
 		World world = chunk.getWorld();
@@ -520,9 +516,6 @@ public final class TrackDisplayManager implements Listener {
 		}
 		for (TrackJunction junction : registry.junctionsOn(spline.getId())) {
 			TrackSwitchPose pose = switchPose(spline, junction);
-			if (pose == null) {
-				continue;
-			}
 			int cx = TrackChunks.chunkCoord(pose.x);
 			int cz = TrackChunks.chunkCoord(pose.z);
 			if (!world.isChunkLoaded(cx, cz)) {
@@ -553,9 +546,6 @@ public final class TrackDisplayManager implements Listener {
 			return;
 		}
 		TrackSwitchPose pose = switchPose(stem, junction);
-		if (pose == null) {
-			return;
-		}
 		int cx = TrackChunks.chunkCoord(pose.x);
 		int cz = TrackChunks.chunkCoord(pose.z);
 		if (!world.isChunkLoaded(cx, cz)) {
@@ -584,9 +574,6 @@ public final class TrackDisplayManager implements Listener {
 			return;
 		}
 		TrackSwitchPose pose = switchPose(stem, junction);
-		if (pose == null) {
-			return;
-		}
 		if (!TrackChunks.inChunk(pose.x, pose.z, chunk.getX(), chunk.getZ())) {
 			return;
 		}

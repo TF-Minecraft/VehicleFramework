@@ -220,8 +220,6 @@ public class Engine extends VehicleComponent{
 		}
 		int current = throttle.getCurrent();
 		AccessPanel panel = v.getAccessPanel();
-		panel.setSpeed(getSpeed());
-		panel.setTurnRate(getTurnRate());
 		boolean reverse = false;
 		if(current < 0) {
 			current = current*-1;
@@ -234,7 +232,7 @@ public class Engine extends VehicleComponent{
 			}
 			throttle.setThrottle(current);
 		}
-		panel.setReverse(reverse);
+		if(healthData.getHealthPercentage() < 1 && started) stop();
 		if (tapeThrottle == null) {
 			if (v == null || !v.isTrain() || v.hasParent() || !v.getTrainHandler().isRecording()) {
 				normalize();
@@ -243,6 +241,13 @@ public class Engine extends VehicleComponent{
 				v.getTrainHandler().maybeRecordSample(throttle.getCurrent());
 			}
 		}
+		if (tank.useFuel() && tank.getCurrent() == 0) {
+			if (started) stop();
+			throttle.setThrottle(0);
+		}
+		panel.setSpeed(getSpeed());
+		panel.setTurnRate(getTurnRate());
+		panel.setReverse(throttle.getCurrent() < 0);
 		if(throttle.getCurrent() == 0) {
 			return;
 		}
@@ -254,14 +259,6 @@ public class Engine extends VehicleComponent{
 		}
 		if (v != null && v.getEntity() != null && !bones.isEmpty()) {
 			PersistenceLog.particleOffset(v, bones.get(0).getBaseLocation(), v.getEntity().getLocation());
-		}
-		if(healthData.getHealthPercentage() < 1 && started) stop();
-		if(tank.getCurrent() == 0 && tank.useFuel()) {
-			if(started) {
-				stop();
-			} else {
-				throttle.setThrottle(0);
-			}
 		}
 	}
 	
@@ -277,7 +274,7 @@ public class Engine extends VehicleComponent{
 		}
 		starting = true;
 		p.sendMessage("§e["+alias+"] starting...");
-		if(Math.random()*100 > healthData.getHealthPercentage()) {
+		if(rollStartChance() > healthData.getHealthPercentage()) {
 			if(!v.hasEffect(CustomAction.ENGINE_START_FAIL)) defaultFail(p);
 			else {
 				CustomEffect effect = v.playEffect(CustomAction.ENGINE_START_FAIL);
@@ -307,6 +304,10 @@ public class Engine extends VehicleComponent{
 		    }.runTaskTimer(VehicleFramework.plugin, 0L, 1L);
 		}
 	}
+	double rollStartChance() {
+		return Math.random() * 100;
+	}
+
 	private void defaultStart(Player p) {
 		p.sendMessage("§e["+alias+"] §astarted!");
 		started = true;

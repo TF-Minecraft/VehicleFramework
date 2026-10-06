@@ -29,7 +29,7 @@ public final class TrackSpline {
 		this.id = id == null ? UUID.randomUUID() : id;
 		this.world = world == null ? "" : world;
 		this.loop = loop;
-		this.samples = List.copyOf(samples);
+		this.samples = List.copyOf(rising(samples) ? samples : recomputeS(samples));
 		int expected = edgeCount(this.samples.size(), loop);
 		List<TrackSegment> segs = segments == null ? defaultSegments(expected) : new ArrayList<>(segments);
 		while (segs.size() < expected) {
@@ -207,12 +207,12 @@ public final class TrackSpline {
 		}
 
 		if (ds > 0) {
-			Double stop = firstBrokenAhead(from, to);
+			Double stop = firstBrokenAhead(from, to, loop && ds >= len);
 			if (stop != null) {
 				return new TrackAdvance(stop, true);
 			}
 		} else {
-			Double stop = firstBrokenBehind(from, to);
+			Double stop = firstBrokenBehind(from, to, loop && -ds >= len);
 			if (stop != null) {
 				return new TrackAdvance(stop, true);
 			}
@@ -329,7 +329,7 @@ public final class TrackSpline {
 			loaded.add(new TrackSample(x, y, z, yaw, pitch, s));
 		}
 		// sampleAt and advance need s rising along the track.
-		if (missingS || !rising(loaded)) {
+		if (missingS) {
 			loaded = recomputeS(loaded);
 		}
 		JSONArray segArr = (JSONArray) root.get("segments");
@@ -350,41 +350,37 @@ public final class TrackSpline {
 		visualCache = null;
 	}
 
-	private Double firstBrokenAhead(double from, double to) {
-		boolean wrap = loop && to + 1e-12 < from - 1e-9;
+	private Double firstBrokenAhead(double from, double to, boolean fullLap) {
+		boolean wrap = fullLap || (loop && to + 1e-12 < from - 1e-9);
 		Double stop = null;
 		for (int i : brokenEdges) {
 			double start = edgeStartS(i);
 			boolean crosses;
 			if (wrap) {
-				crosses = start + 1e-12 > from || start <= to + 1e-12;
+				crosses = fullLap || start + 1e-12 > from || start <= to + 1e-12;
 			} else {
 				crosses = start > from + 1e-12 && start <= to + 1e-12;
 			}
 			if (!crosses) {
 				continue;
 			}
-			if (stop == null) {
-				stop = start;
-			} else if (wrap) {
-				if (start > from && (stop <= to || start < stop)) {
-					stop = start;
-				}
-			} else if (start < stop) {
+			if (stop == null || (wrap && start > from && stop <= from)) {
 				stop = start;
 			}
 		}
 		return stop;
 	}
 
-	private Double firstBrokenBehind(double from, double to) {
-		boolean wrap = loop && to > from + 1e-9;
+	private Double firstBrokenBehind(double from, double to, boolean fullLap) {
+		boolean wrap = fullLap || (loop && to > from + 1e-9);
 		double best = Double.NaN;
 		for (int i : brokenEdges) {
 			double end = edgeEndS(i);
 			if (wrap) {
-				if (end < from - 1e-12 || end + 1e-12 >= to) {
-					if (Double.isNaN(best) || end > best) {
+				if (fullLap || end < from - 1e-12 || end + 1e-12 >= to) {
+					if (Double.isNaN(best)
+							|| (end < from && (best >= from || end > best))
+							|| (end >= from && best >= from && end > best)) {
 						best = end;
 					}
 				}
@@ -411,27 +407,18 @@ public final class TrackSpline {
 		if (edgeIndex < samples.size() - 1) {
 			return samples.get(edgeIndex + 1).s;
 		}
-		if (loop) {
-			return length();
-		}
-		return samples.get(samples.size() - 1).s;
+		return length();
 	}
 
 	private TrackSample edgeStart(int edgeIndex) {
-		if (edgeIndex < samples.size()) {
-			return samples.get(Math.min(edgeIndex, samples.size() - 1));
-		}
-		return samples.get(samples.size() - 1);
+		return samples.get(edgeIndex);
 	}
 
 	private TrackSample edgeEndSample(int edgeIndex) {
 		if (edgeIndex < samples.size() - 1) {
 			return samples.get(edgeIndex + 1);
 		}
-		if (loop) {
-			return samples.get(0);
-		}
-		return samples.get(samples.size() - 1);
+		return samples.get(0);
 	}
 
 	private TrackPose lerpEdge(int edgeIndex, double t) {
@@ -475,8 +462,11 @@ public final class TrackSpline {
 	}
 
 	private static boolean rising(List<TrackSample> samples) {
+		if (samples.getFirst().s != 0) {
+			return false;
+		}
 		for (int i = 1; i < samples.size(); i++) {
-			if (!(samples.get(i).s >= samples.get(i - 1).s)) {
+			if (!Double.isFinite(samples.get(i).s) || samples.get(i).s < samples.get(i - 1).s) {
 				return false;
 			}
 		}

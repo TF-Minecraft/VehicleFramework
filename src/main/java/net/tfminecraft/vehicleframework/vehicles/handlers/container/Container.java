@@ -299,7 +299,11 @@ public class Container {
             items.add(null);
         }
 
-        if (!json.has("items")) return;
+        if (!json.has("items")) {
+            pushLive();
+            updateBoneVisibility();
+            return;
+        }
         JsonArray itemsArray = json.getAsJsonArray("items");
 
         for (JsonElement elem : itemsArray) {
@@ -332,12 +336,7 @@ public class Container {
 
     private ItemStack readItem(int slot, JsonElement saved) {
         Exception failure = null;
-        List<String> candidates = List.of();
-        try {
-            candidates = snbtCandidates(saved);
-        } catch (RuntimeException e) {
-            failure = e;
-        }
+        List<String> candidates = snbtCandidates(saved);
         for (String snbt : candidates) {
             try {
                 ItemStack stack = NBT.itemStackFromNBT(NBT.parseNBT(snbt));
