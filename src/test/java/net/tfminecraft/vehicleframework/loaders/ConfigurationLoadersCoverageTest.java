@@ -352,6 +352,9 @@ class ConfigurationLoadersCoverageTest {
     loadFolder.accept(null);
     loadFolder.accept(first);
     loadFolder.accept(temp.resolve("missing").toFile());
+    load.accept(temp.resolve("missing.yml").toFile());
+    load.accept(yaml("bad.yml", "key: [unterminated"));
+    assertEquals(Set.of("base", "second"), target.keySet());
     Path inaccessible = Files.createDirectory(temp.resolve("unreadable"));
     Assumptions.assumeTrue(
         Files.getFileStore(inaccessible).supportsFileAttributeView("posix"),
@@ -366,8 +369,6 @@ class ConfigurationLoadersCoverageTest {
     } finally {
       Files.setPosixFilePermissions(inaccessible, permissions);
     }
-    load.accept(temp.resolve("missing.yml").toFile());
-    load.accept(yaml("bad.yml", "key: [unterminated"));
     assertEquals(Set.of("base", "second"), target.keySet());
   }
 

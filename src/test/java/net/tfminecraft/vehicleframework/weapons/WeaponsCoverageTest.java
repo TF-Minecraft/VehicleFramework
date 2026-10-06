@@ -584,13 +584,15 @@ class WeaponsCoverageTest {
     assertEquals(0, handler.getCount());
     verify(vehicle, times(3)).updateBoard();
     verify(r.world, times(3)).playSound(any(Location.class), eq("test.shot"), eq(1f), eq(1f));
-    ActiveWeapon cooling = active("fixed: true\nbones: [muzzle.aim]\ncooldown: 100\n");
+    ActiveWeapon cooling = active("fixed: true\nbones: [muzzle.aim]\ncooldown: 12000\n");
     cooling.getAmmunitionHandler().setAmmo(r.bullet(false), 2);
+    long beforeShot = System.currentTimeMillis();
     cooling.getAmmunitionHandler().shoot(player, List.of());
     long until = cooling.getAmmunitionHandler().getActiveCooldown();
     cooling.getAmmunitionHandler().shoot(player, List.of());
     assertEquals(1, cooling.getAmmunitionHandler().getCount());
-    assertTrue(until > System.currentTimeMillis());
+    assertTrue(until >= beforeShot + 600_000L);
+    assertEquals(until, cooling.getAmmunitionHandler().getActiveCooldown());
   }
 
   @Test
