@@ -160,6 +160,48 @@ class VehicleFrameworkCoverageTest {
         assertSame(previous, retained, "A failed load must not discard the last usable registry");
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "vehicles, broken-yaml",
+            "vehicles, scalar-document",
+            "vehicles, scalar-definition",
+            "ammunition, broken-yaml",
+            "ammunition, scalar-document",
+            "ammunition, scalar-definition",
+            "ammunition, unknown-type"
+    })
+    void coldStartupLoadsValidDefinitionsDespiteABrokenSiblingFile(String folder, String failure) throws Exception {
+        VehicleLoader.get().clear();
+        AmmunitionLoader.get().clear();
+        plugin.createFolders();
+        plugin.createConfigs();
+        Files.writeString(temp.resolve("plugin/vehicles/good.yml"),
+                "good_cart: {model: default, skins: {}, states: {}, components: {}, seats: []}\n");
+        Files.writeString(temp.resolve("plugin/ammunition/good.yml"),
+                "good_shell: {input: custom.good_shell}\n");
+        String invalid = switch (failure) {
+            case "broken-yaml" -> "bad: [unterminated\n";
+            case "scalar-document" -> "not_a_mapping\n";
+            case "scalar-definition" -> "bad: not_a_section\n";
+            case "unknown-type" -> "bad: {type: unknown_ammunition}\n";
+            default -> throw new AssertionError("Unexpected fixture: " + failure);
+        };
+        Files.writeString(temp.resolve("plugin/" + folder + "/bad.yml"), invalid);
+        assertTrue(VehicleLoader.get().isEmpty());
+        assertTrue(AmmunitionLoader.get().isEmpty());
+
+        assertDoesNotThrow(plugin::onEnable);
+
+        assertAll("A cold startup must retain valid files and identify the rejected file",
+                () -> assertEquals(Set.of("good_cart"), VehicleLoader.get().keySet()),
+                () -> assertEquals(Set.of("good_shell"), AmmunitionLoader.get().keySet()),
+                () -> verify(log, atLeastOnce()).warning(contains("bad.yml")),
+                () -> assertNotNull(VehicleFramework.getVehicleRepository()),
+                () -> verify(plugins, times(6)).registerEvents(any(Listener.class), same(plugin)),
+                () -> verify(plugins, never()).disablePlugin(plugin),
+                () -> verify(log).info(contains("Setup complete!")));
+    }
+
     @Test void databaseOpenFailureDisablesThePluginBeforeRegisteringListeners() throws Exception {
         Files.createDirectory(temp.resolve("plugin")); Files.writeString(temp.resolve("plugin/data"), "not a directory");
         plugin.onEnable(); assertNull(VehicleFramework.getVehicleRepository());
