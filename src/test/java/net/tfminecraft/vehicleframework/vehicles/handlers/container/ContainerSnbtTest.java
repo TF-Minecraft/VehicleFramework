@@ -9,6 +9,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 
@@ -36,6 +37,12 @@ class ContainerSnbtTest {
 		assertEquals(2, candidates.size());
 		assertEquals(Container.legacySnbt(legacy), candidates.get(0));
 		assertEquals(legacy.toString(), candidates.get(1));
+	}
+
+	@Test
+	void nullEntry_hasNoCandidates() {
+		assertEquals(List.of(), Container.snbtCandidates(JsonNull.INSTANCE));
+		assertEquals(List.of(), Container.snbtCandidates(null));
 	}
 
 	@Test

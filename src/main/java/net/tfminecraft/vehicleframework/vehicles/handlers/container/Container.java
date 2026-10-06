@@ -307,7 +307,7 @@ public class Container {
             JsonArray entry = elem.getAsJsonArray();
             if (entry.size() != 2) continue;
 
-            int slot = entry.get(0).getAsInt();
+            int slot = readSlot(entry.get(0));
             ItemStack stack = readItem(slot, entry.get(1));
             int target = stack == null ? -1 : freeSlot(slot);
             if (target < 0) {
@@ -321,9 +321,24 @@ public class Container {
         updateBoneVisibility();
     }
 
+    // -1 sends the item to the first free slot.
+    private static int readSlot(JsonElement saved) {
+        try {
+            return saved.getAsInt();
+        } catch (RuntimeException e) {
+            return -1;
+        }
+    }
+
     private ItemStack readItem(int slot, JsonElement saved) {
         Exception failure = null;
-        for (String snbt : snbtCandidates(saved)) {
+        List<String> candidates = List.of();
+        try {
+            candidates = snbtCandidates(saved);
+        } catch (RuntimeException e) {
+            failure = e;
+        }
+        for (String snbt : candidates) {
             try {
                 ItemStack stack = NBT.itemStackFromNBT(NBT.parseNBT(snbt));
                 if (!isEmpty(stack)) {
@@ -352,6 +367,9 @@ public class Container {
      * are read with the types restored first, then as saved in case the restore misjudged text.
      */
     static List<String> snbtCandidates(JsonElement saved) {
+        if (saved == null || saved.isJsonNull()) {
+            return List.of();
+        }
         if (saved.isJsonPrimitive() && saved.getAsJsonPrimitive().isString()) {
             return List.of(saved.getAsString());
         }
