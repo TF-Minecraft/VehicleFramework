@@ -23,7 +23,7 @@ public class AmmunitionLoader implements LoaderInterface {
 	public void load(File configFile) {
 		try {
 			map.putAll(read(configFile));
-		} catch (IOException | InvalidConfigurationException | IllegalArgumentException e) {
+		} catch (IOException | InvalidConfigurationException | RuntimeException e) {
 			VFLogger.log("Failed to load ammunition from " + configFile + ": " + e.getMessage());
 		}
 	}
@@ -36,7 +36,7 @@ public class AmmunitionLoader implements LoaderInterface {
 			for (File file : files) {
 				try {
 					replacement.putAll(read(file));
-				} catch (IOException | InvalidConfigurationException | IllegalArgumentException e) {
+				} catch (IOException | InvalidConfigurationException | RuntimeException e) {
 					VFLogger.log("Failed to load ammunition from " + file + ": " + e.getMessage());
 					// Keep a working registry intact; with none yet, recover the valid sibling files.
 					if (!map.isEmpty()) return;

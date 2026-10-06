@@ -168,7 +168,10 @@ class VehicleFrameworkCoverageTest {
             "ammunition, broken-yaml",
             "ammunition, scalar-document",
             "ammunition, scalar-definition",
-            "ammunition, unknown-type"
+            "ammunition, unknown-type",
+            "ammunition, missing-cluster",
+            "ammunition, item-without-material",
+            "ammunition, scalar-hit-sfx"
     })
     void coldStartupLoadsValidDefinitionsDespiteABrokenSiblingFile(String folder, String failure) throws Exception {
         VehicleLoader.get().clear();
@@ -184,6 +187,9 @@ class VehicleFrameworkCoverageTest {
             case "scalar-document" -> "not_a_mapping\n";
             case "scalar-definition" -> "bad: not_a_section\n";
             case "unknown-type" -> "bad: {type: unknown_ammunition}\n";
+            case "missing-cluster" -> "bad: {type: cluster}\n";
+            case "item-without-material" -> "bad: {model: {type: item}}\n";
+            case "scalar-hit-sfx" -> "bad: {hit-sfx: scalar}\n";
             default -> throw new AssertionError("Unexpected fixture: " + failure);
         };
         Files.writeString(temp.resolve("plugin/" + folder + "/bad.yml"), invalid);

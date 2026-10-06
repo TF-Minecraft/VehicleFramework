@@ -720,21 +720,33 @@ class ConfigurationLoadersCoverageTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"scalar", "unknown-type"})
+  @ValueSource(strings = {
+    "scalar", "unknown-type", "missing-cluster", "item-without-material", "scalar-hit-sfx"
+  })
   void invalidAmmunitionEntriesCannotPartiallyReplaceOrAddDefinitions(String kind)
       throws Exception {
     AmmunitionLoader loader = new AmmunitionLoader();
     loader.load(registryFile("ammunition", "initial-ammunition.yml", "old"));
     Ammunition previous = AmmunitionLoader.getByString("old");
-    String bad = kind.equals("scalar") ? "not_a_section" : "{type: unknown_ammunition}";
+    String bad = switch (kind) {
+      case "scalar" -> "not_a_section";
+      case "unknown-type" -> "{type: unknown_ammunition}";
+      case "missing-cluster" -> "{type: cluster}";
+      case "item-without-material" -> "{model: {type: item}}";
+      case "scalar-hit-sfx" -> "{hit-sfx: scalar}";
+      default -> throw new AssertionError("Unexpected fixture: " + kind);
+    };
     File mixed =
         yaml("invalid-ammunition/definitions.yml", "new: {input: custom.new}\nbad: " + bad + "\n");
-    assertDoesNotThrow(() -> loader.load(mixed));
-    assertEquals(Set.of("old"), AmmunitionLoader.get().keySet());
-    assertSame(previous, AmmunitionLoader.getByString("old"));
-    assertDoesNotThrow(() -> loader.reload(mixed.getParentFile()));
-    assertEquals(Set.of("old"), AmmunitionLoader.get().keySet());
-    assertSame(previous, AmmunitionLoader.getByString("old"));
+    assertAll("Failed additive loads and reloads must preserve the working ammunition registry",
+        () -> assertDoesNotThrow(() -> loader.load(mixed)),
+        () -> assertEquals(Set.of("old"), AmmunitionLoader.get().keySet()),
+        () -> assertSame(previous, AmmunitionLoader.getByString("old")),
+        () -> assertDoesNotThrow(() -> loader.reload(mixed.getParentFile())),
+        () -> assertEquals(Set.of("old"), AmmunitionLoader.get().keySet()),
+        () -> assertSame(previous, AmmunitionLoader.getByString("old")),
+        () -> assertEquals("custom.old", previous.getData().getInput()),
+        () -> logger.verify(() -> VFLogger.log(contains("definitions.yml")), times(2)));
   }
 
   private File registryFile(String kind, String filename, String id) throws Exception {
