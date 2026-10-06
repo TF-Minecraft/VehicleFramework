@@ -136,9 +136,6 @@ public final class ThrottleTape {
 			Sample a = matched.get(i);
 			Sample b = matched.get(i + 1);
 			if (s >= a.s && s <= b.s) {
-				if (b.s == a.s) {
-					return a.throttle * a.orientation;
-				}
 				double t = (s - a.s) / (b.s - a.s);
 				return (int) Math.round(a.throttle * a.orientation + t * (b.throttle * b.orientation - a.throttle * a.orientation));
 			}
@@ -223,7 +220,7 @@ public final class ThrottleTape {
 		String junction = blankToNull(junctionId);
 		if (!samples.isEmpty()) {
 			Sample last = samples.get(samples.size() - 1);
-			String lastSpline = last.resolvedSpline(this.splineId);
+			String lastSpline = blankToNull(last.resolvedSpline(this.splineId));
 			boolean splineChanged = !sameId(lastSpline, spline);
 			boolean junctionChanged = !sameId(last.junctionId, junction);
 			boolean throttleChanged = last.throttle != throttle || last.sign != nsign || last.orientation != orientation;

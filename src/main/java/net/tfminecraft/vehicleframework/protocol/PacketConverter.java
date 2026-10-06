@@ -22,7 +22,6 @@ public class PacketConverter {
 	        if (forward > 0) list.add(Keybind.SPACE_W);
 	        if (forward < 0) list.add(Keybind.SPACE_S);
 	        list.add(Keybind.SPACE);
-	        if (sneak) list.add(Keybind.SHIFT);
 	    } else {
 	        if (sideways > 0) list.add(Keybind.A);
 	        if (sideways < 0) list.add(Keybind.D);

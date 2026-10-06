@@ -42,6 +42,7 @@ public class RepairManager implements Listener{
 	private HashMap<Player, String> activeTool = new HashMap<>();
 	private HashMap<Player, VehicleComponent> beingRepaired = new HashMap<>();
 	private HashMap<Player, ActiveWeapon> weaponRepair = new HashMap<>();
+	private HashMap<Player, Object> repairAttempts = new HashMap<>();
 
 	public RepairManager(VehicleManager m) {
 		manager = m;
@@ -64,6 +65,7 @@ public class RepairManager implements Listener{
 	}
 	
 	public void stop(Player p) {
+		repairAttempts.remove(p);
 		repairing.remove(p);
 		activeTool.remove(p);
 		if(weaponRepair.containsKey(p)) {
@@ -94,7 +96,7 @@ public class RepairManager implements Listener{
 				p.sendMessage("§cCannot repair while flying");
 				return;
 			}
-			if(v.getAccessPanel().getSpeed() > 0.2) {
+			if(Math.abs(v.getAccessPanel().getSpeed()) > 0.2) {
 				p.sendMessage("§cCannot repair while moving");
 				return;
 			}
@@ -112,16 +114,8 @@ public class RepairManager implements Listener{
 	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
 	@SuppressWarnings("deprecation")
 	public void tick() {
-		for(Player p : repairing.keySet()) {
+		for(Player p : new java.util.ArrayList<>(repairing.keySet())) {
 			if(!p.getOpenInventory().getTitle().equalsIgnoreCase("§7Repair Vehicle")) {
-				stop(p);
-				continue;
-			}
-			inv.repairWindow(p.getOpenInventory().getTopInventory(), p, repairing.get(p), false, activeTool.get(p));
-		}
-		for(Player p : weaponRepair.keySet()) {
-			if(repairing.containsKey(p)) continue;
-			if(!p.getOpenInventory().getTitle().equalsIgnoreCase("§7Repair Weapon")) {
 				stop(p);
 				continue;
 			}
@@ -137,6 +131,7 @@ public class RepairManager implements Listener{
 		if(!h.getType().equals(VFGUI.REPAIR)) return;
 		ActiveVehicle v = manager.get(h.getId());
 		e.setCancelled(true);
+		if (v == null || e.getRawSlot() < 0 || e.getRawSlot() >= e.getView().getTopInventory().getSize()) return;
 		ItemStack i = e.getCurrentItem();
 		if(i == null) return;
 		ItemMeta m = i.getItemMeta();
@@ -172,7 +167,7 @@ public class RepairManager implements Listener{
 	}
 
 	public void repairComponent(Player p, ItemMeta m, NamespacedKey key, ActiveVehicle v ) {
-		Component type = Component.valueOf(m.getPersistentDataContainer().get(key, PersistentDataType.STRING).toUpperCase());
+		Component type = Component.valueOf(m.getPersistentDataContainer().get(key, PersistentDataType.STRING).toUpperCase(java.util.Locale.ROOT));
 		VehicleComponent c = v.getComponent(type);
 		if(c == null) return;
 		if(isBeingRepaired(c)) {
@@ -194,15 +189,19 @@ public class RepairManager implements Listener{
 			c.getHealthData().startRepair();
 			p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 1f, 1f);
 			beingRepaired.put(p, c);
+			repairing.put(p, v);
+			Object attempt = new Object();
+			repairAttempts.put(p, attempt);
 			new BukkitRunnable() {
 		        @SuppressWarnings("deprecation")
 				@Override
 		        public void run() {
-					if(v.isDestroyed()) return;
-		        	if(!beingRepaired.containsKey(p)) return;
+					if (repairAttempts.get(p) != attempt) return;
+					if(v.isDestroyed()) { stop(p); return; }
 		        	v.updateBoard();
 		        	beingRepaired.remove(p);
 					repairing.remove(p);
+					repairAttempts.remove(p);
 		        	p.sendMessage("§aRepaired §e"+Text.capitalize(c.getType().toString().toLowerCase()));
 		        	p.getWorld().playSound(p.getLocation(), Sound.BLOCK_ANVIL_USE, 1f, 1f);
 		        }
@@ -228,14 +227,17 @@ public class RepairManager implements Listener{
 			p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 1f, 1f);
 			repairing.put(p, v);
 			weaponRepair.put(p, w);
+			Object attempt = new Object();
+			repairAttempts.put(p, attempt);
 			new BukkitRunnable() {
 				@Override
 				public void run() {
-					if(v.isDestroyed()) return;
-					if(!weaponRepair.containsKey(p)) return;
+					if (repairAttempts.get(p) != attempt) return;
+					if(v.isDestroyed()) { stop(p); return; }
 					v.updateBoard();
 					weaponRepair.remove(p);
 					repairing.remove(p);
+					repairAttempts.remove(p);
 					p.sendMessage("§aRepaired §e"+w.getName());
 					p.getWorld().playSound(p.getLocation(), Sound.BLOCK_ANVIL_USE, 1f, 1f);
 				}

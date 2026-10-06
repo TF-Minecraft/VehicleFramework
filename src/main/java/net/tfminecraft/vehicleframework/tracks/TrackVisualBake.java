@@ -163,9 +163,6 @@ public final class TrackVisualBake {
 		int idx = start + offset;
 		if (loop) {
 			idx %= n;
-			if (idx < 0) {
-				idx += n;
-			}
 			return idx;
 		}
 		return idx;

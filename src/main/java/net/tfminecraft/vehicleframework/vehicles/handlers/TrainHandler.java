@@ -219,11 +219,15 @@ public class TrainHandler {
 			p.sendMessage("§cTarget train already has a car attached");
 			return false;
 		}
+		ActiveVehicle loco = locoOf(target);
+		if (loco == v) {
+			p.sendMessage("§cA train cannot be attached to itself or one of its own cars");
+			return false;
+		}
 		target.getTrainHandler().setChild(v);
 		v.setParent(target);
 		p.sendMessage("§aConnected car to train");
 		p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BIT, 1f, 1f);
-		ActiveVehicle loco = locoOf(target);
 		if (loco.getTrainHandler().isBound()) {
 			loco.getTrainHandler().placeLoadedCars();
 		} else {
@@ -350,17 +354,11 @@ public class TrainHandler {
 			return;
 		}
 		TrackRegistry registry = VehicleFramework.getTrackRegistry();
-		if (registry == null) {
-			return;
-		}
 		Map<UUID, Boolean> used = new LinkedHashMap<>();
 		List<CarPlacement> cars = planCars(used);
 		retainRoutes(cars, used);
 		int direction = controlDirection();
 		Position lead = leadingPosition(cars, direction);
-		if (lead == null) {
-			return;
-		}
 		TrackSpline spline = registry.get(lead.splineId()).orElse(null);
 		TrackJunction next = null;
 		double nearest = Double.POSITIVE_INFINITY;
@@ -531,9 +529,7 @@ public class TrainHandler {
 				.map(branch -> branch.id.toString()).orElse(null);
 		ThrottleTape.AppendResult result = recordingTape.tryAppend(
 				s, travelSign, throttle, spline.getId().toString(), junction, orientation);
-		int hold = recordingTape.getSamples().isEmpty()
-				? 0
-				: recordingTape.getSamples().get(recordingTape.getSamples().size() - 1).holdTicks;
+		int hold = recordingTape.getSamples().get(recordingTape.getSamples().size() - 1).holdTicks;
 		RecorderLog.sample(v, result, throttle, hold);
 		if (result == ThrottleTape.AppendResult.CAPPED) {
 			finishRecordingCappedOrUnbound("Recording stopped: tape is full");
@@ -545,9 +541,6 @@ public class TrainHandler {
 	}
 
 	private boolean onRecordedCircuit(TrackRegistry registry, TrackSpline spline) {
-		if (recordingTape == null || spline == null) {
-			return false;
-		}
 		if (recordingTape.matchesSpline(spline.getId())) {
 			return true;
 		}
@@ -1431,9 +1424,6 @@ public class TrainHandler {
 	}
 
 	private static int facingSign(Location loc, TrackPose pose) {
-		if (loc == null || pose == null) {
-			return 1;
-		}
 		Vector look = loc.getDirection().clone();
 		look.setY(0);
 		if (look.lengthSquared() < 1e-8) {

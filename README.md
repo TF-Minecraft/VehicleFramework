@@ -40,8 +40,14 @@ mvn -B --no-transfer-progress clean verify
 JUnit 5 and Mockito cover track geometry, train routing and placement, persistence,
 locomotive behaviour and other logic that runs without a server. They do not start a
 live Paper server or load ModelEngine models. The Build workflow runs the suite on pull
-requests targeting `main` and on pushes to `main` and uploads the Surefire reports. No coverage gate is
-enforced.
+requests targeting `main` and on pushes to `main` and uploads the Surefire reports. JaCoCo requires 100% line coverage across all production classes, with no
+coverage exclusions. HTML and XML reports are written to `target/site/jacoco/`
+and uploaded by the Build workflow.
+
+bStats is bundled from the upstream `bstats-bukkit:3.1.0` Maven artifact and
+relocated into the plugin's namespace. This replaces the same-version vendored
+copy; third-party dependency bytecode is outside the plugin's production-source
+coverage denominator. Metrics configuration and lifecycle integration remain tested.
 
 ## License
 

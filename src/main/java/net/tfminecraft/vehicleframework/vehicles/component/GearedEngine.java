@@ -65,7 +65,9 @@ public class GearedEngine extends VehicleComponent{
 			ConfigurationSection particleConfig = config.getConfigurationSection("particles");
 			particles = ParticleLoader.getParticlesFromConfig(particleConfig);
 		}
-		if(!config.isConfigurationSection("gears")) VFLogger.log("Geared engine has no gears!");
+		if (!config.isConfigurationSection("gears") || config.getConfigurationSection("gears").getKeys(false).isEmpty()) {
+			throw new IllegalArgumentException("Geared engine requires at least one gear");
+		}
 		Set<String> set = config.getConfigurationSection("gears").getKeys(false);
 
 		List<String> list = new ArrayList<String>(set);
@@ -74,6 +76,9 @@ public class GearedEngine extends VehicleComponent{
 			gears.add(new Gear(this, config.getConfigurationSection("gears."+key)));
 		}
 		currentGear = config.getInt("start-gear", 0);
+		if (currentGear < 0 || currentGear >= gears.size()) {
+			throw new IllegalArgumentException("start-gear must refer to a configured gear");
+		}
 		defaultGear = currentGear;
 		boneList = (List<String>) config.getList("particle-bones", new ArrayList<String>());
 		tank = new FuelTank(config);
@@ -187,7 +192,6 @@ public class GearedEngine extends VehicleComponent{
 	}
 	
 	private void shift(int dir) {
-		if(shifting) return;
 		shifting = true;
 		new BukkitRunnable() {
 			int i = 0;
@@ -276,8 +280,6 @@ public class GearedEngine extends VehicleComponent{
 		}
 		int current = g.getThrottle().getCurrent();
 		AccessPanel panel = v.getAccessPanel();
-		panel.setSpeed(getSpeed());
-		panel.setTurnRate(getTurnRate());
 		boolean reverse = false;
 		if(current < 0) {
 			current = current*-1;
@@ -290,7 +292,7 @@ public class GearedEngine extends VehicleComponent{
 			}
 			getGear().getThrottle().setThrottle(current);
 		}
-		panel.setReverse(reverse);
+		if(healthData.getHealthPercentage() < 1 && started) stop();
 		if (tapeThrottle == null) {
 			if (v == null || !v.isTrain() || v.hasParent() || !v.getTrainHandler().isRecording()) {
 				normalize(g);
@@ -299,6 +301,13 @@ public class GearedEngine extends VehicleComponent{
 				v.getTrainHandler().maybeRecordSample(g.getThrottle().getCurrent());
 			}
 		}
+		if (tank.useFuel() && tank.getCurrent() == 0) {
+			if (started) stop();
+			g.getThrottle().setThrottle(0);
+		}
+		panel.setSpeed(getSpeed());
+		panel.setTurnRate(getTurnRate());
+		panel.setReverse(g.getThrottle().getCurrent() < 0);
 		if(g.getThrottle().getCurrent() == 0) {
 			return;
 		}
@@ -311,16 +320,12 @@ public class GearedEngine extends VehicleComponent{
 		if (v != null && v.getEntity() != null && !bones.isEmpty()) {
 			PersistenceLog.particleOffset(v, bones.get(0).getBaseLocation(), v.getEntity().getLocation());
 		}
-		if(healthData.getHealthPercentage() < 1 && started) stop();
-		if(tank.getCurrent() == 0 && tank.useFuel()) {
-			if(started) {
-				stop();
-			} else {
-				getGear().getThrottle().setThrottle(0);
-			}
-		}
 	}
 	
+	double rollStartChance() {
+		return Math.random() * 100;
+	}
+
 	public void start(Player p) {
 		if(starting) return;
 		if(cooldown.containsKey(p)) {
@@ -334,7 +339,7 @@ public class GearedEngine extends VehicleComponent{
 		}
 		starting = true;
 		p.sendMessage("§e["+alias+"] starting...");
-		if(Math.random()*100 > healthData.getHealthPercentage()) {
+		if(rollStartChance() > healthData.getHealthPercentage()) {
 			if(!v.hasEffect(CustomAction.ENGINE_START_FAIL)) defaultFail(p);
 			else {
 				CustomEffect effect = v.playEffect(CustomAction.ENGINE_START_FAIL);

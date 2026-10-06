@@ -34,6 +34,7 @@ public class CommandManager implements Listener, CommandExecutor{
 	@Override
 	public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
 		if(cmd.getName().equalsIgnoreCase(cmd1)) {
+			if (args.length == 0) return false;
 			if(args.length >= 1 && args[0].equalsIgnoreCase("track")) {
 				return TrackCommands.handle(sender, args);
 			}

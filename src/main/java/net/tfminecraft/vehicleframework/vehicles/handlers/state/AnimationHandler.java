@@ -23,7 +23,7 @@ public class AnimationHandler {
 	
 	public AnimationHandler(ConfigurationSection config) {
 		for (Animation animation : Animation.values()) {
-	        String enumString = animation.name().toLowerCase();
+	        String enumString = animation.name().toLowerCase(java.util.Locale.ROOT);
 	        if (config.contains(enumString)) {
 	            animations.put(animation, config.getStringList(enumString));
 	        } else {
@@ -202,8 +202,8 @@ public class AnimationHandler {
 	public void stop(Animation a) {
 		for(String s : animations.get(a)) {
 			BlueprintAnimation anim = m.getBlueprint().getAnimations().get(s);
-			if(anim == null) return;
-			if(!m.getAnimationHandler().isPlayingAnimation(s)) return;
+			if(anim == null) continue;
+			if(!m.getAnimationHandler().isPlayingAnimation(s)) continue;
 			m.getAnimationHandler().stopAnimation(s);
 		}	
 	}

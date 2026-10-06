@@ -67,7 +67,7 @@ public class SoundData {
 	            // Calculate the relative velocity along the direction of the sound
 	            Vector relativePosition = loc.toVector().subtract(playerLoc.toVector()); // Source to listener
 	            double distance = relativePosition.length(); // Normalize to get direction
-	            relativePosition.normalize();
+	            if (distance > 0) relativePosition.multiply(1.0 / distance);
 
 	            // Project the speed and player velocity onto the direction vector
 	            double sourceVelocity = speed.dot(relativePosition); // Source velocity along line of sight

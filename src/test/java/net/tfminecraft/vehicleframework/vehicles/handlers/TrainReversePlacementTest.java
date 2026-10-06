@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
@@ -20,8 +21,11 @@ import java.util.UUID;
 import java.util.Optional;
 
 import org.bukkit.Location;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.util.Vector;
@@ -36,6 +40,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.MockedStatic;
 
 import com.ticxo.modelengine.api.model.bone.SimpleManualAnimator;
 import com.ticxo.modelengine.api.model.bone.ModelBone;
@@ -65,6 +70,7 @@ class TrainReversePlacementTest {
     private Object previousRegistry;
     private TrackRegistry registry;
     private TrackStore store;
+    private MockedStatic<Bukkit> bukkit;
 
     @ParameterizedTest
     @ValueSource(doubles = {10, 20, 40})
@@ -117,6 +123,9 @@ class TrainReversePlacementTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        // Default track particles ask Paper to construct BlockData, even in a physics-only fixture.
+        bukkit = mockStatic(Bukkit.class);
+        bukkit.when(() -> Bukkit.createBlockData(any(Material.class))).thenReturn(mock(BlockData.class));
         registryField = VehicleFramework.class.getDeclaredField("trackRegistry");
         registryField.setAccessible(true);
         previousRegistry = registryField.get(null);
@@ -128,6 +137,7 @@ class TrainReversePlacementTest {
     @AfterEach
     void restoreRegistry() throws Exception {
         registryField.set(null, previousRegistry);
+        bukkit.close();
     }
 
     @Test

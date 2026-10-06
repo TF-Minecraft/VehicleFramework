@@ -22,7 +22,7 @@ public class ParticleData {
 	
 	public ParticleData(ConfigurationSection config) {
 		try {
-			particle = Particle.valueOf(config.getString("particle", "FLAME").toUpperCase());
+			particle = Particle.valueOf(config.getString("particle", "FLAME").toUpperCase(java.util.Locale.ROOT));
 		} catch (Exception e) {
 			// TODO: handle exception
 			particle = Particle.FLAME;

@@ -86,7 +86,8 @@ public final class TrackBuildAnimator {
 				continue;
 			}
 			Player payer = job.playerId == null ? null : Bukkit.getPlayer(job.playerId);
-			if (TrackPieces.pays(payer) && !TrackPieces.consumeOne(payer)) {
+			if ((job.playerId != null && payer == null)
+					|| (TrackPieces.pays(payer) && !TrackPieces.consumeOne(payer))) {
 				it.remove();
 				persist(job);
 				if (payer != null && payer.isOnline()) {
@@ -240,14 +241,11 @@ public final class TrackBuildAnimator {
 		}
 
 		private static List<TrackVisual> bakePoints(List<double[]> points) {
-			if (points == null || points.size() < 2) {
-				return List.of();
-			}
 			return TrackSpline.fromPoints(UUID.randomUUID(), "world", false, points).visuals();
 		}
 
 		private boolean joinsAtKeepEnd() {
-			if (keep.isEmpty() || stroke.size() < 2) {
+			if (keep.isEmpty()) {
 				return false;
 			}
 			double[] a = keep.get(keep.size() - 1);
@@ -270,12 +268,9 @@ public final class TrackBuildAnimator {
 			if (world == null) {
 				return;
 			}
-			float yaw = 0;
 			int at = Math.min(revealed, stroke.size()) - 1;
-			if (at >= 1) {
-				double[] a = stroke.get(at - 1);
-				yaw = (float) Math.toDegrees(Math.atan2(-(p[0] - a[0]), p[2] - a[2]));
-			}
+			double[] a = stroke.get(at - 1);
+			float yaw = (float) Math.toDegrees(Math.atan2(-(p[0] - a[0]), p[2] - a[2]));
 			TrackFx.place(world, new TrackPose(p[0], p[1], p[2], yaw, 0));
 			if (!Cache.trackBuildSwing) {
 				return;

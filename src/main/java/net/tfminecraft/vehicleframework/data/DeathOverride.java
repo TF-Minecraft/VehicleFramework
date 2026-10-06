@@ -13,7 +13,7 @@ public class DeathOverride {
 	
 	public DeathOverride(ConfigurationSection config) {
 		conditions = config.getStringList("conditions");
-		death = VehicleDeath.valueOf(config.getString("type").toUpperCase());
+		death = VehicleDeath.valueOf(config.getString("type").toUpperCase(java.util.Locale.ROOT));
 	}
 
 	public List<String> getConditions() {

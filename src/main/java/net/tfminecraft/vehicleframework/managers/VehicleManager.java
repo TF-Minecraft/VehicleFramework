@@ -578,8 +578,8 @@ public class VehicleManager implements Listener{
 	@EventHandler
 	public void swap(PlayerSwapHandItemsEvent e) {
 		Player p = e.getPlayer();
-		if(get(p) == null) return;
-		ActiveVehicle v = get(p);
+		ActiveVehicle v = mountedVehicle(p);
+		if(v == null) return;
 		v.key(p, Keybind.SWAP);
 	}
 	// Keep the existing legacy text representation, formatting, and exact-string comparisons.

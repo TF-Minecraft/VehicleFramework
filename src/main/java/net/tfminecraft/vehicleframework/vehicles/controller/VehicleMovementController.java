@@ -270,9 +270,6 @@ public class VehicleMovementController implements MovementInterface{
 	}
 	
 	private boolean applyTerrainFollow(Direction dir) {
-		if (state.isBreakState()) {
-			return false;
-		}
 		if (state.isDefault()) {
 			return false;
 		}

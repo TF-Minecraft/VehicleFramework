@@ -107,7 +107,8 @@ public final class VehicleSqliteBackup {
 
 	public static File findNewestValid(File backupDir) {
 		List<File> snapshots = listSnapshots(backupDir);
-		snapshots.sort(Comparator.comparingLong(File::lastModified).reversed());
+		snapshots.sort(Comparator.comparingLong(File::lastModified).reversed()
+				.thenComparing(VehicleSqliteBackup::compareSnapshotNames));
 		for (File snapshot : snapshots) {
 			if (isValidDatabase(snapshot)) {
 				return snapshot;
@@ -117,39 +118,53 @@ public final class VehicleSqliteBackup {
 	}
 
 	public static boolean isValidDatabase(File dbFile) {
-		if (dbFile == null || !dbFile.isFile()) {
+		if (dbFile == null || !dbFile.isFile() || dbFile.length() == 0) {
 			return false;
 		}
-		VehicleRepository repository = null;
-		try {
-			repository = VehicleRepository.open(dbFile);
-			return true;
-		} catch (RuntimeException ignored) {
-			return false;
-		} finally {
-			if (repository != null) {
-				try {
-					repository.close();
-				} catch (Exception ignored) {
-				}
+		String url = "jdbc:sqlite:" + dbFile.toPath().toAbsolutePath().toUri().toASCIIString() + "?mode=ro";
+		try (java.sql.Connection connection = java.sql.DriverManager.getConnection(url);
+				java.sql.Statement statement = connection.createStatement()) {
+			try (java.sql.ResultSet check = statement.executeQuery("PRAGMA quick_check")) {
+				if (!check.next() || !"ok".equalsIgnoreCase(check.getString(1)) || check.next()) return false;
 			}
+			// Require the original vehicle schema. Later name/owner columns can be migrated on restore.
+			try (java.sql.ResultSet schema = statement.executeQuery(
+					"SELECT uuid,type_id,world,x,y,z,yaw,chunk_x,chunk_z,payload_json,schema_version,revision,deleted,updated_at FROM vehicles LIMIT 0")) {
+				return true;
+			}
+		} catch (java.sql.SQLException invalid) {
+			return false;
 		}
 	}
 
 	public static void replaceLive(File liveFile, File backupFile) throws IOException {
-		File parent = liveFile.getParentFile();
-		if (parent != null) {
-			parent.mkdirs();
+		File parent = liveFile.getAbsoluteFile().getParentFile();
+		Files.createDirectories(parent.toPath());
+		java.nio.file.Path staged = Files.createTempFile(parent.toPath(), "vehicles-restore-", ".db");
+		try (java.io.Closeable cleanup = () -> Files.deleteIfExists(staged)) {
+			// Finish reading the backup before touching the live database or its journal.
+			Files.copy(backupFile.toPath(), staged, StandardCopyOption.REPLACE_EXISTING);
+			File original = sidelineCorrupt(liveFile);
+			try {
+				Files.move(staged, liveFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			} catch (IOException installFailure) {
+				if (original != null) {
+					try {
+						Files.move(original.toPath(), liveFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+					} catch (IOException restoreFailure) {
+						installFailure.addSuppressed(restoreFailure);
+					}
+				}
+				throw installFailure;
+			}
+			deleteSidecar(liveFile, "-wal");
+			deleteSidecar(liveFile, "-shm");
 		}
-		sidelineCorrupt(liveFile);
-		deleteSidecar(liveFile, "-wal");
-		deleteSidecar(liveFile, "-shm");
-		Files.copy(backupFile.toPath(), liveFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
 	}
 
-	private static void sidelineCorrupt(File liveFile) {
+	private static File sidelineCorrupt(File liveFile) throws IOException {
 		if (!liveFile.exists()) {
-			return;
+			return null;
 		}
 		File corrupt = new File(
 				liveFile.getParentFile(),
@@ -162,12 +177,9 @@ public final class VehicleSqliteBackup {
 			suffix++;
 		}
 		if (!liveFile.renameTo(corrupt)) {
-			try {
-				Files.move(liveFile.toPath(), corrupt.toPath(), StandardCopyOption.REPLACE_EXISTING);
-			} catch (IOException ignored) {
-				liveFile.delete();
-			}
+			Files.move(liveFile.toPath(), corrupt.toPath(), StandardCopyOption.REPLACE_EXISTING);
 		}
+		return corrupt;
 	}
 
 	private static void deleteSidecar(File liveFile, String suffix) {

@@ -268,10 +268,8 @@ class TerrainFollowMathTest {
 	@Test
 	void raiseThenSlide_raiseBlocked_backsThenRaises() {
 		TerrainFollowMath.OffsetYBlocked lip = (ox, oz, y) -> {
-			if (Math.abs(ox) < 1e-6) {
-				return y > 160.0 + 1e-6;
-			}
-			return ox > -0.09;
+			// Backing away is clear at ground height; the lip blocks lifting until backed 0.1.
+			return y > 160.0 + 1e-6 ? ox > -0.09 : ox > 1e-6;
 		};
 		TerrainFollowMath.KinematicMove move = TerrainFollowMath.raiseThenSlide(
 				0.65, 0.0, 160.0, 160.0, 160.0, 161.0, 0.25, lip, false);

@@ -47,10 +47,6 @@ public final class TrackToolListener implements Listener {
 			}
 			return;
 		}
-		if (layer && !TrackSupport.isValidClick(block)) {
-			player.sendMessage("§cClick solid ground, not grass or plants.");
-			return;
-		}
 		if (at == null) {
 			if (layer) {
 				player.sendMessage("§cClick solid ground, not grass or plants.");

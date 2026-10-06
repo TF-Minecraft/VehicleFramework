@@ -33,9 +33,7 @@ public class VFX {
 	}
 	
 	public void updateModel(ActiveModel m) {
-		for(ModelBone bone : modelBones) {
-			bone = m.getBone(bone.getBoneId()).get();
-		}
+		modelBones.replaceAll(bone -> m.getBone(bone.getBoneId()).orElse(bone));
 	}
 
 	public List<String> getBoneList() {

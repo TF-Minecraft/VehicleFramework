@@ -40,12 +40,15 @@ public class InventoryManager {
 	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
 	@SuppressWarnings("deprecation")
 	public void seatSelection(Inventory i, Player p, ActiveVehicle v, boolean open) {
-		if(open) {
-			i = VehicleFramework.plugin.getServer().createInventory(new VFInventoryHolder(v.getUUID(), VFGUI.SEAT_SELECTION), 27, "§7Select Seat");
+		int size = Math.max(27, ((v.getSeatHandler().getSeats().size() + 10) / 9) * 9);
+		if(open || i.getSize() < size) {
+			i = VehicleFramework.plugin.getServer().createInventory(new VFInventoryHolder(v.getUUID(), VFGUI.SEAT_SELECTION), size, "§7Select Seat");
+			open = true;
 		}
+		i.clear();
 		int x = 0;
 		for(Seat seat : v.getSeatHandler().getSeats()) {
-			if(x == 25) x++; // slot 25 is reserved for ownership settings
+			if(x == 25) x += 2; // ownership and dismount controls
 			i.setItem(x, getSeatItem(v, seat));
 			x++;
 		}

@@ -74,11 +74,8 @@ public final class TrackRegistry {
 		splines.clear();
 		junctions.clear();
 		for (TrackSpline spline : store.loadAll()) {
-			TrackSpline promoted = spline.promotedLoop(Cache.trackJoinDistance);
-			splines.put(promoted.getId(), promoted);
-			if (promoted.isLoop() && !spline.isLoop()) {
-				store.save(promoted);
-			}
+			// TrackSpline.fromJson already promotes legacy closed polylines.
+			splines.put(spline.getId(), spline);
 		}
 		for (TrackStore.LoadedJunction loaded : store.loadAllJunctions()) {
 			TrackJunction junction = loaded.junction;
@@ -108,7 +105,7 @@ public final class TrackRegistry {
 		}
 	}
 
-	public TrackLayResult lay(
+    public TrackLayResult lay(
 			String world,
 			double ax, double ay, double az,
 			double bx, double by, double bz) throws TrackLayException {
@@ -120,6 +117,14 @@ public final class TrackRegistry {
 			World bukkitWorld,
 			double ax, double ay, double az,
 			double bx, double by, double bz) throws TrackLayException {
+		return lay(world, bukkitWorld, ax, ay, az, bx, by, bz, Integer.MAX_VALUE);
+	}
+
+	/** Connections must be affordable in full because they merge existing track records. */
+	public TrackLayResult lay(
+			String world, World bukkitWorld,
+			double ax, double ay, double az,
+			double bx, double by, double bz, int connectionBudget) throws TrackLayException {
 		Optional<TrackEnd> atA = findEnd(world, ax, ay, az);
 		Optional<TrackEnd> atB = findEnd(world, bx, by, bz);
 		TrackLog.layAttempt(world, ax, ay, az, bx, by, bz, atA.isPresent(), atB.isPresent());
@@ -127,13 +132,13 @@ public final class TrackRegistry {
 			if (atA.isPresent() && atB.isPresent()
 					&& atA.get().spline.getId().equals(atB.get().spline.getId())
 					&& atA.get().prepend != atB.get().prepend) {
-				StrokeLay laid = closeLoop(atA.get(), atB.get(), bukkitWorld);
+				StrokeLay laid = closeLoop(atA.get(), atB.get(), bukkitWorld, connectionBudget);
 				TrackLog.layOk(laid.spline, "loop");
 				return finishLay(TrackLayResult.of(TrackLayResult.Kind.CONNECT, laid.spline, laid.stroke, 0));
 			}
 			if (atA.isPresent() && atB.isPresent()
 					&& !atA.get().spline.getId().equals(atB.get().spline.getId())) {
-				StrokeLay laid = connect(atA.get(), atB.get(), bukkitWorld);
+				StrokeLay laid = connect(atA.get(), atB.get(), bukkitWorld, connectionBudget);
 				TrackLog.layOk(laid.spline, "connect");
 				return finishLay(TrackLayResult.of(TrackLayResult.Kind.CONNECT, laid.spline, laid.stroke, 0));
 			}
@@ -422,11 +427,12 @@ public final class TrackRegistry {
 		return Math.hypot(b[0] - a[0], b[2] - a[2]);
 	}
 
-	private StrokeLay closeLoop(TrackEnd from, TrackEnd to, World bukkitWorld) throws TrackLayException {
+	private StrokeLay closeLoop(TrackEnd from, TrackEnd to, World bukkitWorld, int connectionBudget) throws TrackLayException {
 		TrackSpline spline = from.spline;
 		TrackSample originA = from.prepend ? spline.first() : spline.last();
 		TrackSample originB = to.prepend ? spline.first() : spline.last();
 		List<double[]> extra = joinCurve(from, originA, to, originB);
+		requireConnectionBudget(extra, connectionBudget);
 		TrackClearance.check(bukkitWorld, extra, this, Set.of(spline.getId()));
 		// Close the loop in the track's own direction. Reversing it would turn
 		// round any train on it and leave its junctions facing the wrong way.
@@ -449,7 +455,7 @@ public final class TrackRegistry {
 		return new StrokeLay(replace(next), extra, 0);
 	}
 
-	private StrokeLay connect(TrackEnd from, TrackEnd to, World bukkitWorld) throws TrackLayException {
+	private StrokeLay connect(TrackEnd from, TrackEnd to, World bukkitWorld, int connectionBudget) throws TrackLayException {
 		// Laid from `from` to `to`, joining from a start reverses `from` and
 		// joining to an end reverses `to`. Building the joined track the other
 		// way round flips both. Trains face +s, so a track with a train on it
@@ -473,6 +479,7 @@ public final class TrackRegistry {
 		TrackSample originA = from.prepend ? from.spline.first() : from.spline.last();
 		TrackSample originB = to.prepend ? to.spline.first() : to.spline.last();
 		List<double[]> extra = joinCurve(from, originA, to, originB);
+		requireConnectionBudget(extra, connectionBudget);
 		TrackClearance.check(
 				bukkitWorld, extra, this, Set.of(from.spline.getId(), to.spline.getId()));
 		List<double[]> fromPart = points(from.spline, keepReversed);
@@ -510,6 +517,13 @@ public final class TrackRegistry {
 		rebuilt.accept(oldKeep, List.of(stored));
 		rebuilt.accept(oldDrop, List.of(stored));
 		return new StrokeLay(stored, extra, 0);
+	}
+
+	private static void requireConnectionBudget(List<double[]> stroke, int budget) throws TrackLayException {
+		int cost = TrackPieces.cost(stroke);
+		if (cost > budget) {
+			throw new TrackLayException("You need " + cost + " track to complete this connection (have " + budget + ").");
+		}
 	}
 
 	/** The stroke from one track end to another, leaving the first and entering the second along their own headings. */
@@ -626,9 +640,6 @@ public final class TrackRegistry {
 				throw new TrackLayException("Junction already has a branch");
 			}
 			TrackSpline stem = splines.get(junction.stemSplineId);
-			if (stem == null) {
-				throw new TrackLayException("Junction stem track is missing");
-			}
 			ensureFrogClear(stem, junction.s, junction.id);
 			TrackPose pose = stem.sampleAt(junction.s);
 			float yaw = pose.yaw;
@@ -723,12 +734,9 @@ public final class TrackRegistry {
 	}
 
 	private static TrackJunction.Side branchSide(float yaw, List<double[]> extra) {
-		if (extra.size() >= 2) {
-			double[] a = extra.get(0);
-			double[] b = extra.get(1);
-			return TrackJunction.sideFrom(yaw, b[0] - a[0], b[2] - a[2]);
-		}
-		return TrackJunction.Side.RIGHT;
+		double[] a = extra.get(0);
+		double[] b = extra.get(1);
+		return TrackJunction.sideFrom(yaw, b[0] - a[0], b[2] - a[2]);
 	}
 
 	public boolean delete(UUID id) {
@@ -987,9 +995,6 @@ public final class TrackRegistry {
 		}
 		for (UUID junctionId : drop) {
 			TrackJunction junction = junctions.remove(junctionId);
-			if (junction == null) {
-				continue;
-			}
 			TrackSpline stem = splines.get(junction.stemSplineId);
 			String world = stem != null ? stem.getWorld() : "unknown";
 			store.deleteJunction(world, junctionId);
@@ -1002,9 +1007,6 @@ public final class TrackRegistry {
 	}
 
 	private static double polylineLength(List<double[]> points) {
-		if (points == null || points.size() < 2) {
-			return 0;
-		}
 		double len = 0;
 		for (int i = 1; i < points.size(); i++) {
 			double[] a = points.get(i - 1);
@@ -1205,9 +1207,6 @@ public final class TrackRegistry {
 	}
 
 	private DigResult removeJunctionTurnout(TrackJunction junction, World bukkitWorld) {
-		if (junction == null) {
-			return DigResult.none();
-		}
 		UUID branchId = junction.branchSplineId;
 		deleteJunction(junction.id);
 		if (branchId == null) {
@@ -1263,9 +1262,6 @@ public final class TrackRegistry {
 	}
 
 	private boolean isFullyNestedInLongerTrack(TrackSpline candidate) {
-		if (candidate.getSamples().size() < 2) {
-			return false;
-		}
 		for (TrackSpline host : inWorld(candidate.getWorld())) {
 			if (host.getId().equals(candidate.getId())) {
 				continue;

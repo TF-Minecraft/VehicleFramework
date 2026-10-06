@@ -36,7 +36,7 @@ public final class VehicleHealthDecay {
 		}
 		double fraction = Math.max(0.0, fractionOfMax);
 		double minRemaining = Math.max(0.0, Math.min(1.0, minHealthFraction));
-		double maxAllowedDamage = maxHealth * (1.0 - minRemaining);
+		double maxAllowedDamage = Math.max(currentDamage, maxHealth * (1.0 - minRemaining));
 		double next = currentDamage + maxHealth * fraction;
 		if (next > maxAllowedDamage) {
 			next = maxAllowedDamage;

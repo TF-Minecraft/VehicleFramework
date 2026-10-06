@@ -16,7 +16,7 @@ public class ItemModel implements ProjectileModel{
 	private int model;
 	
 	public ItemModel(ConfigurationSection config) {
-		material = Material.valueOf(config.getString("material").toUpperCase());
+		material = Material.valueOf(config.getString("material").toUpperCase(java.util.Locale.ROOT));
 		small = config.getBoolean("small", false);
 		model = config.getInt("model-data", 0);
 	}

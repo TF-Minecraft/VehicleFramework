@@ -65,10 +65,7 @@ public final class ActiveVehicleSnapshotFactory {
 			String message = ex.getMessage();
 			return SnapshotAttempt.fail(message == null || message.isBlank() ? "encode failed" : "encode failed: " + message);
 		}
-		if (payload == null || payload.isBlank()) {
-			return SnapshotAttempt.fail("empty payload");
-		}
-		String owner = vehicle.getOwnerData() == null ? "none" : vehicle.getOwnerData().getOwner();
+		String owner = vehicle.getOwnerData().getOwner();
 		double x = loc.getX();
 		double z = loc.getZ();
 		return SnapshotAttempt.ok(new VehicleSnapshot(
@@ -166,7 +163,7 @@ public final class ActiveVehicleSnapshotFactory {
 				default:
 					break;
 			}
-			componentsObject.put(type.toString().toLowerCase(), componentData);
+			componentsObject.put(type.toString().toLowerCase(java.util.Locale.ROOT), componentData);
 		}
 		vehicleData.put("components", componentsObject);
 

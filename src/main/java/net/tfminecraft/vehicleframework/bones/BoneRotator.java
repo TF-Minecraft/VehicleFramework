@@ -213,7 +213,7 @@ public class BoneRotator {
 	}
 	
 	public void normalize(boolean nx, boolean ny, boolean nz) {
-		rotateToTarget(0f, 0f, 0f, 2f, true, true, true);
+		rotateToTarget(0f, 0f, 0f, 1f, ny, nx, nz);
 	}
 	
 	public AxisAngle4d getAngles() {

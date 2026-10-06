@@ -464,7 +464,17 @@ public final class VehicleRepository {
 		if (work == null) {
 			return;
 		}
-		database.runTransaction(connection -> work.run());
+		try {
+			database.runTransaction(connection -> work.run());
+		} catch (RuntimeException failure) {
+			// Row mutations update this cache eagerly; rollback must restore it too.
+			try {
+				rebuildOccupiedChunks();
+			} catch (RuntimeException indexFailure) {
+				failure.addSuppressed(indexFailure);
+			}
+			throw failure;
+		}
 	}
 
 	private static StoredVehicleMeta toMeta(VehicleSnapshot snapshot) {

@@ -101,7 +101,7 @@ public final class TrainTapeInteract {
 	private static boolean eject(Player player, TrainHandler train) {
 		ThrottleTape tape = train.getInstalledTape();
 		ItemStack item = TLibs.getItemAPI().getCreator().getItemFromPath(Cache.trackRecorderItem);
-		if (item == null) {
+		if (item == null || item.getType().isAir()) {
 			player.sendMessage("§cCould not create a recorder item");
 			return true;
 		}

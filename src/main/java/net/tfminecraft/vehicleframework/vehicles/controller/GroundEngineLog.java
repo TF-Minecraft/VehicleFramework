@@ -43,15 +43,12 @@ public final class GroundEngineLog {
 		if (dataFolder != null) {
 			logFile = dataFolder.toPath().resolve(LOG_DIRECTORY).resolve(LOG_FILE_NAME);
 		}
-		if (wipeLog) {
+		if (wipeLog && logFile != null) {
 			wipeLogFile();
 		}
 	}
 
 	private static void wipeLogFile() {
-		if (logFile == null) {
-			return;
-		}
 		synchronized (LOCK) {
 			try {
 				Files.deleteIfExists(logFile);
@@ -81,15 +78,11 @@ public final class GroundEngineLog {
 			return "";
 		}
 		Gear gear = engine.getGear();
-		Throttle throttle = gear == null ? null : gear.getThrottle();
-		String thr = formatThrottle(throttle);
-		if (thr.isEmpty()) {
-			return "";
-		}
+		String thr = formatThrottle(gear.getThrottle());
 		return String.format(
 				"gear=%d gearName=%s %s shifting=%s started=%s",
 				engine.getCurrentGear(),
-				gear == null ? "null" : gear.getName(),
+				gear.getName(),
 				thr,
 				engine.isShifting(),
 				engine.isStarted());

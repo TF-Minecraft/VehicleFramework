@@ -81,6 +81,9 @@ public final class TrackResettle {
 			}
 			double next;
 			if (inBand) {
+				if (sit > hi + 1e-4) {
+					break;
+				}
 				next = sit;
 			} else if (to[1] < lo) {
 				next = lo;
@@ -92,9 +95,6 @@ public final class TrackResettle {
 					break;
 				}
 				next = sit;
-			}
-			if (Math.abs(next - to[1]) < 1e-4) {
-				break;
 			}
 			to[1] = next;
 			changed++;

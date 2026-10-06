@@ -38,7 +38,7 @@ public final class WeaponAimOffset {
 		float yaw = ConvertedAngle.wrapDegrees(desired.getYaw() + bodyYaw);
 		float pitch = desired.getPitch();
 		float roll = desired.getRoll();
-		String axis = headAxis == null ? "x" : headAxis.toLowerCase();
+		String axis = headAxis == null ? "x" : headAxis.toLowerCase(java.util.Locale.ROOT);
 		if (axis.equals("z")) {
 			pitch = ConvertedAngle.wrapDegrees(pitch + headRoll);
 		} else if (axis.equals("y")) {

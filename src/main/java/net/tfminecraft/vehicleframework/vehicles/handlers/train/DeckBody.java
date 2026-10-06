@@ -217,6 +217,7 @@ public final class DeckBody {
 				display.getPersistentDataContainer().set(k, PersistentDataType.STRING, owner);
 			}
 		});
+		carriers.add(carrier);
 		Shulker shulker = world.spawn(at, Shulker.class, s -> {
 			s.setPersistent(false);
 			s.setRemoveWhenFarAway(false);
@@ -235,14 +236,13 @@ public final class DeckBody {
 				s.getPersistentDataContainer().set(k, PersistentDataType.STRING, owner);
 			}
 		});
+		boxes.add(shulker);
 		if (!carrier.isValid() || !shulker.isValid()) {
-			carrier.remove();
-			shulker.remove();
 			throw new IllegalStateException("deck box spawn was cancelled");
 		}
-		carrier.addPassenger(shulker);
-		carriers.add(carrier);
-		boxes.add(shulker);
+		if (!carrier.addPassenger(shulker)) {
+			throw new IllegalStateException("deck box mount was cancelled");
+		}
 		PARTS.put(carrier.getUniqueId(), v);
 		PARTS.put(shulker.getUniqueId(), v);
 	}

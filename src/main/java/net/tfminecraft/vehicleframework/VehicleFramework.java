@@ -25,7 +25,7 @@ import net.tfminecraft.vehicleframework.loaders.DeathTemplateLoader;
 import net.tfminecraft.vehicleframework.managers.CommandManager;
 import net.tfminecraft.vehicleframework.managers.VehicleManager;
 import net.tfminecraft.vehicleframework.protocol.VehiclePacketListener;
-import net.tfminecraft.vehicleframework.util.Metrics;
+import org.bstats.bukkit.Metrics;
 import net.tfminecraft.vehicleframework.util.MythicMobsIntegration;
 import net.tfminecraft.vehicleframework.util.TabCompletion;
 import net.tfminecraft.vehicleframework.tracks.TrackBuildAnimator;
@@ -187,7 +187,7 @@ public class VehicleFramework extends JavaPlugin{
 		configLoader.load(new File(getDataFolder(), "config.yml"));
 		trainsLoader.load(new File(getDataFolder(), "trains.yml"));
 		VFLogger.info("Loading fuel...");
-		fuelLoader.load(new File(getDataFolder(), "fuel.yml"));
+		fuelLoader.reload(new File(getDataFolder(), "fuel.yml"));
 		weaponTemplateLoader.clear();
 		VFLogger.info("Loading weapon templates...");
 		weaponTemplateLoader.loadFolder(new File(getDataFolder(), "templates/weapons"));
@@ -201,19 +201,11 @@ public class VehicleFramework extends JavaPlugin{
 		deathTemplateLoader.loadFolder(new File(getDataFolder(), "templates/death"));
 		File folder = new File(getDataFolder(), "vehicles");
 		VFLogger.info("Loading vehicles...");
-    	for (final File file : folder.listFiles()) {
-    		if(!file.isDirectory()) {
-    			vehicleLoader.load(file);
-    		}
-    	}
+		vehicleLoader.reload(folder);
 		
     	folder = new File(getDataFolder(), "ammunition");
 		VFLogger.info("Loading ammunition...");
-    	for (final File file : folder.listFiles()) {
-    		if(!file.isDirectory()) {
-    			ammunitionLoader.load(file);
-    		}
-    	}
+		ammunitionLoader.reload(folder);
 		GroundEngineLog.configure(Cache.groundEngineLogging, Cache.wipeLog, getDataFolder());
 		TrackLog.configure(Cache.debugLogging, Cache.debugLogging, getDataFolder());
 		PersistenceLog.configure(Cache.persistenceLogging, getDataFolder());

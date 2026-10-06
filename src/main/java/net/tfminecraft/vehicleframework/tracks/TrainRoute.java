@@ -91,10 +91,6 @@ public final class TrainRoute {
 				return new Walk(at, left, false, crossed);
 			}
 			if (fromBranch) {
-				TrackSpline stem = registry.get(next.stemSplineId).orElse(null);
-				if (stem == null) {
-					return new Walk(at, left, false, crossed);
-				}
 				crossed.put(next.id, true);
 				at = new Position(next.stemSplineId, next.s, at.orientation() * next.facingSign);
 				atPoint.add(next.id);

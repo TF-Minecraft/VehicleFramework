@@ -53,7 +53,7 @@ public class AmmunitionData {
 		radius = config.getInt("radius", 5);
 		damage = config.getInt("damage", 8);
 		rounds = config.getInt("rounds", 1);
-		damageType = config.getString("damage-type", "PROJECTILE").toUpperCase();
+		damageType = config.getString("damage-type", "PROJECTILE").toUpperCase(java.util.Locale.ROOT);
 		if(config.isConfigurationSection("sounds")) {
 			ConfigurationSection soundConfig = config.getConfigurationSection("sounds");
 			sfx = SoundLoader.getSoundsFromConfig(soundConfig);
@@ -256,7 +256,7 @@ public class AmmunitionData {
 			int effectDurationSeconds = 5;
 
 			if (potionMatcher.find()) {
-				String potionId = potionMatcher.group(1).trim().toUpperCase();
+				String potionId = potionMatcher.group(1).trim().toUpperCase(java.util.Locale.ROOT);
 				amplifier = Integer.parseInt(potionMatcher.group(2));
 				effectDurationSeconds = Integer.parseInt(potionMatcher.group(3));
 

@@ -66,7 +66,8 @@ public class DefaultShooter implements Shooter {
 	                e.remove();
 	                projectiles.remove(e);
 					Cache.projectiles.remove(e);
-	                cancel(); 
+	                cancel();
+	                return;
 	            }
 
 	            // Add the offset for visual effects
@@ -125,6 +126,7 @@ public class DefaultShooter implements Shooter {
 						projectiles.remove(armorStand);
 						Cache.projectiles.remove(armorStand);
 	                    cancel();
+	                    return;
 	                }
 	                a.getData().fx(players, armorStand.getLocation(), 1f, i);
 	                i++;

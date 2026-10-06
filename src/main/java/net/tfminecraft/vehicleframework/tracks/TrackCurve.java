@@ -303,6 +303,9 @@ public final class TrackCurve {
 		double horiz = Math.hypot(vx, vz);
 		if (Math.abs(turn) < 1e-3) {
 			if (Math.abs(sx * vz - sz * vx) < 1e-6 * horiz) {
+				if (sx * vx + sz * vz <= 0) {
+					return null;
+				}
 				return TrackGenerate.densify(ax, ay, az, bx, ay, bz, step);
 			}
 			for (double r = radius; r > 0; r = nextRadius(r, minRadius)) {

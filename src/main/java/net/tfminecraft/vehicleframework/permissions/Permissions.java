@@ -4,6 +4,7 @@ import org.bukkit.command.CommandSender;
 
 public class Permissions
 {
+    private Permissions() {}
     public static String Permission_Spawn;
     public static String Permission_Admin;
     

@@ -34,13 +34,14 @@ public class ExplosionCreator {
 		triggerExplosion(explosionCenter, yield, blastRadius, damage, cause, false);
 	}
 	public static void triggerExplosion(Location explosionCenter, double yield, double blastRadius, double damage, String cause, boolean fire) {
+		if (!Double.isFinite(blastRadius) || blastRadius <= 0) return;
 		VFExplosionEvent event = new VFExplosionEvent(explosionCenter);
         Bukkit.getPluginManager().callEvent(event);
 
         if (event.isCancelled()) {
             return;
         }
-		if (VehicleFramework.getTrackDisplayManager() != null) {
+		if (event.doesBlockDamage() && VehicleFramework.getTrackDisplayManager() != null) {
 			VehicleFramework.getTrackDisplayManager().breakInRadius(explosionCenter, blastRadius);
 		}
 	    int particles = (int) Math.round(yield*15);
@@ -113,7 +114,7 @@ public class ExplosionCreator {
 			}
 		}
 
-		if (fire) {
+		if (fire && event.doesBlockDamage()) {
 			igniteArea(explosionCenter, yield, blastRadius, random);
 		}
 

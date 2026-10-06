@@ -20,30 +20,31 @@ public class Cache {
 	
 	public static HashMap<Material, Material> convertExplode = new HashMap<>();
 	
-	public static int despawnDistance;
+	// Keep the same defaults as an empty config if the first YAML load fails.
+	public static int despawnDistance = 64 * 64;
 
-	public static boolean blockDamage;
+	public static boolean blockDamage = true;
 	
 	public static Set<Location> lightLocations = new HashSet<>();
 
-	public static String skinItem;
-	public static String repairItem;
-	public static String destroyItem;
-	public static String ticketItem;
-	public static String trackItemSmall;
-	public static String trackItemMedium;
-	public static String trackItemLarge;
+	public static String skinItem = "v.bucket";
+	public static String repairItem = "v.iron_shovel";
+	public static String destroyItem = "v.stone_axe";
+	public static String ticketItem = "v.paper";
+	public static String trackItemSmall = "ia.tfmc:track_small";
+	public static String trackItemMedium = "ia.tfmc:track_medium";
+	public static String trackItemLarge = "ia.tfmc:track_large";
 	public static String appliedTrackItemSmall;
 	public static String appliedTrackItemMedium;
 	public static String appliedTrackItemLarge;
 	public static double appliedTrackDisplayYOffset = 0.5;
 	public static int trackResyncChunksPerTick = 2;
-	public static String trackLayerItem;
-	public static String trackRemoverItem;
-	public static String trackRecorderItem;
-	public static String trackJunctionItem;
-	public static String trackSwitchItem;
-	public static String trackItem;
+	public static String trackLayerItem = "v.iron_shovel";
+	public static String trackRemoverItem = "v.iron_pickaxe";
+	public static String trackRecorderItem = "v.clock";
+	public static String trackJunctionItem = "v.diamond_shovel";
+	public static String trackSwitchItem = "ia.tfmc:railroad_switch";
+	public static String trackItem = "ia.tfmc:train_track";
 	public static double trackSwitchOffsetAlong = -1.2;
 	public static double trackSwitchOffsetOut = 2.4;
 	public static double trackSwitchOffsetY = 0;
@@ -69,8 +70,8 @@ public class Cache {
 	public static double trackJunctionArmDistance = 16;
 	public static double trackDesiredGradeDegrees = 6;
 	public static double trackMaxGradeDegrees = 10;
-	public static Particle trackFxParticle;
-	public static Material trackFxBlock;
+	public static Particle trackFxParticle = Particle.BLOCK;
+	public static Material trackFxBlock = Material.GRAVEL;
 	public static int trackFxCount = 3;
 	public static int trackFxWidth = 3;
 	public static double trackFxExtra = 0.06;
@@ -87,15 +88,15 @@ public class Cache {
 	public static String trackBuildSound2 = "minecraft:block.iron.place";
 	public static float trackBuildSound2Volume = 1.0f;
 	public static float trackBuildSound2Pitch = 2.0f;
-	public static Particle trackBuildParticle;
-	public static Material trackBuildBlock;
+	public static Particle trackBuildParticle = Particle.BLOCK;
+	public static Material trackBuildBlock = Material.GRAVEL;
 	public static int trackBuildCount = 6;
 	public static int trackBuildWidth = 1;
 	public static double trackBuildExtra = 0.08;
 	public static double trackBuildYOffset = 0.08;
 
 	public static boolean enableLogging;
-	public static String mythicMob;
+	public static String mythicMob = "none";
 
 	public static boolean allowWhitelist;
 	public static boolean whitelistedByDefault;

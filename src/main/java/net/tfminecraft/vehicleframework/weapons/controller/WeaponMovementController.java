@@ -96,10 +96,6 @@ public class WeaponMovementController{
 		} else {
 			headRotator = new BoneRotator(v, v.getEntity(), m.getBone(head).get(), limits);
 		}
-		if(axis == null) {
-			VFLogger.log("weapon has no axis");
-			return;
-		}
 		this.axis = axis;
 	}
 
@@ -206,9 +202,6 @@ public class WeaponMovementController{
 		}
 
 		Location target = WeaponTargetResolver.resolveTarget(player, v, cursorRange);
-		if (target == null) {
-			return;
-		}
 
 		if (Cache.weaponAimDebug && player.getWorld() != null && target.getWorld() != null
 				&& player.getWorld().equals(target.getWorld())) {
@@ -229,9 +222,6 @@ public class WeaponMovementController{
 		ConvertedAngle desiredAngles = offset.applyToAngles(ConvertedAngle.fromDirection(desired), axis);
 
 		Vector current = aimVector.getVector();
-		if (current == null || current.lengthSquared() < 1e-12) {
-			return;
-		}
 
 		float rate = effectiveTurnRate();
 		float yawErr = WeaponAimAligner.yawError(current, desiredAngles);
@@ -250,9 +240,6 @@ public class WeaponMovementController{
 		yawSettled = WeaponAimAligner.updateSettled(boneYawErr, yawSettled);
 
 		Vector afterBody = aimVector.getVector();
-		if (afterBody == null || afterBody.lengthSquared() < 1e-12) {
-			return;
-		}
 		float boneElevErr = WeaponAimAligner.toBoneElevationStep(
 				WeaponAimAligner.elevationError(afterBody, desiredAngles, axis));
 		float headStep = WeaponAimAligner.followStep(boneElevErr, rate, elevationSettled);
@@ -332,7 +319,8 @@ public class WeaponMovementController{
 	 * instead of silently ignoring the input.
 	 */
 	private boolean canTurn(Player p) {
-		if (fixed || effectiveTurnRate() > 0f) {
+		if (fixed || bodyRotator == null || headRotator == null || axis == null) return false;
+		if (effectiveTurnRate() > 0f) {
 			return true;
 		}
 		notifyBroken(p);

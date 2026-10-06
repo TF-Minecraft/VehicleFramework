@@ -33,7 +33,7 @@ public class ComponentHandler {
 
 		List<String> list = new ArrayList<String>(set);
 		for(String c : list) {
-			Component cType = Component.valueOf(c.toUpperCase());
+			Component cType = Component.valueOf(c.toUpperCase(java.util.Locale.ROOT));
 			ConfigurationSection compSection = config.getConfigurationSection(c);
 			switch (cType) {
 				case ENGINE:
@@ -81,13 +81,18 @@ public class ComponentHandler {
 			if(c.isOnFire()) {
 				for(VehicleComponent o : getComponents()) {
 					if(o.isOnFire()) continue;
-					if(Math.floor(Math.random()*100)>c.getFire().getProgress()/2) continue;
+					if(rollFireSpreadChance()>c.getFire().getProgress()/2) continue;
 					o.startFire();
 				}
 			}
 		}
 	}
+	double rollFireSpreadChance() {
+		return Math.floor(Math.random() * 100);
+	}
+
 	public void randomFire() {
+		if (components.isEmpty()) return;
 		int i = (int) Math.floor(Math.random()*components.size());
 		int safeguard = 0;
 		while(components.get(i).isOnFire() && safeguard < 10) {

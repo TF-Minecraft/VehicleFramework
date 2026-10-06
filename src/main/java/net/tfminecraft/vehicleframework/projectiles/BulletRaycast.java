@@ -60,9 +60,10 @@ public final class BulletRaycast {
 		if (entityResult != null && entityResult.getHitEntity() != null) {
 			Entity hit = entityResult.getHitEntity();
 			Location hitPoint = entityResult.getHitPosition().toLocation(from.getWorld());
+			if (handleBlockSegment(from, hitPoint, direction, from.distance(hitPoint), ammoData, bullet, weapon, players)) return true;
 
 			if (hit instanceof LivingEntity living) {
-				if (bullet.getData().isExplosive()) {
+				if (Weapon.effectiveExplosive(weapon, bullet.getData())) {
 					triggerExplosion(hitPoint, bullet, weapon);
 				} else {
 					ExplosionCreator.applyDamage(
@@ -78,7 +79,7 @@ public final class BulletRaycast {
 				targetVehicle.damage(
 						Weapon.effectiveDamageType(weapon, ammoData),
 						Weapon.effectiveDamage(weapon, ammoData));
-				if (bullet.getData().isExplosive()) {
+				if (Weapon.effectiveExplosive(weapon, bullet.getData())) {
 					triggerExplosion(hitPoint, bullet, weapon);
 				}
 				return true;
@@ -116,11 +117,10 @@ public final class BulletRaycast {
 			ActiveWeapon weapon,
 			List<Player> players) {
 		World world = from.getWorld();
-		Vector stepVector = direction.clone().multiply(BLOCK_STEP);
 		Location current = from.clone();
 
 		for (double traveled = 0; traveled < distance; traveled += BLOCK_STEP) {
-			current.add(stepVector);
+			current.add(direction.clone().multiply(Math.min(BLOCK_STEP, distance - traveled)));
 
 			Block block = current.getBlock();
 			if (block.getType().isAir()) {
@@ -146,7 +146,7 @@ public final class BulletRaycast {
 				continue;
 			}
 
-			if (bullet.getData().isExplosive()) {
+			if (Weapon.effectiveExplosive(weapon, bullet.getData())) {
 				triggerExplosion(current, bullet, weapon);
 			} else {
 				Location impact = ImpactVfx.onBlockSurface(current, direction, block);
@@ -201,15 +201,15 @@ public final class BulletRaycast {
 	}
 
 	public static void triggerExplosion(Location loc, Bullet bullet, ActiveWeapon weapon) {
-		if (!bullet.getData().isExplosive()) {
+		if (!Weapon.effectiveExplosive(weapon, bullet.getData())) {
 			return;
 		}
 		AmmunitionData ammo = bullet.getData();
 		loc.getWorld().playSound(loc, Sound.ENTITY_GENERIC_EXPLODE, 8, 1);
 		ExplosionCreator.triggerExplosion(
 				loc,
-				ammo.getYield(),
-				ammo.getRadius(),
+				Weapon.effectiveYield(weapon, ammo),
+				Weapon.effectiveRadius(weapon, ammo),
 				Weapon.effectiveDamage(weapon, ammo),
 				Weapon.effectiveDamageType(weapon, ammo));
 	}

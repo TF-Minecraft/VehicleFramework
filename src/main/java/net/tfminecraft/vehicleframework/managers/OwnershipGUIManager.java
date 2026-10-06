@@ -30,6 +30,7 @@ public class OwnershipGUIManager {
         }
 
         // Slot 0 – Toggle whitelisting
+        i.clear();
         i.setItem(0, createToggleWhitelistButton(v.getOwnerData().isWhiteListed()));
         // Slot 2 – Add player to whitelist
         if(Cache.allowWhitelist) i.setItem(2, createAddToWhitelistButton());

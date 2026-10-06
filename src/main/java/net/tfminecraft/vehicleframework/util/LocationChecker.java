@@ -29,9 +29,6 @@ public class LocationChecker {
 		if (water.contains(block.getType())) {
 			return true;
 		}
-		if (block.isLiquid()) {
-			return true;
-		}
 		if (block.getBlockData() instanceof Waterlogged waterlogged && waterlogged.isWaterlogged()) {
 			return true;
 		}

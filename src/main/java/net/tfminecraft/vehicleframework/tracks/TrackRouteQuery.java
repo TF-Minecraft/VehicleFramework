@@ -193,9 +193,6 @@ public final class TrackRouteQuery {
 		if (from == to || !Double.isFinite(weight)) {
 			return;
 		}
-		if (weight < 0) {
-			weight = 0;
-		}
 		adj.get(from).add(new Edge(to, weight, leg));
 	}
 
@@ -293,11 +290,6 @@ public final class TrackRouteQuery {
 	}
 
 	private static void addInterval(List<Interval> raw, double s0, double s1) {
-		if (s1 < s0) {
-			double swap = s0;
-			s0 = s1;
-			s1 = swap;
-		}
 		raw.add(new Interval(s0, s1));
 	}
 
@@ -419,7 +411,7 @@ public final class TrackRouteQuery {
 			if (!nearA.isEmpty() && !nearB.isEmpty()) {
 				oneWay(adj, SRC, DST, spline, piece, pieceSeparation(piece, nearA, nearB, length));
 			}
-			if (onSpline == null || onSpline.isEmpty()) {
+			if (onSpline == null) {
 				continue;
 			}
 			List<Anchor> onPiece = new ArrayList<>();
@@ -518,11 +510,6 @@ public final class TrackRouteQuery {
 			}
 			double s0 = edgeStartS(spline, edge);
 			double s1 = edgeEndS(spline, edge);
-			if (s1 < s0) {
-				double swap = s0;
-				s0 = s1;
-				s1 = swap;
-			}
 			if (s1 <= s0 + EPS) {
 				continue;
 			}
@@ -546,10 +533,7 @@ public final class TrackRouteQuery {
 		if (edge < n - 1) {
 			return samples.get(edge + 1).s;
 		}
-		if (spline.isLoop()) {
-			return spline.length();
-		}
-		return samples.get(n - 1).s;
+		return spline.length();
 	}
 
 	private static double seam(double s, double length) {
