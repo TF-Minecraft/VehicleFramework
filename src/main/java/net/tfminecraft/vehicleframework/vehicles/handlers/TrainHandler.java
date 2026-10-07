@@ -2,6 +2,7 @@ package net.tfminecraft.vehicleframework.vehicles.handlers;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -525,7 +526,9 @@ public class TrainHandler {
 		}
 		recordPrevS = s;
 		recordPrevSpline = spline.getId();
-		String junction = onOrigin ? null : registry.junctionByBranch(splineId)
+		// On a branch with a frog at each end, record the one this sample is nearer.
+		String junction = onOrigin ? null : registry.junctionsByBranch(splineId).stream()
+				.min(Comparator.comparingDouble(branch -> branch.fromFrog(s, spline.length())))
 				.map(branch -> branch.id.toString()).orElse(null);
 		ThrottleTape.AppendResult result = recordingTape.tryAppend(
 				s, travelSign, throttle, spline.getId().toString(), junction, orientation);

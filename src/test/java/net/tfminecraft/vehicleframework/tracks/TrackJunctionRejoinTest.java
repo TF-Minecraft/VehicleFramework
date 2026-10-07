@@ -175,12 +175,91 @@ class TrackJunctionRejoinTest {
 		TrackJunction into = registry.branchJunctionAt(crossover.getId(), true).orElseThrow();
 		assertEquals(near.getId(), from.stemSplineId);
 		assertEquals(far.getId(), into.stemSplineId);
+		// The crossover leaves each line along it before bending away, towards the other line both times.
+		assertEquals(TrackJunction.Side.LEFT, from.side);
+		assertEquals(TrackJunction.Side.LEFT, into.side);
 		assertEquals(58, into.s, 0.5);
 		TrainRoute route = new TrainRoute(registry, Map.of(from.id, true));
 		TrainRoute.Walk walk = route.walk(new TrainRoute.Position(near.getId(), 20, 1),
 				10 + crossover.length() + 10);
 		assertEquals(far.getId(), walk.position().splineId());
 		assertEquals(into.s + 10, walk.position().s(), 1e-6);
+	}
+
+	@Test
+	void diggingACrossoverTakesBothItsJunctions() throws Exception {
+		TrackRegistry registry = new TrackRegistry(dir.toFile());
+		TrackSpline near = registry.replace(line(0, 0, 100));
+		TrackSpline far = registry.replace(line(6, 0, 100));
+		TrackSpline crossover = registry.layTurnout(near.getId(), 30, 1, "world", null, 6, 64, 58, 1000).spline();
+		TrackSample middle = crossover.getSamples().get(crossover.getSamples().size() / 2);
+		registry.digAt(crossover, crossover.getSamples().size() / 2);
+		assertTrue(registry.get(crossover.getId()).isEmpty(), "dug at " + middle.x + "," + middle.z);
+		assertTrue(registry.junctionsOn(near.getId()).isEmpty());
+		assertTrue(registry.junctionsOn(far.getId()).isEmpty());
+	}
+
+	@Test
+	void trimmingOneTurnoutKeepsTheFrogAtTheOtherEnd() throws Exception {
+		Loop loop = passingLoop();
+		// A first turnout recorded as nearly the whole branch leaves only its far end.
+		loop.registry.putJunction(loop.out.withTurnoutEndS(loop.branch.length() - 1));
+		DigResult dug = loop.registry.digAt(loop.branch, 1);
+		assertTrue(dug.removedJunctionTurnout);
+		assertTrue(loop.registry.getJunction(loop.out.id).isEmpty());
+		TrackJunction back = loop.registry.getJunction(loop.back.id).orElseThrow();
+		assertEquals(loop.branch.getId(), back.branchSplineId);
+		assertTrue(back.atEnd);
+		assertEquals(loop.branch.last().z, loop.registry.get(loop.branch.getId()).orElseThrow().last().z, 1e-9);
+	}
+
+	@Test
+	void aBranchCannotJoinItsOwnLinesEnd() throws Exception {
+		TrackRegistry registry = new TrackRegistry(dir.toFile());
+		TrackSpline stem = registry.replace(line(0, 0, 100));
+		// A balloon: off the line at 30, round below its start, and back up towards it.
+		TrackSpline balloon = registry.replace(TrackSpline.fromPoints(UUID.randomUUID(), "world", false, List.of(
+				new double[] {0, 64, 30}, new double[] {12, 64, 10}, new double[] {16, 64, -20},
+				new double[] {8, 64, -40}, new double[] {0, 64, -30}, new double[] {0, 64, -21},
+				new double[] {0, 64, -12})));
+		registry.putJunction(new TrackJunction(UUID.randomUUID(), stem.getId(), 30, -1,
+				TrackJunction.Side.LEFT, balloon.getId(), false, 10));
+		TrackLayException refused = assertThrows(TrackLayException.class,
+				() -> registry.lay("world", 0, 64, -12, 0, 64, 0));
+		assertEquals("A branch can't join its own line's end. Join it part way along instead.", refused.getMessage());
+		assertTrue(registry.get(balloon.getId()).isPresent());
+		assertEquals(1, registry.junctionsOn(stem.getId()).size());
+	}
+
+	@Test
+	void aJunctionGoneWithADroppedTurnoutIsNotBroughtBack() throws Exception {
+		TrackRegistry registry = new TrackRegistry(dir.toFile());
+		TrackSpline keep = registry.replace(line(0, 0, 40));
+		TrackSpline drop = registry.replace(line(0, 50, 90));
+		TrackSpline toKeep = registry.replace(line(40, 0, 40));
+		TrackSpline toDrop = registry.replace(line(80, 0, 40));
+		TrackJunction kept = registry.putJunction(new TrackJunction(UUID.randomUUID(), keep.getId(), 38, 1,
+				TrackJunction.Side.LEFT, toKeep.getId()));
+		TrackJunction dropped = registry.putJunction(new TrackJunction(UUID.randomUUID(), drop.getId(), 2, 1,
+				TrackJunction.Side.LEFT, toDrop.getId()));
+		// keep is itself a branch off the turnout that the join will drop.
+		TrackJunction onDropped = registry.putJunction(new TrackJunction(UUID.randomUUID(), toDrop.getId(), 20, 1,
+				TrackJunction.Side.LEFT, keep.getId()));
+		registry.lay("world", 0, 64, 40, 0, 64, 50);
+		assertTrue(registry.getJunction(kept.id).isPresent());
+		assertTrue(registry.getJunction(dropped.id).isEmpty());
+		assertTrue(registry.get(toDrop.getId()).isEmpty());
+		assertTrue(registry.getJunction(onDropped.id).isEmpty());
+	}
+
+	@Test
+	void extendingBesideALineDoesNotJoinIt() throws Exception {
+		TrackRegistry registry = new TrackRegistry(dir.toFile());
+		TrackSpline stem = registry.replace(line(0, 0, 100));
+		registry.replace(line(1.25, 0, 20));
+		TrackLayResult laid = registry.lay("world", 1.25, 64, 20, 1.25, 64, 40);
+		assertEquals(TrackLayResult.Kind.APPEND, laid.kind);
+		assertTrue(registry.junctionsOn(stem.getId()).isEmpty());
 	}
 
 	@Test
