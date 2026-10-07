@@ -364,16 +364,15 @@ public final class TrackCommands {
 			return;
 		}
 		try {
-			TrackSpline branch = registry().layBranch(
+			TrackLayResult result = registry().layTurnout(
 					pending.stemId,
 					pending.s,
 					pending.facingSign,
 					at.getWorld().getName(),
 					at.getWorld(),
-					at.getX(), at.getY(), at.getZ());
+					at.getX(), at.getY(), at.getZ(),
+					TrackPieces.pays(player) ? TrackPieces.count(player) : Integer.MAX_VALUE);
 			TrackJunctionSession.clear(player);
-			TrackLayResult result = TrackLayResult.of(
-					TrackLayResult.Kind.NEW, branch, branch.xyz(), 0);
 			Presented presented = presentLay(player, result);
 			announceLay(player, result, presented, true);
 		} catch (TrackLayException e) {

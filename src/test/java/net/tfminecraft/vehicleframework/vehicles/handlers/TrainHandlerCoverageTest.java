@@ -302,6 +302,11 @@ class TrainHandlerCoverageTest {
         bindAt(car, circuit, 5); car.train.startRecording(null);
         car.train.setSplineId(line(50, false).getId()); car.train.maybeRecordSample(40);
         assertFalse(car.train.isRecording());
+        TrackSpline elsewhere = line(70, false), spur = line(90, false);
+        junction(elsewhere, spur, 10, 1);
+        bindAt(car, circuit, 5); car.train.startRecording(null);
+        car.train.setSplineId(spur.getId()); car.train.setS(2); car.train.maybeRecordSample(40);
+        assertFalse(car.train.isRecording());
     }
 
     @Test void tapePlaybackRequiresTrackFuelAndNoHumanCaptain() {

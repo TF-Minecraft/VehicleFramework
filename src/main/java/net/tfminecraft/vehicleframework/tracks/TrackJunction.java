@@ -19,6 +19,8 @@ public final class TrackJunction {
 	public final UUID branchSplineId;
 	public final boolean thrown;
 	public final double turnoutEndS;
+	/** The branch meets the frog at its last sample: a turnout that rejoins this stem. */
+	public final boolean atEnd;
 
 	public TrackJunction(
 			UUID id,
@@ -50,6 +52,19 @@ public final class TrackJunction {
 			UUID branchSplineId,
 			boolean thrown,
 			double turnoutEndS) {
+		this(id, stemSplineId, s, facingSign, side, branchSplineId, thrown, turnoutEndS, false);
+	}
+
+	public TrackJunction(
+			UUID id,
+			UUID stemSplineId,
+			double s,
+			int facingSign,
+			Side side,
+			UUID branchSplineId,
+			boolean thrown,
+			double turnoutEndS,
+			boolean atEnd) {
 		if (id == null || stemSplineId == null) {
 			throw new IllegalArgumentException("junction needs id and stem");
 		}
@@ -67,6 +82,7 @@ public final class TrackJunction {
 		this.branchSplineId = branchSplineId;
 		this.thrown = thrown;
 		this.turnoutEndS = turnoutEndS;
+		this.atEnd = atEnd;
 	}
 
 	public Optional<UUID> branchSplineId() {
@@ -74,31 +90,50 @@ public final class TrackJunction {
 	}
 
 	public TrackJunction withBranch(UUID branchId) {
-		return new TrackJunction(id, stemSplineId, s, facingSign, side, branchId, thrown, turnoutEndS);
+		return new TrackJunction(id, stemSplineId, s, facingSign, side, branchId, thrown, turnoutEndS, atEnd);
 	}
 
 	public TrackJunction withS(double nextS) {
-		return new TrackJunction(id, stemSplineId, nextS, facingSign, side, branchSplineId, thrown, turnoutEndS);
+		return new TrackJunction(id, stemSplineId, nextS, facingSign, side, branchSplineId, thrown, turnoutEndS, atEnd);
 	}
 
 	public TrackJunction withStem(UUID stemId, double nextS) {
-		return new TrackJunction(id, stemId, nextS, facingSign, side, branchSplineId, thrown, turnoutEndS);
+		return new TrackJunction(id, stemId, nextS, facingSign, side, branchSplineId, thrown, turnoutEndS, atEnd);
 	}
 
 	public TrackJunction withSide(Side nextSide) {
-		return new TrackJunction(id, stemSplineId, s, facingSign, nextSide, branchSplineId, thrown, turnoutEndS);
+		return new TrackJunction(id, stemSplineId, s, facingSign, nextSide, branchSplineId, thrown, turnoutEndS, atEnd);
 	}
 
 	public TrackJunction withFacing(int sign) {
-		return new TrackJunction(id, stemSplineId, s, sign, side, branchSplineId, thrown, turnoutEndS);
+		return new TrackJunction(id, stemSplineId, s, sign, side, branchSplineId, thrown, turnoutEndS, atEnd);
 	}
 
 	public TrackJunction withThrown(boolean nextThrown) {
-		return new TrackJunction(id, stemSplineId, s, facingSign, side, branchSplineId, nextThrown, turnoutEndS);
+		return new TrackJunction(id, stemSplineId, s, facingSign, side, branchSplineId, nextThrown, turnoutEndS, atEnd);
 	}
 
 	public TrackJunction withTurnoutEndS(double nextTurnoutEndS) {
-		return new TrackJunction(id, stemSplineId, s, facingSign, side, branchSplineId, thrown, nextTurnoutEndS);
+		return new TrackJunction(id, stemSplineId, s, facingSign, side, branchSplineId, thrown, nextTurnoutEndS, atEnd);
+	}
+
+	public TrackJunction withAtEnd(boolean nextAtEnd) {
+		return new TrackJunction(id, stemSplineId, s, facingSign, side, branchSplineId, thrown, turnoutEndS, nextAtEnd);
+	}
+
+	/** Branch arc length at the frog. */
+	public double branchFrogS(double branchLength) {
+		return atEnd ? branchLength : 0;
+	}
+
+	/** Distance along the branch from the frog to {@code branchS}. */
+	public double fromFrog(double branchS, double branchLength) {
+		return atEnd ? branchLength - branchS : branchS;
+	}
+
+	/** Multiplies body orientation when crossing the frog between stem and branch, either way. */
+	public int crossingSign() {
+		return atEnd ? -facingSign : facingSign;
 	}
 
 	public static int facingSign(float playerYaw, float stemYaw) {
@@ -151,6 +186,9 @@ public final class TrackJunction {
 		if (turnoutEndS > 0) {
 			root.put("turnoutS", turnoutEndS);
 		}
+		if (atEnd) {
+			root.put("branchEnd", true);
+		}
 		return root;
 	}
 
@@ -166,7 +204,8 @@ public final class TrackJunction {
 		UUID branch = parseUuidOptional(root.get("branch"));
 		boolean thrown = asBoolean(root.get("thrown"));
 		double turnoutEndS = asDouble(root.get("turnoutS"));
-		return new TrackJunction(id, stem, s, facing, side, branch, thrown, turnoutEndS);
+		boolean atEnd = asBoolean(root.get("branchEnd"));
+		return new TrackJunction(id, stem, s, facing, side, branch, thrown, turnoutEndS, atEnd);
 	}
 
 	private static Side parseSide(Object raw) {

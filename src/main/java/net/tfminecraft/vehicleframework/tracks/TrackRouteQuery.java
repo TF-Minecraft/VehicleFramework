@@ -152,7 +152,8 @@ public final class TrackRouteQuery {
 		}
 
 		// Each junction is one point: a port on the stem at junction.s and a
-		// port on the branch at s = 0, joined by an edge of length 0. Ports on
+		// port on the branch where it meets the frog (its start, or its end for
+		// a turnout that rejoins), joined by an edge of length 0. Ports on
 		// one spline are joined in s order. On a loop the last port also joins
 		// the first the other way round.
 		int nodes = 2 + linked.size() * 2;
@@ -169,7 +170,7 @@ public final class TrackRouteQuery {
 			int branchNode = stemNode + 1;
 			double stemS = TrackJunction.wrapS(junction.s, stem.length(), stem.isLoop());
 			anchor(anchors, stem.getId(), stemS, stemNode);
-			anchor(anchors, branch.getId(), 0, branchNode);
+			anchor(anchors, branch.getId(), junction.branchFrogS(branch.length()), branchNode);
 			link(adj, stemNode, branchNode, 0, null);
 		}
 

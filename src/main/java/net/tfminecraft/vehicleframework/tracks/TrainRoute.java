@@ -48,8 +48,9 @@ public final class TrainRoute {
 			TrackJunction next = null;
 			boolean fromBranch = false;
 			double ahead = Math.max(0, end);
-			if (!spline.isLoop() && direction < 0) {
-				next = registry.junctionByBranch(at.splineId()).orElse(null);
+			if (!spline.isLoop()) {
+				// Running off the end where the branch meets a frog crosses onto that stem.
+				next = registry.branchJunctionAt(at.splineId(), direction > 0).orElse(null);
 				fromBranch = next != null;
 			}
 			for (TrackJunction junction : registry.junctionsOn(at.splineId())) {
@@ -92,7 +93,7 @@ public final class TrainRoute {
 			}
 			if (fromBranch) {
 				crossed.put(next.id, true);
-				at = new Position(next.stemSplineId, next.s, at.orientation() * next.facingSign);
+				at = new Position(next.stemSplineId, next.s, at.orientation() * next.crossingSign());
 				atPoint.add(next.id);
 			} else {
 				boolean diverge = direction == next.facingSign
@@ -100,7 +101,8 @@ public final class TrainRoute {
 				crossed.put(next.id, diverge);
 				atPoint.add(next.id);
 				if (diverge) {
-					at = new Position(next.branchSplineId, 0, at.orientation() * next.facingSign);
+					double frogS = next.branchFrogS(registry.get(next.branchSplineId).orElseThrow().length());
+					at = new Position(next.branchSplineId, frogS, at.orientation() * next.crossingSign());
 				}
 			}
 		}
