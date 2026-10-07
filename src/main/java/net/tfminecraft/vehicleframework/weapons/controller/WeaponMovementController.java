@@ -111,7 +111,10 @@ public class WeaponMovementController{
 				return;
 			}
 			spec = bones.get(0);
-			VFLogger.log("Weapon " + weapon.getId() + " has no aim-vector; falling back to first bones entry: " + spec);
+			// Only cursor aim reads the vector, so other weapons fall back silently.
+			if (weapon.getAimMode() == WeaponAimMode.CURSOR) {
+				VFLogger.log("Weapon " + weapon.getId() + " has no aim-vector; falling back to first bones entry: " + spec);
+			}
 		}
 		aimVector = createVectorBone(m, weapon.getId(), spec);
 		if (aimVector == null && weapon.getAimMode() == WeaponAimMode.CURSOR) {

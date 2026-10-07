@@ -40,6 +40,7 @@ aa_turret:
                 shoot:
                     - shoot
                     - shoot2
+            aim-vector: exit1.exit_align1
             bones:
                 - exit1.exit_align1
                 - exit2.exit_align2

@@ -88,5 +88,6 @@ gunboat:
             animations:
                 shoot:
                     - shoot
+            aim-vector: exit.exitalign
             bones:
                 - exit.exitalign

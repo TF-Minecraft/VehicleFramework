@@ -16,6 +16,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.tfminecraft.tlibs.TLibs;
 import net.tfminecraft.tlibs.objects.api.ItemAPI;
+import net.tfminecraft.vehicleframework.VFLogger;
 import net.tfminecraft.vehicleframework.bones.*;
 import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.data.HealthData;
@@ -700,6 +701,17 @@ class WeaponsCoverageTest {
     active("aim-mode: cursor\nbones: []\n").tick();
     active("aim-mode: cursor\nbones: [muzzle.aim]\n").tick();
     active("fixed: true\naim-mode: cursor\n").tick();
+  }
+
+  @Test
+  void onlyCursorWeaponsWarnWhenFallingBackToTheFirstBone() throws Exception {
+    active("bones: [muzzle.aim]\n");
+    r.logger.verify(() -> VFLogger.log(contains("no aim-vector")), never());
+    active("aim-mode: cursor\nbones: [muzzle.aim]\n");
+    r.logger.verify(
+        () ->
+            VFLogger.log(
+                "Weapon test has no aim-vector; falling back to first bones entry: muzzle.aim"));
   }
 
   @Test

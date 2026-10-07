@@ -348,7 +348,7 @@ public class ProjectilesCoverageTest {
     public final MockedStatic<Bukkit> bukkit;
     public final MockedStatic<VehicleFramework> framework;
     public final MockedStatic<DeckBody> decks;
-    private final MockedStatic<VFLogger> logger;
+    public final MockedStatic<VFLogger> logger;
     private final VehicleFramework oldPlugin;
     private final List<Entity> oldProjectiles;
     private final Map<String, Block> blocks = new HashMap<>();
