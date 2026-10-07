@@ -2,6 +2,7 @@ package net.tfminecraft.vehicleframework.vehicles.handlers;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -525,7 +526,9 @@ public class TrainHandler {
 		}
 		recordPrevS = s;
 		recordPrevSpline = spline.getId();
-		String junction = onOrigin ? null : registry.junctionByBranch(splineId)
+		// On a branch with a frog at each end, record the one this sample is nearer.
+		String junction = onOrigin ? null : registry.junctionsByBranch(splineId).stream()
+				.min(Comparator.comparingDouble(branch -> branch.fromFrog(s, spline.length())))
 				.map(branch -> branch.id.toString()).orElse(null);
 		ThrottleTape.AppendResult result = recordingTape.tryAppend(
 				s, travelSign, throttle, spline.getId().toString(), junction, orientation);
@@ -544,11 +547,12 @@ public class TrainHandler {
 		if (recordingTape.matchesSpline(spline.getId())) {
 			return true;
 		}
-		TrackJunction branch = registry.junctionByBranch(spline.getId()).orElse(null);
-		if (branch == null) {
-			return false;
+		for (TrackJunction branch : registry.junctionsByBranch(spline.getId())) {
+			if (recordingTape.matchesSpline(branch.stemSplineId)) {
+				return true;
+			}
 		}
-		return recordingTape.matchesSpline(branch.stemSplineId);
+		return false;
 	}
 
 	private void clearRecording() {
@@ -948,10 +952,13 @@ public class TrainHandler {
 					occupied.putIfAbsent(junction.id, junctionRoutes.getOrDefault(junction.id, false));
 				}
 			}
-			TrackJunction branch = registry.junctionByBranch(car.spline.getId()).orElse(null);
-			double padding = branch != null && junctionRoutes.containsKey(branch.id) ? reach(train) : 0;
-			if (branch != null && car.s - Math.max(-low, padding) <= branch.turnoutEndS + 1e-9) {
-				occupied.put(branch.id, true);
+			for (TrackJunction branch : registry.junctionsByBranch(car.spline.getId())) {
+				double padding = junctionRoutes.containsKey(branch.id) ? reach(train) : 0;
+				// The car's furthest reach towards the frog.
+				double towards = branch.atEnd ? car.s + Math.max(high, padding) : car.s - Math.max(-low, padding);
+				if (branch.fromFrog(towards, car.spline.length()) <= branch.turnoutEndS + 1e-9) {
+					occupied.put(branch.id, true);
+				}
 			}
 		}
 		junctionRoutes.clear();
@@ -1272,12 +1279,13 @@ public class TrainHandler {
 			if (to.spline.isLoop() || !from.spline.getId().equals(to.spline.getId())) {
 				continue;
 			}
-			if (to.s > from.s && to.s >= to.spline.length() - 1e-9) {
+			// Where a branch meets a frog it joins the stem; it is not the end of the route.
+			if (to.s > from.s && to.s >= to.spline.length() - 1e-9
+					&& registry.branchJunctionAt(to.spline.getId(), true).isEmpty()) {
 				return true;
 			}
-			// A branch's start joins the stem; it is not the end of the route.
 			if (to.s < from.s && to.s <= 1e-9
-					&& registry.junctionByBranch(to.spline.getId()).isEmpty()) {
+					&& registry.branchJunctionAt(to.spline.getId(), false).isEmpty()) {
 				return true;
 			}
 		}

@@ -17,6 +17,7 @@ import java.util.function.Predicate;
 
 import org.bukkit.World;
 
+import net.tfminecraft.vehicleframework.bones.ConvertedAngle;
 import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.VehicleFramework;
 
@@ -24,6 +25,10 @@ public final class TrackRegistry {
 	private static final double PRUNE_NESTED_MAX_LENGTH = 16.0;
 	private static final double REHOME_REACH = 2.5;
 	private static final double DROP_MARGIN = 0.5;
+	/** How near a piece's end must stay to a branch's frog to keep that junction. */
+	private static final double REATTACH_REACH = 0.01;
+	/** How far off the stem's line a turnout must be to tell which side it leaves on. */
+	private static final double SIDE_OFFSET = 0.25;
 
 	private final TrackStore store;
 	private final Map<UUID, TrackSpline> splines = new ConcurrentHashMap<>();
@@ -142,6 +147,15 @@ public final class TrackRegistry {
 				TrackLog.layOk(laid.spline, "connect");
 				return finishLay(TrackLayResult.of(TrackLayResult.Kind.CONNECT, laid.spline, laid.stroke, 0));
 			}
+			Optional<Rejoin> rejoin = atA.isPresent() && atB.isEmpty()
+					? rejoinAt(world, bx, by, bz, atA.get())
+					: atB.isPresent() && atA.isEmpty() ? rejoinAt(world, ax, ay, az, atB.get()) : Optional.empty();
+			if (rejoin.isPresent()) {
+				TrackEnd from = atA.isPresent() ? atA.get() : atB.get();
+				StrokeLay laid = extendInto(from, rejoin.get(), bukkitWorld, connectionBudget);
+				TrackLog.layOk(laid.spline, "rejoin");
+				return finishLay(TrackLayResult.of(TrackLayResult.Kind.CONNECT, laid.spline, laid.stroke, 0));
+			}
 			if (atA.isPresent()) {
 				StrokeLay laid = extend(atA.get(), bx, by, bz, bukkitWorld);
 				TrackLayResult.Kind kind = atA.get().prepend
@@ -182,8 +196,11 @@ public final class TrackRegistry {
 		for (TrackSpline spline : inWorld(world)) {
 			TrackSample first = spline.first();
 			TrackSample last = spline.last();
-			double dFirst = dist(first, x, y, z);
-			double dLast = dist(last, x, y, z);
+			// An end that meets a frog is joined already; laying on from it would pull it off the stem.
+			double dFirst = branchJunctionAt(spline.getId(), false).isPresent()
+					? Double.POSITIVE_INFINITY : dist(first, x, y, z);
+			double dLast = branchJunctionAt(spline.getId(), true).isPresent()
+					? Double.POSITIVE_INFINITY : dist(last, x, y, z);
 			if (dLast <= bestD) {
 				bestD = dLast;
 				best = new TrackEnd(spline, false);
@@ -256,7 +273,8 @@ public final class TrackRegistry {
 
 	private static Span turnoutSpan(TrackJunction junction, TrackSpline branch) {
 		double cutoff = turnoutCutoff(junction, branch);
-		return new Span(branch.getId(), cutoff / 2, cutoff / 2 + TrackGenerate.STEP);
+		double centre = junction.atEnd ? branch.length() - cutoff / 2 : cutoff / 2;
+		return new Span(branch.getId(), centre, cutoff / 2 + TrackGenerate.STEP);
 	}
 
 	/**
@@ -311,6 +329,7 @@ public final class TrackRegistry {
 			return finishDig(removeJunctionTurnout(turnout.get(), bukkitWorld));
 		}
 		List<TrackJunction> saved = List.copyOf(junctionsOn(id));
+		List<TrackJunction> branchSaved = junctionsByBranch(id);
 		if (xyz.size() <= 2) {
 			delete(id);
 			return finishDig(DigResult.deleted(id));
@@ -323,6 +342,7 @@ public final class TrackRegistry {
 			TrackSpline next = TrackSpline.fromPoints(id, spline.getWorld(), false, xyz);
 			replace(next);
 			rehomeJunctions(saved, spline, false, next);
+			reattachBranches(branchSaved, spline, next);
 			return finishDig(DigResult.updated(next));
 		}
 		List<double[]> head = new ArrayList<>(xyz.subList(0, index));
@@ -354,6 +374,7 @@ public final class TrackRegistry {
 			pieces.add(rest);
 		}
 		rehomeJunctions(saved, spline, false, start, rest);
+		reattachBranches(branchSaved, spline, start, rest);
 		rebuilt.accept(spline, pieces);
 		if (start != null && rest != null) {
 			return finishDig(DigResult.split(start, rest));
@@ -395,6 +416,105 @@ public final class TrackRegistry {
 		TrackSpline stored = replace(next);
 		rehomeJunctions(saved, spline, false, stored);
 		return new StrokeLay(stored, extra, previousCount);
+	}
+
+	/**
+	 * Where a stroke ends mid-way along another track: the frog it would join
+	 * at, running the way that track runs nearer the stroke's own heading.
+	 */
+	private record Rejoin(TrackSpline stem, double s, TrackPose frog, float arriveYaw, int facing) {
+	}
+
+	/** A rejoin for a stroke from {@code fromX, fromZ} ending near {@code (x, y, z)}, other than onto {@code exclude}. */
+	private Optional<Rejoin> rejoinAt(String world, double x, double y, double z, double fromX, double fromZ,
+			UUID exclude) {
+		TrackSpline stem = null;
+		double s = 0;
+		// Only clicks on the track itself, which would otherwise overlap it, so a
+		// line laid alongside another is not pulled into it.
+		double best = TrackClearance.OVERLAP_HORIZ;
+		for (TrackSpline candidate : inWorld(world)) {
+			if (candidate.getId().equals(exclude)) {
+				continue;
+			}
+			double at = candidate.nearestS(x, y, z);
+			TrackPose pose = candidate.sampleAt(at);
+			double horiz = Math.hypot(pose.x - x, pose.z - z);
+			if (horiz <= best && Math.abs(pose.y - y) <= TrackClearance.OVERLAP_VERT) {
+				best = horiz;
+				stem = candidate;
+				s = at;
+			}
+		}
+		// Near an open end it is a join, not a junction.
+		if (stem == null || (!stem.isLoop()
+				&& (s < Cache.trackJoinDistance || s > stem.length() - Cache.trackJoinDistance))) {
+			return Optional.empty();
+		}
+		TrackPose frog = stem.sampleAt(s);
+		float chord = (float) Math.toDegrees(Math.atan2(-(frog.x - fromX), frog.z - fromZ));
+		int along = Math.abs(ConvertedAngle.shortestDelta(frog.yaw, chord)) <= 90f ? 1 : -1;
+		// A train arriving along the stroke carries on along the stem, so trains facing the other way can take it.
+		return Optional.of(new Rejoin(stem, s, frog, along > 0 ? frog.yaw : frog.yaw + 180f, -along));
+	}
+
+	private Optional<Rejoin> rejoinAt(String world, double x, double y, double z, TrackEnd from) {
+		TrackSample origin = from.prepend ? from.spline.first() : from.spline.last();
+		return rejoinAt(world, x, y, z, origin.x, origin.z, from.spline.getId());
+	}
+
+	/** Extends a track end to a new frog part way along another track. */
+	private StrokeLay extendInto(TrackEnd end, Rejoin rejoin, World bukkitWorld, int connectionBudget)
+			throws TrackLayException {
+		TrackSpline spline = end.spline;
+		ensureFrogClear(rejoin.stem, rejoin.s, null);
+		TrackSample origin = end.prepend ? spline.first() : spline.last();
+		List<double[]> extra = arriving(origin.x, origin.y, origin.z, endYaw(spline, end.prepend),
+				rejoin.frog.x, rejoin.frog.y, rejoin.frog.z, rejoin.arriveYaw);
+		requireConnectionBudget(extra, connectionBudget);
+		TrackClearance.check(bukkitWorld, extra, this, Set.of(spline.getId(), rejoin.stem.getId()));
+		List<TrackJunction> saved = List.copyOf(junctionsOn(spline.getId()));
+		List<double[]> merged = new ArrayList<>();
+		if (end.prepend) {
+			for (int i = extra.size() - 1; i >= 1; i--) {
+				merged.add(extra.get(i));
+			}
+			merged.addAll(spline.xyz());
+		} else {
+			merged.addAll(spline.xyz());
+			merged.addAll(extra.subList(1, extra.size()));
+		}
+		TrackSpline stored = replace(TrackSpline.fromPoints(spline.getId(), spline.getWorld(), false, merged));
+		rehomeJunctions(saved, spline, false, stored);
+		TrackJunction placed = putJunction(rejoinJunction(rejoin, stored.getId(), !end.prepend, extra));
+		TrackLog.junctionBranch(stored, rejoin.stem.getId(), placed.id);
+		return new StrokeLay(stored, extra, 0);
+	}
+
+	/** Track from A on {@code startYaw} that reaches B travelling on {@code arriveYaw}, or a refusal. */
+	private static List<double[]> arriving(double ax, double ay, double az, float startYaw,
+			double bx, double by, double bz, float arriveYaw) throws TrackLayException {
+		List<double[]> extra = TrackCurve.join(
+				ax, ay, az, startYaw, bx, by, bz, arriveYaw,
+				Cache.trackMinLayDistance, Cache.trackMaxTurnDegrees, Cache.trackCurveRadius,
+				Cache.trackDesiredGradeDegrees, Cache.trackMaxGradeDegrees, TrackGenerate.STEP);
+		// TrackCurve.join falls back to a plain arc, which would meet the track at an angle.
+		int n = extra.size();
+		float arrives = TrackCurve.endYaw(n > 2 ? extra.get(n - 3) : null, extra.get(n - 2), extra.get(n - 1));
+		if (Math.abs(ConvertedAngle.shortestDelta(arrives, arriveYaw)) > Cache.trackMaxTurnDegrees) {
+			throw new TrackLayException("The track can't curve onto that line from here.");
+		}
+		return extra;
+	}
+
+	/** The junction where a branch's start, or its end ({@code atEnd}), meets the rejoin's frog. */
+	private static TrackJunction rejoinJunction(Rejoin rejoin, UUID branchId, boolean atEnd, List<double[]> stroke) {
+		// Seen from the frog, the stroke leaves the stem from its last point back.
+		List<double[]> fromFrog = new ArrayList<>(stroke);
+		Collections.reverse(fromFrog);
+		float facingYaw = rejoin.facing > 0 ? rejoin.frog.yaw : rejoin.frog.yaw + 180f;
+		return new TrackJunction(UUID.randomUUID(), rejoin.stem.getId(), rejoin.s, rejoin.facing,
+				departureSide(facingYaw, fromFrog), branchId, false, polylineLength(stroke), atEnd);
 	}
 
 	private static float endYaw(TrackSpline spline, boolean prepend) {
@@ -456,10 +576,22 @@ public final class TrackRegistry {
 	}
 
 	private StrokeLay connect(TrackEnd from, TrackEnd to, World bukkitWorld, int connectionBudget) throws TrackLayException {
+		TrackSample originA = from.prepend ? from.spline.first() : from.spline.last();
+		TrackSample originB = to.prepend ? to.spline.first() : to.spline.last();
+		List<double[]> extra = joinCurve(from, originA, to, originB);
+		requireConnectionBudget(extra, connectionBudget);
+		TrackClearance.check(
+				bukkitWorld, extra, this, Set.of(from.spline.getId(), to.spline.getId()));
+		return joinWith(from, to, extra);
+	}
+
+	/** Joins two track ends with {@code extra}, which runs from {@code from}'s end to {@code to}'s. */
+	private StrokeLay joinWith(TrackEnd from, TrackEnd to, List<double[]> extra) throws TrackLayException {
 		// Laid from `from` to `to`, joining from a start reverses `from` and
 		// joining to an end reverses `to`. Building the joined track the other
 		// way round flips both. Trains face +s, so a track with a train on it
-		// must keep its direction; a kept branch must still start at its frog.
+		// must keep its direction. Reversing a branch moves where it meets its
+		// frog to its other end, so prefer keeping it.
 		boolean fromReversedAsLaid = from.prepend;
 		boolean toReversedAsLaid = !to.prepend;
 		boolean fromOccupied = occupied.test(from.spline.getId());
@@ -476,12 +608,15 @@ public final class TrackRegistry {
 		boolean flip = !asLaidOk || (flippedOk && flippedCost < asLaidCost);
 		boolean keepReversed = flip != fromReversedAsLaid;
 		boolean dropReversed = flip != toReversedAsLaid;
-		TrackSample originA = from.prepend ? from.spline.first() : from.spline.last();
-		TrackSample originB = to.prepend ? to.spline.first() : to.spline.last();
-		List<double[]> extra = joinCurve(from, originA, to, originB);
-		requireConnectionBudget(extra, connectionBudget);
-		TrackClearance.check(
-				bukkitWorld, extra, this, Set.of(from.spline.getId(), to.spline.getId()));
+		UUID fromId = from.spline.getId();
+		UUID toId = to.spline.getId();
+		for (TrackJunction junction : junctions.values()) {
+			boolean links = (junction.stemSplineId.equals(fromId) && branchIdEquals(junction, toId))
+					|| (junction.stemSplineId.equals(toId) && branchIdEquals(junction, fromId));
+			if (links) {
+				throw new TrackLayException("A branch can't join its own line's end. Join it part way along instead.");
+			}
+		}
 		List<double[]> fromPart = points(from.spline, keepReversed);
 		List<double[]> toPart = points(to.spline, dropReversed);
 		List<double[]> stroke = new ArrayList<>(extra);
@@ -496,6 +631,8 @@ public final class TrackRegistry {
 		UUID keep = from.spline.getId();
 		List<TrackJunction> keepSaved = List.copyOf(junctionsOn(keep));
 		List<TrackJunction> dropSaved = List.copyOf(junctionsOn(drop));
+		List<TrackJunction> keepBranches = junctionsByBranch(keep);
+		List<TrackJunction> dropBranches = junctionsByBranch(drop);
 		TrackSpline oldKeep = from.spline;
 		TrackSpline oldDrop = to.spline;
 		TrackDisplayManager displays = VehicleFramework.getTrackDisplayManager();
@@ -504,7 +641,6 @@ public final class TrackRegistry {
 			displays.despawnSpline(keep);
 		}
 		removeSplineRecord(drop);
-		clearBranchRefs(drop);
 		TrackSpline next = TrackSpline.fromPoints(
 				keep,
 				from.spline.getWorld(),
@@ -513,6 +649,9 @@ public final class TrackRegistry {
 		TrackSpline stored = replaceQuietly(next);
 		rehomeJunctions(keepSaved, oldKeep, keepReversed, stored);
 		rehomeJunctions(dropSaved, oldDrop, dropReversed, stored);
+		// Branches that met a frog with their far ends still do, at one end of the joined track.
+		reattachBranches(keepBranches, oldKeep, stored);
+		reattachBranches(dropBranches, oldDrop, stored);
 		// Retrack only once junctions sit on the joined spline, so train routes survive.
 		rebuilt.accept(oldKeep, List.of(stored));
 		rebuilt.accept(oldDrop, List.of(stored));
@@ -604,6 +743,22 @@ public final class TrackRegistry {
 			String world,
 			World bukkitWorld,
 			double x, double y, double z) throws TrackLayException {
+		return layTurnout(stemId, s, facingSign, world, bukkitWorld, x, y, z, Integer.MAX_VALUE).spline();
+	}
+
+	/**
+	 * Lays a turnout from a frog on the stem. Ending on another track's end
+	 * joins that track; ending part way along a track joins it at a second
+	 * frog. Either join must be affordable in full.
+	 */
+	public TrackLayResult layTurnout(
+			UUID stemId,
+			double s,
+			int facingSign,
+			String world,
+			World bukkitWorld,
+			double x, double y, double z,
+			int connectionBudget) throws TrackLayException {
 		try {
 			TrackSpline stem = splines.get(stemId);
 			if (stem == null) {
@@ -617,9 +772,43 @@ public final class TrackRegistry {
 				yaw = yaw + 180f;
 			}
 			int facing = facingSign < 0 ? -1 : 1;
-			List<double[]> extra = branchCurve(pose, yaw, world, bukkitWorld, x, y, z);
-			TrackSpline branch = TrackSpline.fromPoints(UUID.randomUUID(), world, false, extra);
-			return commitBranch(stem, frogS, facing, extra, yaw, branch);
+			Optional<TrackEnd> end = findEnd(world, x, y, z).filter(found -> !found.spline.getId().equals(stemId));
+			if (end.isPresent()) {
+				TrackEnd to = end.get();
+				TrackSample target = to.prepend ? to.spline.first() : to.spline.last();
+				List<double[]> extra = branchCurve(pose, yaw, world, bukkitWorld,
+						target.x, target.y, target.z, endYaw(to.spline, to.prepend) + 180f);
+				requireConnectionBudget(extra, connectionBudget);
+				// The branch stops one step short and the join lays that step, keeping both tracks' junctions.
+				List<double[]> stub = extra.subList(0, extra.size() - 1);
+				TrackSpline branch = commitBranch(stem, frogS, facing, stub, yaw,
+						TrackSpline.fromPoints(UUID.randomUUID(), world, false, stub));
+				StrokeLay laid = joinWith(new TrackEnd(branch, false), to, extra.subList(extra.size() - 2, extra.size()));
+				TrackLog.layOk(laid.spline, "turnout-connect");
+				return finishLay(TrackLayResult.of(TrackLayResult.Kind.CONNECT, laid.spline, extra, 0));
+			}
+			Optional<Rejoin> rejoin = rejoinAt(world, x, y, z, pose.x, pose.z, null);
+			if (rejoin.isPresent()) {
+				Rejoin into = rejoin.get();
+				ensureFrogClear(into.stem, into.s, null);
+				if (into.stem == stem && TrackJunction.arcDistance(frogS, into.s, stem.length(), stem.isLoop())
+						< Cache.trackMinJunctionSpacing) {
+					throw new TrackLayException("Junctions must be at least "
+							+ (int) Math.round(Cache.trackMinJunctionSpacing) + " blocks apart along the track");
+				}
+				TrackPose frog = into.frog;
+				List<double[]> extra = branchCurve(pose, yaw, world, bukkitWorld, frog.x, frog.y, frog.z, into.arriveYaw);
+				requireConnectionBudget(extra, connectionBudget);
+				TrackSpline branch = commitBranch(stem, frogS, facing, extra, yaw,
+						TrackSpline.fromPoints(UUID.randomUUID(), world, false, extra));
+				TrackJunction placed = putJunction(rejoinJunction(into, branch.getId(), true, extra));
+				TrackLog.junctionBranch(branch, into.stem.getId(), placed.id);
+				return TrackLayResult.of(TrackLayResult.Kind.CONNECT, branch, extra, 0);
+			}
+			List<double[]> extra = branchCurve(pose, yaw, world, bukkitWorld, x, y, z, null);
+			TrackSpline branch = commitBranch(stem, frogS, facing, extra, yaw,
+					TrackSpline.fromPoints(UUID.randomUUID(), world, false, extra));
+			return TrackLayResult.of(TrackLayResult.Kind.NEW, branch, branch.xyz(), 0);
 		} catch (TrackLayException e) {
 			TrackLog.layFail(e.getMessage(), e);
 			throw e;
@@ -646,7 +835,7 @@ public final class TrackRegistry {
 			if (junction.facingSign < 0) {
 				yaw = yaw + 180f;
 			}
-			List<double[]> extra = branchCurve(pose, yaw, world, bukkitWorld, x, y, z);
+			List<double[]> extra = branchCurve(pose, yaw, world, bukkitWorld, x, y, z, null);
 			TrackSpline branch = TrackSpline.fromPoints(UUID.randomUUID(), world, false, extra);
 			splines.put(branch.getId(), branch);
 			store.save(branch);
@@ -704,7 +893,8 @@ public final class TrackRegistry {
 			float yaw,
 			String world,
 			World bukkitWorld,
-			double x, double y, double z) throws TrackLayException {
+			double x, double y, double z,
+			Float arriveYaw) throws TrackLayException {
 		double chord = Math.sqrt(
 				(x - pose.x) * (x - pose.x)
 						+ (y - pose.y) * (y - pose.y)
@@ -713,10 +903,12 @@ public final class TrackRegistry {
 			throw new TrackLayException("Junction branch can be at most "
 					+ (int) Math.round(Cache.trackMaxJunctionLength) + " blocks long.");
 		}
-		List<double[]> extra = TrackCurve.lay(
-				pose.x, pose.y, pose.z, yaw, x, y, z,
-				Cache.trackMinLayDistance, Cache.trackMaxTurnDegrees,
-				Cache.trackDesiredGradeDegrees, Cache.trackMaxGradeDegrees, TrackGenerate.STEP);
+		List<double[]> extra = arriveYaw == null
+				? TrackCurve.lay(
+						pose.x, pose.y, pose.z, yaw, x, y, z,
+						Cache.trackMinLayDistance, Cache.trackMaxTurnDegrees,
+						Cache.trackDesiredGradeDegrees, Cache.trackMaxGradeDegrees, TrackGenerate.STEP)
+				: arriving(pose.x, pose.y, pose.z, yaw, x, y, z, arriveYaw);
 		if (polylineLength(extra) > Cache.trackMaxJunctionLength + 1e-6) {
 			throw new TrackLayException("Junction branch can be at most "
 					+ (int) Math.round(Cache.trackMaxJunctionLength) + " blocks long.");
@@ -734,9 +926,27 @@ public final class TrackRegistry {
 	}
 
 	private static TrackJunction.Side branchSide(float yaw, List<double[]> extra) {
-		double[] a = extra.get(0);
-		double[] b = extra.get(1);
-		return TrackJunction.sideFrom(yaw, b[0] - a[0], b[2] - a[2]);
+		return departureSide(yaw, extra);
+	}
+
+	/**
+	 * Which side of the stem a stroke leaves on, {@code fromFrog} running away
+	 * from the frog. A stroke can leave along the stem before it bends away, so
+	 * this goes by the first point clearly off the stem's line.
+	 */
+	private static TrackJunction.Side departureSide(float facingYaw, List<double[]> fromFrog) {
+		double[] frog = fromFrog.get(0);
+		double yawRad = Math.toRadians(facingYaw);
+		double fx = -Math.sin(yawRad);
+		double fz = Math.cos(yawRad);
+		double[] off = fromFrog.get(fromFrog.size() - 1);
+		for (double[] p : fromFrog) {
+			if (Math.abs(fx * (p[2] - frog[2]) - fz * (p[0] - frog[0])) > SIDE_OFFSET) {
+				off = p;
+				break;
+			}
+		}
+		return TrackJunction.sideFrom(facingYaw, off[0] - frog[0], off[2] - frog[2]);
 	}
 
 	public boolean delete(UUID id) {
@@ -773,6 +983,7 @@ public final class TrackRegistry {
 		if (saved == null || saved.isEmpty() || from == null) {
 			return;
 		}
+		List<TrackJunction> moved = new ArrayList<>();
 		for (TrackJunction junction : saved) {
 			TrackPose pose = from.sampleAt(junction.s);
 			TrackSpline best = null;
@@ -800,11 +1011,52 @@ public final class TrackRegistry {
 				continue;
 			}
 			int facing = flipFacing ? -junction.facingSign : junction.facingSign;
+			moved.add(junction.withStem(best.getId(), bestS).withFacing(facing));
+		}
+		// Check spacing between the new places, not against where the others stood before the move.
+		for (TrackJunction next : moved) {
+			junctions.remove(next.id);
+		}
+		for (TrackJunction next : moved) {
 			try {
-				putJunction(junction.withStem(best.getId(), bestS).withFacing(facing));
+				putJunction(next);
 			} catch (TrackLayException e) {
-				dropJunctionAndBranch(junction);
+				junctions.put(next.id, next);
+				dropJunctionAndBranch(next);
 			}
+		}
+	}
+
+	/** Re-points junctions whose branch was {@code from} at whichever piece still meets each frog with one of its ends. */
+	private void reattachBranches(List<TrackJunction> saved, TrackSpline from, TrackSpline... onto) {
+		for (TrackJunction junction : saved) {
+			TrackJunction current = junctions.get(junction.id);
+			if (current == null) {
+				continue;
+			}
+			TrackPose frog = from.sampleAt(junction.branchFrogS(from.length()));
+			TrackJunction next = null;
+			double best = REATTACH_REACH;
+			for (TrackSpline piece : onto) {
+				if (piece == null) {
+					continue;
+				}
+				for (boolean atEnd : new boolean[] {false, true}) {
+					TrackSample end = atEnd ? piece.last() : piece.first();
+					double d = Math.hypot(end.x - frog.x, end.z - frog.z);
+					if (d <= best) {
+						best = d;
+						next = current.withBranch(piece.getId()).withAtEnd(atEnd);
+					}
+				}
+			}
+			if (next == null) {
+				deleteJunction(junction.id);
+				continue;
+			}
+			junctions.put(next.id, next);
+			store.saveJunction(from.getWorld(), next);
+			refreshSwitchDisplay(next);
 		}
 	}
 
@@ -934,6 +1186,28 @@ public final class TrackRegistry {
 		return out;
 	}
 
+	/** Every junction this track is the branch of: at most one at each end. */
+	public List<TrackJunction> junctionsByBranch(UUID branchId) {
+		List<TrackJunction> out = new ArrayList<>();
+		for (TrackJunction junction : junctions.values()) {
+			if (branchIdEquals(junction, branchId)) {
+				out.add(junction);
+			}
+		}
+		return out;
+	}
+
+	/** The junction whose frog meets this branch at its end ({@code atEnd}) or at its start. */
+	public Optional<TrackJunction> branchJunctionAt(UUID branchId, boolean atEnd) {
+		for (TrackJunction junction : junctionsByBranch(branchId)) {
+			if (junction.atEnd == atEnd) {
+				return Optional.of(junction);
+			}
+		}
+		return Optional.empty();
+	}
+
+	/** A junction this track is the branch of, at either end. */
 	public Optional<TrackJunction> junctionByBranch(UUID branchId) {
 		if (branchId == null) {
 			return Optional.empty();
@@ -981,22 +1255,6 @@ public final class TrackRegistry {
 		}
 		for (UUID junctionId : drop) {
 			junctions.remove(junctionId);
-			store.deleteJunction(world, junctionId);
-			despawnSwitchDisplay(junctionId);
-		}
-	}
-
-	private void clearBranchRefs(UUID splineId) {
-		List<UUID> drop = new ArrayList<>();
-		for (TrackJunction junction : junctions.values()) {
-			if (branchIdEquals(junction, splineId)) {
-				drop.add(junction.id);
-			}
-		}
-		for (UUID junctionId : drop) {
-			TrackJunction junction = junctions.remove(junctionId);
-			TrackSpline stem = splines.get(junction.stemSplineId);
-			String world = stem != null ? stem.getWorld() : "unknown";
 			store.deleteJunction(world, junctionId);
 			despawnSwitchDisplay(junctionId);
 		}
@@ -1183,8 +1441,13 @@ public final class TrackRegistry {
 	}
 
 	private Optional<TrackJunction> turnoutDug(TrackSpline spline, double digS) {
-		return junctionByBranch(spline.getId())
-				.filter(junction -> junction.turnoutEndS > 0 && digS <= junction.turnoutEndS + 1e-9);
+		for (TrackJunction junction : junctionsByBranch(spline.getId())) {
+			if (junction.turnoutEndS > 0
+					&& junction.fromFrog(digS, spline.length()) <= junction.turnoutEndS + 1e-9) {
+				return Optional.of(junction);
+			}
+		}
+		return Optional.empty();
 	}
 
 	private DigResult finishDig(DigResult result) {
@@ -1218,21 +1481,21 @@ public final class TrackRegistry {
 		}
 		double cutoff = turnoutCutoff(junction, branch);
 		List<TrackSample> samples = branch.getSamples();
-		int keepFrom = samples.size();
+		List<double[]> xyz = branch.xyz();
+		List<double[]> rest = new ArrayList<>();
 		for (int i = 0; i < samples.size(); i++) {
-			if (samples.get(i).s > cutoff + 1e-9) {
-				keepFrom = i;
-				break;
+			if (junction.fromFrog(samples.get(i).s, branch.length()) > cutoff + 1e-9) {
+				rest.add(xyz.get(i));
 			}
 		}
-		List<double[]> xyz = branch.xyz();
-		if (keepFrom >= xyz.size() - 1) {
-			removeSplineRecord(branchId);
+		if (rest.size() < 2) {
+			// Takes the junction at the branch's other end too, as on a crossover.
+			deleteWithoutPrune(branchId);
 			return DigResult.deletedJunctionTurnout(branchId);
 		}
-		List<double[]> tail = new ArrayList<>(xyz.subList(keepFrom, xyz.size()));
-		TrackResettle.resettle(bukkitWorld, tail, true, false);
-		TrackSpline next = replace(TrackSpline.fromPoints(branchId, branch.getWorld(), false, tail));
+		// The new open end is where the turnout was cut off; a frog at the other end keeps its place.
+		TrackResettle.resettle(bukkitWorld, rest, !junction.atEnd, junction.atEnd);
+		TrackSpline next = replace(TrackSpline.fromPoints(branchId, branch.getWorld(), false, rest));
 		return DigResult.removedJunctionTurnout(next);
 	}
 

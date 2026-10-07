@@ -203,17 +203,21 @@ class TrackPersistenceCoverageTest {
         assertTrue(registry.getJunction(middle.id).isEmpty());
     }
 
-    @Test void joiningAnExistingBranchClearsTheDroppedBranchReference() throws Exception {
+    @Test void joiningOntoABranchKeepsItsJunctionOnTheJoinedTrack() throws Exception {
         TrackRegistry registry = new TrackRegistry(directory.toFile());
         TrackSpline stem = registry.replace(line(0,80,100));
         TrackSpline keep = registry.replace(line(0,20,0));
-        TrackSpline drop = registry.replace(line(30,50,0));
+        TrackSpline drop = registry.replace(line(50,30,0));
         TrackJunction junction = registry.putJunction(node(stem,20,drop.getId()));
         registry.lay("world",0,64,20,0,64,30);
         assertTrue(registry.get(drop.getId()).isEmpty());
-        assertTrue(registry.get(keep.getId()).isPresent());
-        assertTrue(registry.getJunction(junction.id).isEmpty());
-        assertFalse(new TrackStore(directory.toFile()).junctionFileFor("world",junction.id).exists());
+        TrackSpline joined = registry.get(keep.getId()).orElseThrow();
+        TrackJunction kept = registry.getJunction(junction.id).orElseThrow();
+        assertEquals(keep.getId(), kept.branchSplineId);
+        assertTrue(kept.atEnd);
+        assertEquals(50, joined.last().z, 1e-6);
+        assertTrue(new TrackStore(directory.toFile()).loadAllJunctions().stream()
+            .anyMatch(loaded -> loaded.junction.atEnd));
     }
 
     @Test void aRejectedJunctionRegistrationRollsBackItsNewTrackFile() throws Exception {

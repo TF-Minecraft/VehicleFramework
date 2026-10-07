@@ -405,7 +405,8 @@ class TrackCommandsCoverageTest {
         assertNotNull(TrackJunctionSession.get(player));
         assertTrue(said("You need track"));
         pieces.when(() -> TrackPieces.canAffordFirst(player)).thenReturn(true);
-        when(registry.layBranch(stem.getId(), 6, 1, "world", world, 8, 64.25, 20)).thenReturn(branch);
+        when(registry.layTurnout(stem.getId(), 6, 1, "world", world, 8, 64.25, 20, 10_000))
+                .thenReturn(TrackLayResult.of(TrackLayResult.Kind.NEW, branch, branch.xyz(), 0));
         TrackCommands.markEnd(player, end());
         assertNull(TrackJunctionSession.get(player));
         verify(displays).refreshSpline(null, branch.getId());
@@ -421,7 +422,7 @@ class TrackCommandsCoverageTest {
         assertNotNull(TrackJunctionSession.get(player));
         verifyNoInteractions(displays);
         support.when(() -> TrackSupport.firstSitY(world, 8, 64, 20)).thenReturn(64d);
-        when(registry.layBranch(stem.getId(), 6, 1, "world", world, 8, 64.25, 20))
+        when(registry.layTurnout(stem.getId(), 6, 1, "world", world, 8, 64.25, 20, 10_000))
                 .thenThrow(new TrackLayException("Branch too long"));
         TrackCommands.markEnd(player, end());
         assertNotNull(TrackJunctionSession.get(player));
