@@ -129,6 +129,7 @@ ironclad:
                     - weapon_reload
                 shoot:
                     - weapon_shoot
+            aim-vector: exit.exit_align
             bones:
                 - exit.exit_align
         aa_turret:
@@ -144,6 +145,7 @@ ironclad:
                 shoot:
                     - shoot
                     - shoot2
+            aim-vector: exit1.exit_align1
             bones:
                 - exit1.exit_align1
                 - exit2.exit_align2

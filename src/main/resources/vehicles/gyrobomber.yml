@@ -244,6 +244,7 @@ gyrobomber:
             seat: gunner_1
             body-bone: "gunturret"
             head-bone: "gunrotator"
+            aim-vector: exit2.exitalign2
             bones:
                 - exit2.exitalign2
         front_gun:
@@ -252,6 +253,7 @@ gyrobomber:
             seat: gunner_2
             body-bone: "gunturret2"
             head-bone: "gunrotator2"
+            aim-vector: exit3.exitalign3
             bones:
                 - exit3.exitalign3
         left_gun:
@@ -260,6 +262,7 @@ gyrobomber:
             seat: gunner_3
             body-bone: "gunturret3"
             head-bone: "gunrotator3"
+            aim-vector: exit4.exitalign4
             bones:
                 - exit4.exitalign4
         right_gun:
@@ -268,5 +271,6 @@ gyrobomber:
             seat: gunner_4
             body-bone: "gunturret4"
             head-bone: "gunrotator4"
+            aim-vector: exit5.exitalign5
             bones:
                 - exit5.exitalign5

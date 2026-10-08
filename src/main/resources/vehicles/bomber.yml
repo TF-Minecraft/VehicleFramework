@@ -173,6 +173,7 @@ bomber:
             seat: front_gunner
             body-bone: "gunturret2"
             head-bone: "gunrotator2"
+            aim-vector: exit.exitalign
             bones:
                 - exit.exitalign
         rear_gun:
@@ -181,6 +182,7 @@ bomber:
             seat: rear_gunner
             body-bone: "gunturret"
             head-bone: "gunrotator"
+            aim-vector: exit2.exitalign2
             bones:
                 - exit2.exitalign2
         bomb_bay:

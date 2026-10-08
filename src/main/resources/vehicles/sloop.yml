@@ -107,6 +107,7 @@ sloop:
             animations:
                 shoot:
                     - shoot
+            aim-vector: exit.exitalign
             bones:
                 - exit.exitalign
         back_right_gun:
@@ -123,6 +124,7 @@ sloop:
             animations:
                 shoot:
                     - shoot
+            aim-vector: exit4.exitalign4
             bones:
                 - exit4.exitalign4
         front_left_gun:
@@ -139,6 +141,7 @@ sloop:
             animations:
                 shoot:
                     - shoot
+            aim-vector: exit2.exitalign2
             bones:
                 - exit2.exitalign2
         back_left_gun:
@@ -155,5 +158,6 @@ sloop:
             animations:
                 shoot:
                     - shoot
+            aim-vector: exit3.exitalign3
             bones:
                 - exit3.exitalign3

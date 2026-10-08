@@ -214,6 +214,7 @@ behemoth:
                 shoot:
                     - ac_shoot2
                     - ac_shoot
+            aim-vector: acexit.acexitalign
             bones:
                 - acexit.acexitalign
                 - acexit2.acexitalign2
@@ -240,6 +241,7 @@ behemoth:
             animations:
                 shoot:
                     - shoot1
+            aim-vector: cannonexit.cannonexitalign
             bones:
                 - cannonexit.cannonexitalign
         right_cannon:
@@ -265,6 +267,7 @@ behemoth:
             animations:
                 shoot:
                     - shoot2
+            aim-vector: cannonexit2.cannonexitalign2
             bones:
                 - cannonexit2.cannonexitalign2
         aa_turret_1:
@@ -280,6 +283,7 @@ behemoth:
                 shoot:
                     - aa_shoot
                     - aa_shoot2
+            aim-vector: exit1.exit_align1
             bones:
                 - exit1.exit_align1
                 - exit2.exit_align2
@@ -301,6 +305,7 @@ behemoth:
                 shoot:
                     - aa_shoot3
                     - aa_shoo4
+            aim-vector: exit3.exit_align3
             bones:
                 - exit3.exit_align3
                 - exit4.exit_align4
@@ -322,6 +327,7 @@ behemoth:
                 shoot:
                     - aa_shoot7
                     - aa_shoot8
+            aim-vector: exit5.exit_align5
             bones:
                 - exit5.exit_align5
                 - exit6.exit_align6
@@ -343,6 +349,7 @@ behemoth:
                 shoot:
                     - aa_shoot5
                     - aa_shoot6
+            aim-vector: exit7.exit_align7
             bones:
                 - exit7.exit_align7
                 - exit8.exit_align8

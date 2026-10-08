@@ -60,6 +60,7 @@ field_artillery:
             animations:
                 shoot:
                     - shoot
+            aim-vector: exit.exit_align
             bones:
                 - exit.exit_align
             keybinds:
