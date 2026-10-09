@@ -55,6 +55,27 @@ walkable:
   # out from under them. 0 never carries anyone.
   carry-max-speed: 1.0
 
+# Warns everyone seated on a train at least this many seconds before it would collide at current speeds:
+# oncoming, stopped, slower ahead, catching it from behind, or parked in unloaded chunks.
+# Riders of a standing train another is heading for are warned too. Only a locomotive, or a car
+# on its own, explodes on contact. A train whose throttle is rising counts as accelerating at
+# that rate up to its throttle limit. The first warning flashes a title, then a boss bar counts
+# down with the alarm sound.
+collision-warning:
+  enabled: true
+  seconds: 30
+  # How often to look ahead, in ticks.
+  check-ticks: 10
+  # Blocks kept between trains; closer than this counts as running into it.
+  margin: 2
+  # Unloaded cars only have their centre saved, so count this many blocks either side of it.
+  parked-car-half-length: 5
+  sound: minecraft:block.bell.use
+  sound-volume: 1.0
+  sound-pitch: 1.5
+  # Half this interval once impact is 10 seconds away or less.
+  sound-interval-ticks: 40
+
 # Moving trains: crumbs and clack while rolling. Does not affect layer clicks or placing 1x3s.
 fx:
   particle: BLOCK_CRACK

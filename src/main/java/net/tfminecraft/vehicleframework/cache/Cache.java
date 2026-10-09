@@ -58,6 +58,16 @@ public class Cache {
 	public static double trainClearanceHeight = 2.5;
 	// Players on a train's deck move with it up to this speed, in blocks a tick.
 	public static double trainDeckCarryMaxSpeed = 1.0;
+	// Warn riders this many seconds before their train would run into another.
+	public static boolean trainCollisionWarning = true;
+	public static double trainCollisionWarningSeconds = 30;
+	public static int trainCollisionWarningCheckTicks = 10;
+	public static double trainCollisionWarningMargin = 2;
+	public static double trainCollisionWarningParkedHalfLength = 5;
+	public static String trainCollisionWarningSound = "minecraft:block.bell.use";
+	public static float trainCollisionWarningSoundVolume = 1.0f;
+	public static float trainCollisionWarningSoundPitch = 1.5f;
+	public static int trainCollisionWarningSoundTicks = 40;
 	public static long trackLayRetryMs = 3000;
 	public static long trackRemoveCooldownMs = 3000;
 	public static double trackMaxTurnDegrees = 25;
