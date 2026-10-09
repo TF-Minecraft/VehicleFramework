@@ -2,6 +2,7 @@ package net.tfminecraft.vehicleframework.database;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
@@ -68,6 +69,29 @@ class TrackedCarIndexTest {
 		} finally {
 			reopened.close();
 		}
+	}
+
+	@Test
+	void rolledBackChangesAreUndoneInTheIndex() {
+		VehicleRepository repository = VehicleRepository.open(tempDir.resolve("rollback.db").toFile());
+		try {
+			assertTrue(repository.saveLive(snapshot("car-1", payload(7, null), false)));
+			assertThrows(IllegalStateException.class, () -> repository.runInTransaction(() -> {
+				repository.tombstone("car-1");
+				repository.upsert(snapshot("car-2", payload(9, null), false));
+				throw new IllegalStateException("rollback");
+			}));
+			assertEquals(List.of(car("car-1", 7, null)), repository.trackedCars());
+		} finally {
+			repository.close();
+		}
+		// When the indexes cannot be rebuilt either, both failures are kept with the original.
+		VehicleRepository closing = VehicleRepository.open(tempDir.resolve("closing.db").toFile());
+		RuntimeException failure = assertThrows(RuntimeException.class, () -> closing.runInTransaction(() -> {
+			closing.close();
+			throw new IllegalStateException("rollback");
+		}));
+		assertEquals(2, failure.getSuppressed().length);
 	}
 
 	private static TrackedCar car(String uuid, double s, String parent) {

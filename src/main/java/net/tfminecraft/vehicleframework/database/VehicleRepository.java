@@ -478,9 +478,14 @@ public final class VehicleRepository {
 		try {
 			database.runTransaction(connection -> work.run());
 		} catch (RuntimeException failure) {
-			// Row mutations update this cache eagerly; rollback must restore it too.
+			// Row mutations update these caches eagerly; rollback must restore them too.
 			try {
 				rebuildOccupiedChunks();
+			} catch (RuntimeException indexFailure) {
+				failure.addSuppressed(indexFailure);
+			}
+			try {
+				trackedCars.replace(listAllLive());
 			} catch (RuntimeException indexFailure) {
 				failure.addSuppressed(indexFailure);
 			}
