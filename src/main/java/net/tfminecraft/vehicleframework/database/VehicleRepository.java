@@ -156,6 +156,7 @@ public final class VehicleRepository {
 
 	private final SqliteDatabase database;
 	private final OccupiedChunkIndex occupiedChunks = new OccupiedChunkIndex();
+	private final TrackedCarIndex trackedCars = new TrackedCarIndex();
 	private int chunkQueryCount;
 
 	private VehicleRepository(SqliteDatabase database) {
@@ -233,6 +234,7 @@ public final class VehicleRepository {
 				"schema_version");
 		assertQuickCheck();
 		rebuildOccupiedChunks();
+		trackedCars.replace(listAllLive());
 	}
 
 	private void rebuildOccupiedChunks() {
@@ -298,6 +300,7 @@ public final class VehicleRepository {
 				snapshot.getUpdatedAt());
 		if (updated > 0) {
 			occupiedChunks.putLive(snapshot);
+			trackedCars.put(snapshot);
 		}
 	}
 
@@ -323,6 +326,7 @@ public final class VehicleRepository {
 				snapshot.getUpdatedAt());
 		if (updated > 0) {
 			occupiedChunks.putLive(snapshot);
+			trackedCars.put(snapshot);
 			return true;
 		}
 		return false;
@@ -380,6 +384,7 @@ public final class VehicleRepository {
 		int updated = database.executeUpdate(TOMBSTONE_REVISION, revision, updatedAt, uuid, revision);
 		if (updated > 0) {
 			occupiedChunks.remove(uuid);
+			trackedCars.remove(uuid);
 		}
 		return updated;
 	}
@@ -391,8 +396,14 @@ public final class VehicleRepository {
 		int updated = database.executeUpdate(TOMBSTONE_LIVE, System.currentTimeMillis(), uuid);
 		if (updated > 0) {
 			occupiedChunks.remove(uuid);
+			trackedCars.remove(uuid);
 		}
 		return updated;
+	}
+
+	/** Saved train cars on track, as last written; loaded cars may since have moved. */
+	public List<TrackedCar> trackedCars() {
+		return trackedCars.all();
 	}
 
 	public List<VehicleSnapshot> listAllLive() {
@@ -467,9 +478,14 @@ public final class VehicleRepository {
 		try {
 			database.runTransaction(connection -> work.run());
 		} catch (RuntimeException failure) {
-			// Row mutations update this cache eagerly; rollback must restore it too.
+			// Row mutations update these caches eagerly; rollback must restore them too.
 			try {
 				rebuildOccupiedChunks();
+			} catch (RuntimeException indexFailure) {
+				failure.addSuppressed(indexFailure);
+			}
+			try {
+				trackedCars.replace(listAllLive());
 			} catch (RuntimeException indexFailure) {
 				failure.addSuppressed(indexFailure);
 			}

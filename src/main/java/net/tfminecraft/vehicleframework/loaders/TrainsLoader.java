@@ -68,6 +68,21 @@ public class TrainsLoader {
 		Cache.debugLogging = config.getBoolean("debug-logging", false);
 		loadFx(config);
 		loadBuild(config);
+		loadCollisionWarning(config);
+	}
+
+	private void loadCollisionWarning(FileConfiguration config) {
+		String path = "collision-warning.";
+		Cache.trainCollisionWarning = config.getBoolean(path + "enabled", true);
+		Cache.trainCollisionWarningSeconds = Math.max(1.0, config.getDouble(path + "seconds", 30.0));
+		Cache.trainCollisionWarningCheckTicks = Math.max(1, config.getInt(path + "check-ticks", 10));
+		Cache.trainCollisionWarningMargin = Math.max(0.0, config.getDouble(path + "margin", 2.0));
+		Cache.trainCollisionWarningParkedHalfLength = Math.max(
+				0.5, config.getDouble(path + "parked-car-half-length", 5.0));
+		Cache.trainCollisionWarningSound = config.getString(path + "sound", "minecraft:block.bell.use");
+		Cache.trainCollisionWarningSoundVolume = (float) config.getDouble(path + "sound-volume", 1.0);
+		Cache.trainCollisionWarningSoundPitch = (float) config.getDouble(path + "sound-pitch", 1.5);
+		Cache.trainCollisionWarningSoundTicks = Math.max(1, config.getInt(path + "sound-interval-ticks", 40));
 	}
 
 	// The train box starts at vehicle-y-offset, so it needs some height above that.

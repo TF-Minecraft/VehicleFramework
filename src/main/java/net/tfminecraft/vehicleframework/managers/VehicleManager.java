@@ -82,6 +82,7 @@ import net.tfminecraft.vehicleframework.managers.spawner.VehicleSpawner;
 import net.tfminecraft.vehicleframework.protocol.PacketConverter;
 import net.tfminecraft.vehicleframework.tracks.TrainTapeInteract;
 import net.tfminecraft.vehicleframework.tracks.TrainCollision;
+import net.tfminecraft.vehicleframework.tracks.TrainCollisionWarning;
 import net.tfminecraft.vehicleframework.tracks.TrackJunction;
 import net.tfminecraft.vehicleframework.util.Damager;
 import net.tfminecraft.vehicleframework.VFLogger;
@@ -325,6 +326,7 @@ public class VehicleManager implements Listener{
 					}
 	            }
 				TrainCollision.tick(vehicles.values());
+				TrainCollisionWarning.tick(vehicles.values());
 				DeckRiders.tick(vehicles.values());
 	            Iterator<Map.Entry<Player, ActiveVehicle>> iterator = tow.entrySet().iterator();
 	            while (iterator.hasNext()) {

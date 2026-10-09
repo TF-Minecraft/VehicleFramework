@@ -29,6 +29,7 @@ import org.bstats.bukkit.Metrics;
 import net.tfminecraft.vehicleframework.util.MythicMobsIntegration;
 import net.tfminecraft.vehicleframework.util.TabCompletion;
 import net.tfminecraft.vehicleframework.tracks.TrackBuildAnimator;
+import net.tfminecraft.vehicleframework.tracks.TrainCollisionWarning;
 import net.tfminecraft.vehicleframework.tracks.TrainSpaceHighlight;
 import net.tfminecraft.vehicleframework.tracks.TrackDisplayManager;
 import net.tfminecraft.vehicleframework.tracks.TrackLog;
@@ -100,6 +101,7 @@ public class VehicleFramework extends JavaPlugin{
 			trackDisplayManager.despawnAll();
 			TrainSpaceHighlight.clearAll();
 		}
+		TrainCollisionWarning.clear();
 		vehicleManager.unloadAll();
 		if (trackRegistry != null) {
 			trackRegistry.close();

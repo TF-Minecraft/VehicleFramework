@@ -58,6 +58,13 @@ import net.tfminecraft.vehicleframework.tracks.TrackPose;
 import net.tfminecraft.vehicleframework.tracks.TrackRegistry;
 import net.tfminecraft.vehicleframework.tracks.TrackSpline;
 import net.tfminecraft.vehicleframework.tracks.TrackStore;
+import net.tfminecraft.vehicleframework.tracks.TrainCollision;
+import net.tfminecraft.vehicleframework.tracks.TrainCollisionWarning;
+import net.tfminecraft.vehicleframework.tracks.TrainPath;
+import net.tfminecraft.vehicleframework.cache.Cache;
+import net.tfminecraft.vehicleframework.enums.VehicleDeath;
+import org.bukkit.entity.Player;
+import java.util.Map;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.component.propulsion.Throttle;
 import net.tfminecraft.vehicleframework.vehicles.controller.VehicleMovementController;
@@ -857,6 +864,153 @@ class TrainReversePlacementTest {
         registry.replace(track.withSegment(80, track.segment(80).withBroken(true)));
         loco.splineTick();
         assertPositions(loco, track, 60);
+    }
+
+    @Test
+    void collisionPathRunsFromTheTrailingCouplerPastTheLeadingOne() {
+        TrackSpline track = denseTrack();
+        TrainHandler loco = consist(track, 60);
+        TrainPath forward = loco.collisionPath(10);
+        assertEquals(30, forward.trainLength(), 1e-6);
+        assertEquals(40, forward.length(), 1e-6);
+        assertEquals(List.of(new TrainPath.Range(track.getId(), 35, 65, 1)), rounded(forward.ranges(0, 30)));
+
+        loco.v.getAccessPanel().setSpeed(-0.72);
+        TrainPath backward = loco.collisionPath(-5);
+        assertEquals(30, backward.length(), 1e-6);
+        assertEquals(List.of(new TrainPath.Range(track.getId(), 35, 65, -1)), rounded(backward.ranges(0, 30)));
+
+        TrainHandler car = loco.getChild().getTrainHandler();
+        when(car.v.hasParent()).thenReturn(true);
+        assertNull(car.collisionPath(10));
+        assertNull(car().collisionPath(10));
+    }
+
+    /**
+     * Two three-car trains run at each other on a straight line, moved by the real track
+     * code tick by tick. The warning must come at least 30 seconds before the real
+     * TrainCollision check explodes them, and never promise more time than is left.
+     */
+    @ParameterizedTest
+    @CsvSource({
+            "100, 100, 0, 1100, -1",   // both at full throttle
+            "100, 0, 0, 600, -1",      // running at a stopped train
+            "100, 0, 1, 1100, -1",     // the other driver pulls away towards us, opening the throttle each tick
+            "50, 0, 0, 800, 403"})     // cruising at half throttle, then opening it up just after a check
+    void headOnTrainsAreWarnedBeforeTheyCollide(int throttleA, int throttleB, int rampB, double startB,
+            int rampAFrom) throws Exception {
+        TrackSpline track = TrackSpline.fromPoints(UUID.randomUUID(), "world", false,
+                List.of(new double[]{0, 64, 0}, new double[]{0, 64, 1400}));
+        store.save(track);
+        registry.loadFromDisk();
+        TrainHandler a = consist(track, 100);
+        TrainHandler b = consist(track, startB);
+        b.applyConsist(new ConsistData(null, null, track.getId().toString(), startB, 1, null, null, -1, Map.of()));
+        b.placeLoadedCars();
+        World world = openWorld();
+        Player driverA = mock(Player.class);
+        Player driverB = mock(Player.class);
+        when(driverA.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(driverB.getUniqueId()).thenReturn(UUID.randomUUID());
+        List<ActiveVehicle> vehicles = new ArrayList<>();
+        int[] exploded = {-1};
+        int[] tick = {0};
+        for (TrainHandler loco : List.of(a, b)) {
+            ActiveVehicle parent = null;
+            for (TrainHandler car : cars(loco)) {
+                ActiveVehicle v = car.v;
+                when(v.isTrain()).thenReturn(true);
+                when(v.getEntity().getWorld()).thenReturn(world);
+                when(v.hasDeathData(VehicleDeath.EXPLODE)).thenReturn(true);
+                doAnswer(call -> {
+                    if (exploded[0] < 0) exploded[0] = tick[0];
+                    return null;
+                }).when(v).kill(VehicleDeath.EXPLODE);
+                SeatHandler seats = mock(SeatHandler.class);
+                when(seats.getPassengers()).thenReturn(parent == null
+                        ? new ArrayList<>(List.of(loco == a ? driverA : driverB)) : new ArrayList<>());
+                when(v.getSeatHandler()).thenReturn(seats);
+                if (parent != null) {
+                    when(v.hasParent()).thenReturn(true);
+                    when(v.getParent()).thenReturn(parent);
+                }
+                parent = v;
+                vehicles.add(v);
+            }
+        }
+        // No saved cars: only these two trains are on the line.
+        Field repositoryField = VehicleFramework.class.getDeclaredField("vehicleRepository");
+        repositoryField.setAccessible(true);
+        Object previousRepository = repositoryField.get(null);
+        repositoryField.set(null, null);
+        TrainCollisionWarning.clear();
+        double saved = Cache.trainCollisionWarningSeconds;
+        Cache.trainCollisionWarningSeconds = 30;
+        Cache.trainCollisionWarningMargin = 2;
+        Cache.trainCollisionWarningCheckTicks = 10;
+        // Locomotives overdrive to 120.
+        for (TrainHandler loco : List.of(a, b)) {
+            when(loco.v.getThrottle()).thenReturn(new Throttle("Throttle", 120, -100, null));
+        }
+        a.v.getThrottle().setThrottle(throttleA);
+        b.v.getThrottle().setThrottle(throttleB);
+        List<double[]> forecasts = new ArrayList<>();
+        try {
+            for (; tick[0] < 2400 && exploded[0] < 0; tick[0]++) {
+                if (rampB > 0 && b.v.getThrottle().getCurrent() < 100) {
+                    b.v.getThrottle().setThrottle(b.v.getThrottle().getCurrent() + rampB);
+                }
+                if (rampAFrom >= 0 && tick[0] >= rampAFrom && a.v.getThrottle().getCurrent() < 120) {
+                    a.v.getThrottle().setThrottle(a.v.getThrottle().getCurrent() + 1);
+                }
+                // Locomotive speed is 0.72 blocks a tick at full throttle, as the engine sets it.
+                a.v.getAccessPanel().setSpeed(0.72 * a.v.getThrottle().getCurrent() / 100);
+                b.v.getAccessPanel().setSpeed(0.72 * b.v.getThrottle().getCurrent() / 100);
+                if (tick[0] % 10 == 0) {
+                    TrainCollisionWarning.Warning warning = TrainCollisionWarning.check(vehicles).get(driverA);
+                    forecasts.add(new double[]{tick[0], warning == null ? -1 : warning.seconds()});
+                }
+                a.splineTick();
+                b.splineTick();
+                TrainCollision.tick(vehicles);
+            }
+        } finally {
+            Cache.trainCollisionWarningSeconds = saved;
+            TrainCollisionWarning.clear();
+            repositoryField.set(null, previousRepository);
+        }
+        assertTrue(exploded[0] > 0, "The trains never met");
+        double firstLead = -1;
+        StringBuilder log = new StringBuilder(String.format("throttle A=%d B=%d ramp=%d from=%d: collision after %.2f s%n",
+                throttleA, throttleB, rampB, rampAFrom, exploded[0] / 20.0));
+        for (double[] forecast : forecasts) {
+            if (forecast[1] < 0) continue;
+            double left = (exploded[0] - forecast[0]) / 20.0;
+            if (firstLead < 0) firstLead = left;
+            assertTrue(forecast[1] <= left + 1e-9, "Promised " + forecast[1] + " s with " + left + " s left");
+            // Early only by the margin and what the other driver might still do.
+            assertTrue(forecast[1] >= left - 3.5, "Warned of " + forecast[1] + " s with " + left + " s left");
+            if ((int) forecast[0] % 100 == 0 || firstLead == left) {
+                log.append(String.format("  t=%5.1f s  warning %5.1f s  actual %5.2f s%n",
+                        forecast[0] / 20.0, forecast[1], left));
+            }
+        }
+        System.out.print(log);
+        assertTrue(firstLead >= 30, "First warning only " + firstLead + " s before the collision");
+    }
+
+    // A world with nothing in the way, so only the trains can meet.
+    private static World openWorld() {
+        World world = stub(World.class);
+        Block air = stub(Block.class);
+        when(air.isPassable()).thenReturn(true);
+        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenReturn(air);
+        return world;
+    }
+
+    private static List<TrainPath.Range> rounded(List<TrainPath.Range> ranges) {
+        return ranges.stream().map(r -> new TrainPath.Range(r.splineId(),
+                Math.round(r.lo() * 1e6) / 1e6, Math.round(r.hi() * 1e6) / 1e6, r.direction())).toList();
     }
 
     @ParameterizedTest

@@ -35,6 +35,7 @@ import net.tfminecraft.vehicleframework.enums.Direction;
 import net.tfminecraft.vehicleframework.managers.VehicleManager;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTape;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTapeItems;
+import net.tfminecraft.vehicleframework.tracks.TrainPath;
 import net.tfminecraft.vehicleframework.tracks.TrainRoute;
 import net.tfminecraft.vehicleframework.tracks.TrainRoute.Position;
 import net.tfminecraft.vehicleframework.tracks.TrainBlockCollision;
@@ -908,6 +909,31 @@ public class TrainHandler {
 			}
 		}
 		return placements;
+	}
+
+	/**
+	 * The rails this train covers from its trailing coupler, plus {@code ahead} blocks past
+	 * its leading one along the switches as set. Null when it is not on track.
+	 */
+	public TrainPath collisionPath(double ahead) {
+		if (v == null || v.hasParent() || boundSpline() == null) { return null; }
+		List<CarPlacement> cars = planCars();
+		if (cars.isEmpty()) { return null; }
+		TrainHandler first = cars.get(0).vehicle.getTrainHandler();
+		TrainHandler last = cars.get(cars.size() - 1).vehicle.getTrainHandler();
+		double length = reach(first) + reach(last);
+		for (int i = 0; i + 1 < cars.size(); i++) {
+			length += spacing(cars.get(i).vehicle.getTrainHandler(), cars.get(i + 1).vehicle.getTrainHandler());
+		}
+		int direction = controlDirection();
+		TrainRoute route = route();
+		Position tail = direction > 0
+				? route.walk(cars.get(cars.size() - 1).position(), -reach(last)).position()
+				: route.walk(cars.get(0).position(), reach(first)).position();
+		// Only the locomotive explodes on contact; it leads going forwards and trails in reverse.
+		double head = 2 * reach(first);
+		return new TrainPath(route.trace(tail, direction * (length + Math.max(0, ahead)), true, true), length,
+				direction > 0 ? length - head : 0, direction > 0 ? length : head);
 	}
 
 	private Position leadingPosition(List<CarPlacement> cars, int direction) {
