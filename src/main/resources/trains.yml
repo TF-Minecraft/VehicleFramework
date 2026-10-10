@@ -55,6 +55,12 @@ walkable:
   # out from under them. 0 never carries anyone.
   carry-max-speed: 1.0
 
+# Trains that touch on the same track. Closing slower than this, in blocks a second, they
+# bump and stop; faster, the locomotive and what it hits explode. The locomotive runs at
+# 14.4 at full throttle. 0 explodes on any contact.
+collision:
+  explode-speed: 3.0
+
 # Warns everyone seated on a train at least this many seconds before it would collide at current speeds:
 # oncoming, stopped, slower ahead, catching it from behind, or parked in unloaded chunks.
 # Riders of a standing train another is heading for are warned too. Only a locomotive, or a car
