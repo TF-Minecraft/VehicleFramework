@@ -42,6 +42,7 @@ public final class TrainCollision {
 			LAST.clear();
 			return;
 		}
+		TOLD.values().removeIf(told -> tick - told >= TELL_TICKS);
 		List<ActiveVehicle> list = new ArrayList<>(vehicles);
 		Map<String, Vector> velocities = velocities(list);
 		Set<String> exploding = new HashSet<>();
@@ -69,7 +70,8 @@ public final class TrainCollision {
 				Vector otherAt = position(other);
 				Vector velocity = velocities.getOrDefault(key(loco), new Vector());
 				Vector otherVelocity = velocities.getOrDefault(key(other), new Vector());
-				if (closingSpeed(at, velocity, otherAt, otherVelocity) * 20 >= Cache.trainCollisionExplodeSpeed) {
+				if (Cache.trainCollisionExplodeSpeed <= 0
+						|| closingSpeed(at, velocity, otherAt, otherVelocity) * 20 >= Cache.trainCollisionExplodeSpeed) {
 					explodePair(loco, other);
 					exploding.add(key(loco));
 					exploding.add(key(other));
@@ -136,11 +138,9 @@ public final class TrainCollision {
 		if (head.getAccessPanel() != null) {
 			head.getAccessPanel().setSpeed(0);
 		}
-		Long told = TOLD.get(key(head));
-		if (told != null && tick - told < TELL_TICKS) {
+		if (TOLD.putIfAbsent(key(head), tick) != null) {
 			return;
 		}
-		TOLD.put(key(head), tick);
 		PersistenceLog.append("BUMP " + head.getUUID() + " car=" + car.getUUID());
 		Entity entity = car.getEntity();
 		entity.getWorld().playSound(entity.getLocation(), BUMP_SOUND, 0.6f, 0.6f);

@@ -37,6 +37,9 @@ import net.tfminecraft.vehicleframework.vehicles.util.AccessPanel;
 class TrainCollisionTest {
 	private static final UUID SPLINE = UUID.randomUUID();
 	private final World world = mock(World.class);
+	// Cars made first sort first, so the first is always the one checked against the rest.
+	private final String test = UUID.randomUUID().toString();
+	private int cars;
 	private double explodeSpeed;
 
 	@BeforeEach
@@ -197,6 +200,19 @@ class TrainCollisionTest {
 		verify(mover.v).kill(VehicleDeath.EXPLODE);
 	}
 
+	@Test
+	void zeroExplodeSpeedExplodesTrainsBackingApart() {
+		Cache.trainCollisionExplodeSpeed = 0;
+		Car mover = new Car(3.5, 0.0072);
+		Car parked = new Car(4, 0);
+		TrainCollision.tick(List.of(mover.v));
+		mover.moveTo(3.4);
+		TrainCollision.tick(List.of(mover.v, parked.v));
+
+		verify(mover.v).kill(VehicleDeath.EXPLODE);
+		verify(parked.v).kill(VehicleDeath.EXPLODE);
+	}
+
 	private final class Car {
 		final ActiveVehicle v = mock(ActiveVehicle.class);
 		final AccessPanel panel = mock(AccessPanel.class);
@@ -215,7 +231,7 @@ class TrainCollisionTest {
 			when(train.isBound()).thenReturn(true);
 			when(train.getSplineId()).thenReturn(SPLINE);
 			when(panel.getSpeed()).thenReturn(speed);
-			when(v.getUUID()).thenReturn(UUID.randomUUID().toString());
+			when(v.getUUID()).thenReturn(test + "-car-" + cars++);
 			when(v.isTrain()).thenReturn(true);
 			when(v.getEntity()).thenReturn(entity);
 			when(v.getTrainHandler()).thenReturn(train);
