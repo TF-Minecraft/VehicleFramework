@@ -58,6 +58,8 @@ public class Cache {
 	public static double trainClearanceHeight = 2.5;
 	// Players on a train's deck move with it up to this speed, in blocks a tick.
 	public static double trainDeckCarryMaxSpeed = 1.0;
+	// Trains closing slower than this, in blocks a second, stop on contact instead of exploding.
+	public static double trainCollisionExplodeSpeed = 3;
 	// Warn riders this many seconds before their train would run into another.
 	public static boolean trainCollisionWarning = true;
 	public static double trainCollisionWarningSeconds = 30;

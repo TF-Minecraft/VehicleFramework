@@ -308,7 +308,7 @@ class TrackRuntimeCoverageTest {
     }
 
     @Test void collisionsExplodeOverlappingDifferentConsistsOnlyOnce() {
-        UUID spline = UUID.randomUUID(); ActiveVehicle first = train("a", spline), second = train("b", spline), third = train("c", spline);
+        Cache.trainCollisionExplodeSpeed = 0; UUID spline = UUID.randomUUID(); ActiveVehicle first = train("a", spline), second = train("b", spline), third = train("c", spline);
         when(first.hasDeathData(VehicleDeath.EXPLODE)).thenReturn(true); when(second.hasDeathData(VehicleDeath.EXPLODE)).thenReturn(true); when(third.hasDeathData(VehicleDeath.EXPLODE)).thenReturn(true);
         TrainCollision.tick(null); TrainCollision.tick(List.of()); TrainCollision.tick(List.of(first, second, third)); verify(first).kill(VehicleDeath.EXPLODE); verify(second).kill(VehicleDeath.EXPLODE); verify(third, never()).kill(any());
         assertFalse(TrainCollision.sameConsist(null, first)); assertNull(TrainCollision.consistKey(null)); when(second.hasParent()).thenReturn(true); when(second.getParent()).thenReturn(first); assertTrue(TrainCollision.sameConsist(first, second));
@@ -317,7 +317,7 @@ class TrackRuntimeCoverageTest {
     }
 
     @Test void collisionChecksIgnoreDifferentTracksWorldsUnboundAndUnavailableEntities() {
-        UUID spline = UUID.randomUUID(); ActiveVehicle a = train("a", spline), b = train("b", UUID.randomUUID());
+        Cache.trainCollisionExplodeSpeed = 0; UUID spline = UUID.randomUUID(); ActiveVehicle a = train("a", spline), b = train("b", UUID.randomUUID());
         TrainCollision.tick(List.of(a, b)); when(b.getTrainHandler().getSplineId()).thenReturn(spline); when(b.getEntity().getWorld()).thenReturn(mock(World.class)); TrainCollision.tick(List.of(a, b));
         when(b.getEntity().getWorld()).thenReturn(null); TrainCollision.tick(List.of(a, b)); when(b.getEntity().getWorld()).thenReturn(world); when(b.getEntity().getBoundingBox()).thenReturn(null); TrainCollision.tick(List.of(a, b));
         when(b.getEntity().getBoundingBox()).thenReturn(new BoundingBox(10, 64, 10, 11, 67, 11)); TrainCollision.tick(List.of(a, b));
@@ -388,7 +388,7 @@ class TrackRuntimeCoverageTest {
     }
 
     @Test void nearbyTrainsOnOtherTracksAreNotExplodedAndChainDestructionIsNotDuplicated() {
-        ActiveVehicle first = train("a", UUID.randomUUID()), otherTrack = train("b", UUID.randomUUID());
+        Cache.trainCollisionExplodeSpeed = 0; ActiveVehicle first = train("a", UUID.randomUUID()), otherTrack = train("b", UUID.randomUUID());
         assertTrue(first.getTrainHandler().isBound()); assertNotEquals(first.getTrainHandler().getSplineId(), otherTrack.getTrainHandler().getSplineId()); TrainCollision.tick(List.of(first, otherTrack)); verify(first, never()).kill(any());
         UUID track = UUID.randomUUID(); ActiveVehicle left = train("c", track), right = train("d", track); when(left.hasDeathData(VehicleDeath.EXPLODE)).thenReturn(true); when(right.hasDeathData(VehicleDeath.EXPLODE)).thenReturn(true);
         doAnswer(call -> { when(right.isDestroyed()).thenReturn(true); return null; }).when(left).kill(VehicleDeath.EXPLODE);

@@ -68,6 +68,7 @@ public class TrainsLoader {
 		Cache.debugLogging = config.getBoolean("debug-logging", false);
 		loadFx(config);
 		loadBuild(config);
+		Cache.trainCollisionExplodeSpeed = Math.max(0.0, config.getDouble("collision.explode-speed", 3.0));
 		loadCollisionWarning(config);
 	}
 
