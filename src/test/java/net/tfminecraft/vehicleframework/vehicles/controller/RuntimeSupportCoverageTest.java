@@ -102,7 +102,7 @@ class RuntimeSupportCoverageTest {
     @Test void accessRulesHandleMissingLegacyWhitelistEntriesWithoutGrantingStrangersAccess() {
         assertFalse(VehicleTicketRules.ownerOrWhitelisted(null, "Guest"));
         OwnerData access = new OwnerData(); access.setOwner("player_Owner"); access.setWhiteListed(true);
-        assertFalse(VehicleTicketRules.ownerOrWhitelisted(access, null)); assertTrue(VehicleTicketRules.ownerOrWhitelisted(access, "OWNER"));
+        assertFalse(VehicleTicketRules.ownerOrWhitelisted(access, (String) null)); assertTrue(VehicleTicketRules.ownerOrWhitelisted(access, "OWNER"));
         access.setWhiteList(null); assertFalse(VehicleTicketRules.ownerOrWhitelisted(access, "Guest"));
         access.setWhiteList(Arrays.asList(null, "player_Alice", "Bob"));
         assertTrue(VehicleTicketRules.ownerOrWhitelisted(access, "ALICE")); assertTrue(VehicleTicketRules.ownerOrWhitelisted(access, "bob"));

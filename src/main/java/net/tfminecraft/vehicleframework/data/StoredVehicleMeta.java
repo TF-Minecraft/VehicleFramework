@@ -1,5 +1,7 @@
 package net.tfminecraft.vehicleframework.data;
 
+import net.tfminecraft.vehicleframework.api.VehicleOwners;
+
 public final class StoredVehicleMeta {
     private final String uuid;
     private final String name;
@@ -29,13 +31,8 @@ public final class StoredVehicleMeta {
         return owner;
     }
 
+    /** A character ({@code char_<uuid>}) or legacy account ({@code player_<name>}) owner. */
     public static boolean isPlayerOwner(String owner) {
-        if (owner == null || owner.isBlank()) {
-            return false;
-        }
-        if (!owner.regionMatches(true, 0, "player_", 0, 7)) {
-            return false;
-        }
-        return !owner.equalsIgnoreCase("player_none") && owner.length() > 7;
+        return VehicleOwners.isPersonalOwner(owner);
     }
 }
