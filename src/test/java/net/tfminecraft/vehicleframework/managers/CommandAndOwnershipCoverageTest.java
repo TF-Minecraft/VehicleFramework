@@ -316,7 +316,9 @@ class CommandAndOwnershipCoverageTest {
         assertEquals(List.of("quarantine"), new TabCompletion().onTabComplete(player, command, "vf", new String[]{"admin", ""}));
         assertTrue(new TabCompletion().onTabComplete(player, command, "vf", new String[]{""}).contains("admin"));
         assertTrue(run(player, "takeover", "Bren")); verify(vehicles).startTakeover(player, "Bren");
-        assertFalse(run(player, "takeover", "Bren", "extra"));
+        assertTrue(run(player, "takeover", "Bren", "of", "the", "Vale")); verify(vehicles).startTakeover(player, "Bren of the Vale");
+        assertEquals(List.of(), new TabCompletion().onTabComplete(player, command, "vf", new String[]{"takeover", "Br"}),
+                "names mode offers no takeover targets");
         assertFalse(run(player, "admin", "other")); assertFalse(run(player, "admin"));
         when(services.getRegistrations(VehicleQuarantineSource.class)).thenReturn(List.of());
         assertTrue(run(player, "admin", "QUARANTINE"));

@@ -73,8 +73,10 @@ class OwnershipManagerTest {
 	/** Stands in for TLibs 2.5.0's facade. */
 	public static final class Lookup {
 		static final List<CharacterInfo> results = new ArrayList<>();
+		static String asked;
 
 		public static List<CharacterInfo> findByName(String name) {
+			asked = name;
 			return results;
 		}
 	}
@@ -641,10 +643,60 @@ class OwnershipManagerTest {
 	}
 
 	@Test
+	void takeoverNamesMayContainSpacesAndAreMatchedWhole() {
+		Lookup.results.add(info(bren, "Bren of the Vale"));
+		manager.startTakeover(staff, "  Bren   of the  Vale ");
+		assertEquals("Bren of the Vale", Lookup.asked);
+		verify(staff).sendMessage("§aRight-click a vehicle within 60 seconds to give it to §eBren of the Vale§a.");
+		ActiveVehicle v = vehicle(owner(kira));
+		assertTrue(manager.takeover(staff, v));
+		assertEquals(owner(bren), v.getOwnerData().getOwner());
+		manager.startTakeover(staff, " ");
+		verify(staff).sendMessage(OwnershipManager.TAKEOVER_USAGE);
+	}
+
+	@Test
+	void takeoverAcceptsACharacterIdForAnyKnownCharacterEvenWithoutTypedNames() {
+		OwnershipFixture.lookup(String.class);
+		UUID id = bren.ref().characterId();
+		CharacterInfo dead = new CharacterInfo(bren.ref(), "Bren", CharacterStatus.DEAD, null, Set.of(), 0, Instant.EPOCH);
+		characters.when(() -> Characters.info(id)).thenReturn(Optional.of(dead));
+		for (String form : List.of("id:" + id, "ID: " + id, id.toString().toUpperCase())) {
+			ActiveVehicle v = vehicle(owner(kira));
+			manager.startTakeover(staff, form);
+			assertTrue(manager.takeover(staff, v), form);
+			assertEquals(owner(bren), v.getOwnerData().getOwner(), form);
+		}
+		UUID unknown = UUID.randomUUID();
+		manager.startTakeover(staff, "id:" + unknown);
+		verify(staff).sendMessage(String.format(OwnershipManager.UNKNOWN_ID, unknown));
+		manager.startTakeover(staff, "id:bren");
+		verify(staff).sendMessage(String.format(OwnershipManager.NOT_AN_ID, "id:bren"));
+		manager.startTakeover(staff, "Bren");
+		verify(staff).sendMessage(OwnershipManager.TYPED_NAMES_OFF);
+		assertFalse(manager.getPending().has(staff, Kind.TAKEOVER));
+	}
+
+	@Test
+	void takeoverCompletionOffersIdsAndOnlineCharacterNamesWordByWord() {
+		characters.when(() -> Characters.info(kira.ref().characterId())).thenReturn(Optional.of(info(kira, "Kira of the Vale")));
+		characters.when(() -> Characters.info(bren.ref().characterId())).thenReturn(Optional.of(info(bren, "Bren")));
+		assertEquals(List.of("Kira of the Vale"), OwnershipManager.takeoverSuggestions(new String[]{"k"}));
+		assertEquals(List.of("id:"), OwnershipManager.takeoverSuggestions(new String[]{"I"}));
+		assertEquals(List.of("id:", "Kira of the Vale", "Bren"), OwnershipManager.takeoverSuggestions(new String[]{""}));
+		assertEquals(List.of("of the Vale"), OwnershipManager.takeoverSuggestions(new String[]{"kira", ""}));
+		assertEquals(List.of("Vale"), OwnershipManager.takeoverSuggestions(new String[]{"Kira", "of", "the", "V"}));
+		assertTrue(OwnershipManager.takeoverSuggestions(new String[]{"Kira", "x"}).isEmpty());
+		assertTrue(OwnershipManager.takeoverSuggestions(new String[0]).isEmpty());
+		OwnershipFixture.mode(OwnershipIdentity.NAMES);
+		assertTrue(OwnershipManager.takeoverSuggestions(new String[]{""}).isEmpty());
+	}
+
+	@Test
 	void namesModeTakeoverUsesTheAccountNameAndRefusesTypedTargets() {
 		OwnershipFixture.mode(OwnershipIdentity.NAMES);
 		manager.startTakeover(staff, "Bren");
-		verify(staff).sendMessage(OwnershipManager.TYPED_NAMES_OFF);
+		verify(staff).sendMessage(OwnershipManager.NAMES_MODE_TAKEOVER);
 		ActiveVehicle v = vehicle("player_Other");
 		manager.startTakeover(staff, null);
 		manager.takeover(staff, v);

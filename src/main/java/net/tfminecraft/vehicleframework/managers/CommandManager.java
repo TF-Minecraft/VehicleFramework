@@ -138,7 +138,7 @@ public class CommandManager implements Listener, CommandExecutor{
 				sender.sendMessage("§cYou do not have access to this command!");
 				return true;
 			}
-			if(args[0].equalsIgnoreCase("takeover") && (args.length == 1 || args.length == 2)) {
+			if(args[0].equalsIgnoreCase("takeover")) {
 				if(!(sender instanceof Player)) {
 					sender.sendMessage("§cOnly players can use this command.");
 					return true;
@@ -147,7 +147,9 @@ public class CommandManager implements Listener, CommandExecutor{
 				if (args.length == 1) {
 					VehicleFramework.getVehicleManager().startTakeover(p);
 				} else {
-					VehicleFramework.getVehicleManager().startTakeover(p, args[1]);
+					// A character name may contain spaces, so it is every remaining argument.
+					VehicleFramework.getVehicleManager().startTakeover(p,
+							String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)));
 				}
 				return true;
 			}

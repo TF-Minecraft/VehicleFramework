@@ -1,8 +1,10 @@
 package net.tfminecraft.vehicleframework.managers;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -60,6 +62,11 @@ public class OwnershipManager implements Listener {
 	public static final String NO_SINGLE_MATCH = "§cNo single living character is called §f%s§c.";
 	public static final String TYPED_NAMES_OFF = "§cTyped character names are not available on this server.";
 	public static final String SESSION_CHANGED = "§cYour character changed, so nothing was done.";
+	public static final String ID_PREFIX = "id:";
+	public static final String TAKEOVER_USAGE = "§cUsage: /vf takeover [character name | id:<character uuid>]";
+	public static final String NAMES_MODE_TAKEOVER = "§cThis server identifies owners by account name, so a takeover is always for yourself: use /vf takeover.";
+	public static final String NOT_AN_ID = "§f%s§c is not a character ID. Use id:<character uuid>.";
+	public static final String UNKNOWN_ID = "§cNo character has the ID §f%s§c.";
 
 	private final VehicleManager vehicles;
 	private final OwnershipGUIManager gui = new OwnershipGUIManager();
@@ -93,8 +100,9 @@ public class OwnershipManager implements Listener {
 	}
 
 	/**
-	 * Arms a staff takeover. Without a name the vehicle goes to the staff member's own character;
-	 * with one (characters mode) to the single living character with that real name.
+	 * Arms a staff takeover. Without a target the vehicle goes to the staff member's own character.
+	 * In characters mode the target may be a character ID ({@code id:<uuid>} or a bare UUID, any
+	 * known character) or a real name, which must match exactly one living character.
 	 */
 	public void startTakeover(Player p, String targetName) {
 		Outcome<Actor> actor = OwnershipActions.actor(p);
@@ -106,17 +114,11 @@ public class OwnershipManager implements Listener {
 		if (targetName == null) {
 			target = new Target(actor.value().ownerValue(), actor.value().ref(), null);
 		} else {
-			if (!OwnershipMode.characters() || !CharacterLookup.typedNamesAvailable()) {
-				p.sendMessage(TYPED_NAMES_OFF);
+			Optional<Target> named = takeoverTarget(p, targetName.trim().replaceAll("\\s+", " "));
+			if (named.isEmpty()) {
 				return;
 			}
-			Optional<CharacterInfo> found = single(targetName);
-			if (found.isEmpty()) {
-				p.sendMessage(String.format(NO_SINGLE_MATCH, targetName));
-				return;
-			}
-			CharacterRef ref = found.get().ref();
-			target = new Target(VehicleOwners.character(ref.characterId()), ref, found.get().name());
+			target = named.get();
 		}
 		pending.start(p, Kind.TAKEOVER, null, actor.value().session(), target);
 		if (target.name() == null) {
@@ -124,6 +126,83 @@ public class OwnershipManager implements Listener {
 		} else {
 			p.sendMessage("§aRight-click a vehicle within 60 seconds to give it to §e" + target.name() + "§a.");
 		}
+	}
+
+	/** Resolves a named takeover target, telling the player why when it cannot. */
+	private Optional<Target> takeoverTarget(Player p, String target) {
+		if (target.isEmpty()) {
+			p.sendMessage(TAKEOVER_USAGE);
+			return Optional.empty();
+		}
+		if (!OwnershipMode.characters()) {
+			p.sendMessage(NAMES_MODE_TAKEOVER);
+			return Optional.empty();
+		}
+		Optional<UUID> id = characterId(target);
+		if (id.isPresent() || target.regionMatches(true, 0, ID_PREFIX, 0, ID_PREFIX.length())) {
+			if (id.isEmpty()) {
+				p.sendMessage(String.format(NOT_AN_ID, target));
+				return Optional.empty();
+			}
+			Optional<CharacterInfo> info = CharacterLookup.info(id.get());
+			if (info.isEmpty()) {
+				p.sendMessage(String.format(UNKNOWN_ID, id.get()));
+				return Optional.empty();
+			}
+			return Optional.of(target(info.get()));
+		}
+		if (!CharacterLookup.typedNamesAvailable()) {
+			p.sendMessage(TYPED_NAMES_OFF);
+			return Optional.empty();
+		}
+		Optional<CharacterInfo> found = single(target);
+		if (found.isEmpty()) {
+			p.sendMessage(String.format(NO_SINGLE_MATCH, target));
+			return Optional.empty();
+		}
+		return Optional.of(target(found.get()));
+	}
+
+	private static Target target(CharacterInfo info) {
+		return new Target(VehicleOwners.character(info.ref().characterId()), info.ref(), info.name());
+	}
+
+	/**
+	 * Tab completions for {@code /vf takeover}: {@code id:} and the real names of online players'
+	 * current characters. The typed words are the arguments after "takeover"; a suggestion
+	 * continues from the last typed word, so names with spaces complete word by word.
+	 */
+	public static List<String> takeoverSuggestions(String[] typedWords) {
+		List<String> suggestions = new ArrayList<>();
+		if (!OwnershipMode.characters() || typedWords.length == 0) {
+			return suggestions;
+		}
+		String typed = String.join(" ", typedWords).toLowerCase(Locale.ROOT);
+		if (typedWords.length == 1 && ID_PREFIX.startsWith(typed)) {
+			suggestions.add(ID_PREFIX);
+		}
+		for (Player other : Bukkit.getOnlinePlayers()) {
+			CharacterLookup.session(other)
+					.flatMap(session -> CharacterLookup.info(session.ref().characterId()))
+					.map(CharacterInfo::name)
+					.filter(name -> name.toLowerCase(Locale.ROOT).startsWith(typed))
+					.ifPresent(name -> {
+						String[] words = name.split(" ", -1);
+						if (words.length >= typedWords.length) {
+							suggestions.add(String.join(" ",
+									Arrays.copyOfRange(words, typedWords.length - 1, words.length)));
+						}
+					});
+		}
+		return suggestions;
+	}
+
+	/** The UUID of {@code id:<uuid>} or a bare UUID; empty for anything else. */
+	static Optional<UUID> characterId(String target) {
+		String value = target.regionMatches(true, 0, ID_PREFIX, 0, ID_PREFIX.length())
+				? target.substring(ID_PREFIX.length()).trim()
+				: target;
+		return VehicleOwners.characterId(VehicleOwners.CHARACTER_PREFIX + value);
 	}
 
 	/** Applies a pending takeover to the clicked vehicle; false when none is pending. */

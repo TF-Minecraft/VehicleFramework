@@ -460,7 +460,7 @@ class VehicleManagerCoverageTest {
         Player player = player("Ryan"); when(player.hasPermission("vf.admin")).thenReturn(true);
         ActiveVehicle v = vehicle("v"); register(v); v.getOwnerData().setOwner("player_Other");
         when(persistence().saveLive(v)).thenReturn(true);
-        manager.startTakeover(player, "Bren"); verify(player).sendMessage(OwnershipManager.TYPED_NAMES_OFF);
+        manager.startTakeover(player, "Bren"); verify(player).sendMessage(OwnershipManager.NAMES_MODE_TAKEOVER);
         manager.startTakeover(player);
         PlayerInteractEntityEvent event = interact(player, v.getEntity());
         manager.vehicleInteract(event);
