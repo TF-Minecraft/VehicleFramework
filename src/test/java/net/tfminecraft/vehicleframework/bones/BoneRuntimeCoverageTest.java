@@ -290,8 +290,8 @@ class BoneRuntimeCoverageTest {
       VehiclePacketListener listener = new VehiclePacketListener(r.manager);
       listener.register();
       ArgumentCaptor<PacketListener> capture = ArgumentCaptor.forClass(PacketListener.class);
-      verify(protocol).addPacketListener(capture.capture());
-      PacketListener adapter = capture.getValue();
+      verify(protocol, times(2)).addPacketListener(capture.capture());
+      PacketListener adapter = capture.getAllValues().getFirst();
       Player driver = r.entity(Player.class, new Location(r.world, 0, 64, 0)),
           other = r.entity(Player.class, new Location(r.world, 1, 64, 0));
       r.bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of(driver, other));
