@@ -388,6 +388,18 @@ public class VehicleManager implements Listener{
 			mountedLeftClickAt.remove(p.getUniqueId());
 		}
 	}
+
+	/** Reattach the current seat after a client respawn, even when server mount tracking is intact. */
+	public void refreshPlayerMount(Player p) {
+		if (p == null || !p.isOnline() || p.isDead()) return;
+		ActiveVehicle v = mountedVehicle(p);
+		if (v == null || v.isDestroyed() || v.getEntity() == null || !v.getEntity().isValid()
+				|| v.getEntity().getWorld() != p.getWorld()) return;
+		Seat seat = v.getSeat(p);
+		if (seat == null || seat.getEntity() != p) return;
+		v.dismountPassenger(p, false);
+		takeSeat(p, v, seat);
+	}
 	
 	public void leashedInteract(Player p, ActiveVehicle v, LivingEntity e) {
 		e.setLeashHolder(null);

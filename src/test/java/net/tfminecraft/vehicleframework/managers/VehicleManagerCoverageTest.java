@@ -149,6 +149,7 @@ class VehicleManagerCoverageTest {
         when(v.getId()).thenReturn("cart");
         when(v.getName()).thenReturn("Cart " + id);
         when(v.getEntity().isValid()).thenReturn(true);
+        when(v.getEntity().getWorld()).thenReturn(world);
         when(v.getEntity().getLocation()).thenReturn(new Location(world, 0, 64, 0));
         when(v.getLocation()).thenAnswer(ignored -> v.getEntity().getLocation());
         when(v.getOwnerData()).thenReturn(new OwnerData());
@@ -288,6 +289,50 @@ class VehicleManagerCoverageTest {
         verify(v.getTrainHandler()).holdJunction(TrackJunction.Side.LEFT);
         verify(v.getTrainHandler()).holdJunction(TrackJunction.Side.RIGHT);
         for (Keybind key : List.of(Keybind.W, Keybind.S, Keybind.A, Keybind.D)) verify(v).key(player, key);
+    }
+
+    @Test
+    void clientRefreshReattachesTheSameSeatDespiteHealthyServerMountTracking() {
+        Player player = player("Ryan"); ActiveVehicle v = vehicle("v"); register(v);
+        Seat seat = mount(player, v);
+        when(v.getSeat(player)).thenReturn(seat); when(seat.getEntity()).thenReturn(player);
+        assertTrue(v.getSeatHandler().isMounted(player));
+        clearInvocations(v);
+        manager.refreshPlayerMount(player);
+        var order = inOrder(v);
+        order.verify(v).dismountPassenger(player, false);
+        order.verify(v).addPassenger(player, seat);
+        verify(v, never()).dismountAll(); verify(v, never()).remove(any(VehicleRemoveReason.class));
+        manager.inputPacket(player, 0, 1, false, false);
+        verify(v).key(player, Keybind.W);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"offline", "dead", "unmounted", "departed", "destroyed", "missing-entity", "invalid-entity", "another-world", "missing-seat", "another-occupant"})
+    void clientRefreshDoesNotRestoreASeatThePlayerCanNoLongerUse(String state) {
+        Player player = player("Ryan"); ActiveVehicle v = vehicle("v"); register(v);
+        Seat seat = mount(player, v);
+        when(v.getSeat(player)).thenReturn(seat); when(seat.getEntity()).thenReturn(player);
+        switch (state) {
+            case "offline" -> when(player.isOnline()).thenReturn(false);
+            case "dead" -> when(player.isDead()).thenReturn(true);
+            case "unmounted" -> manager.dismount(player);
+            case "departed" -> when(v.isPassenger(player, false)).thenReturn(false);
+            case "destroyed" -> when(v.isDestroyed()).thenReturn(true);
+            case "missing-entity" -> when(v.getEntity()).thenReturn(null);
+            case "invalid-entity" -> when(v.getEntity().isValid()).thenReturn(false);
+            case "another-world" -> when(player.getWorld()).thenReturn(mock(World.class));
+            case "missing-seat" -> when(v.getSeat(player)).thenReturn(null);
+            case "another-occupant" -> {
+                Player other = player("Other");
+                when(seat.getEntity()).thenReturn(other);
+            }
+        }
+        clearInvocations(v);
+        manager.refreshPlayerMount(null);
+        manager.refreshPlayerMount(player);
+        verify(v, never()).dismountPassenger(any(), anyBoolean());
+        verify(v, never()).addPassenger(any(), any());
     }
 
     @Test

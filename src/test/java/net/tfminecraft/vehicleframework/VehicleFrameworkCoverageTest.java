@@ -106,7 +106,7 @@ class VehicleFrameworkCoverageTest {
         assertTrue(Files.isRegularFile(temp.resolve("plugin/templates/weapons/gun_turret.yml")));
         assertNotNull(FuelLoader.getByString("coal")); assertFalse(WeaponTemplateLoader.map.isEmpty());
         verify(plugins, times(7)).registerEvents(any(Listener.class), same(plugin));
-        verify(protocol).addPacketListener(any()); verify(plugins, never()).disablePlugin(plugin);
+        verify(protocol, times(2)).addPacketListener(any()); verify(plugins, never()).disablePlugin(plugin);
         plugin.onDisable(); assertNull(VehicleFramework.getVehicleRepository());
     }
 

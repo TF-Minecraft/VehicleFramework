@@ -4,6 +4,7 @@ import com.comphenix.protocol.PacketType;
 import com.comphenix.protocol.ProtocolLibrary;
 import com.comphenix.protocol.ProtocolManager;
 import com.comphenix.protocol.events.InternalStructure;
+import com.comphenix.protocol.events.ListenerPriority;
 import com.comphenix.protocol.events.PacketAdapter;
 import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.reflect.StructureModifier;
@@ -62,6 +63,20 @@ public class VehiclePacketListener {
                 if (backward) forwardMotion -= 1;
 
                 inputStates.put(player.getUniqueId(), new PlayerInputState(sideways, forwardMotion, jump, sneak));
+            }
+        });
+
+        protocolManager.addPacketListener(new PacketAdapter(plugin, ListenerPriority.MONITOR, PacketType.Play.Server.RESPAWN) {
+            @Override
+            public void onPacketSending(PacketEvent event) {
+                if (event.isCancelled()) return;
+                Player player = event.getPlayer();
+                // Paper's skin refresh resets client mounts without clearing the server seat.
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (Bukkit.getPlayer(player.getUniqueId()) == player) {
+                        vehicleManager.refreshPlayerMount(player);
+                    }
+                }, 1L);
             }
         });
 
