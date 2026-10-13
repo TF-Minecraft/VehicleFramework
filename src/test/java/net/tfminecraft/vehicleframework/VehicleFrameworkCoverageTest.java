@@ -105,9 +105,50 @@ class VehicleFrameworkCoverageTest {
         assertTrue(Files.isRegularFile(temp.resolve("plugin/data/vehicles.db")));
         assertTrue(Files.isRegularFile(temp.resolve("plugin/templates/weapons/gun_turret.yml")));
         assertNotNull(FuelLoader.getByString("coal")); assertFalse(WeaponTemplateLoader.map.isEmpty());
-        verify(plugins, times(6)).registerEvents(any(Listener.class), same(plugin));
+        verify(plugins, times(7)).registerEvents(any(Listener.class), same(plugin));
         verify(protocol).addPacketListener(any()); verify(plugins, never()).disablePlugin(plugin);
         plugin.onDisable(); assertNull(VehicleFramework.getVehicleRepository());
+    }
+
+    @Test void ownershipIdentityIsReadOnceAtEnableAndAReloadOnlyWarnsAboutChanges() throws Exception {
+        plugin.createFolders(); plugin.createConfigs();
+        Path config = temp.resolve("plugin/config.yml");
+        String defaults = Files.readString(config);
+        assertTrue(defaults.contains("#ownership-identity: characters"), "the default config leaves the key unset");
+        try {
+            plugin.onEnable();
+            assertEquals(net.tfminecraft.vehicleframework.api.OwnershipIdentity.NAMES,
+                    net.tfminecraft.vehicleframework.api.VehicleFrameworkApi.ownershipIdentity());
+            plugin.reload();
+            verify(log, never()).warning(contains("read at startup only"));
+            Files.writeString(config, defaults + "\nownership-identity: characters\n");
+            plugin.reload();
+            verify(log).warning(contains("ownership-identity is read at startup only; ownership stays names until a restart."));
+            assertEquals(net.tfminecraft.vehicleframework.api.OwnershipIdentity.NAMES,
+                    net.tfminecraft.vehicleframework.api.VehicleFrameworkApi.ownershipIdentity());
+            plugin.configureOwnership();
+            assertEquals(net.tfminecraft.vehicleframework.api.OwnershipIdentity.CHARACTERS,
+                    net.tfminecraft.vehicleframework.api.VehicleFrameworkApi.ownershipIdentity());
+            plugin.reload();
+            verify(log, times(1)).warning(contains("read at startup only"));
+        } finally {
+            net.tfminecraft.vehicleframework.ownership.OwnershipMode.configure("names", false);
+        }
+    }
+
+    @Test void aMissingKeyWithRpCharactersInstalledDisablesOwnershipLoudly() throws Exception {
+        when(plugins.getPlugin("RPCharacters")).thenReturn(mock(Plugin.class));
+        try {
+            plugin.onEnable();
+            assertEquals(net.tfminecraft.vehicleframework.api.OwnershipIdentity.DISABLED,
+                    net.tfminecraft.vehicleframework.api.VehicleFrameworkApi.ownershipIdentity());
+            verify(log, atLeastOnce()).severe(contains("VEHICLE OWNERSHIP IS DISABLED"));
+            verify(plugins, never()).disablePlugin(plugin);
+            assertNull(new ConfigLoader().readOwnershipIdentity(temp.resolve("plugin/missing.yml").toFile()));
+            verify(log).warning(contains("Could not read ownership-identity"));
+        } finally {
+            net.tfminecraft.vehicleframework.ownership.OwnershipMode.configure("names", false);
+        }
     }
 
     @Test void reloadRemovesDeletedFuelVehicleAndAmmunitionDefinitions() throws Exception {
@@ -203,7 +244,7 @@ class VehicleFrameworkCoverageTest {
                 () -> assertEquals(Set.of("good_shell"), AmmunitionLoader.get().keySet()),
                 () -> verify(log, atLeastOnce()).warning(contains("bad.yml")),
                 () -> assertNotNull(VehicleFramework.getVehicleRepository()),
-                () -> verify(plugins, times(6)).registerEvents(any(Listener.class), same(plugin)),
+                () -> verify(plugins, times(7)).registerEvents(any(Listener.class), same(plugin)),
                 () -> verify(plugins, never()).disablePlugin(plugin),
                 () -> verify(log).info(contains("Setup complete!")));
     }

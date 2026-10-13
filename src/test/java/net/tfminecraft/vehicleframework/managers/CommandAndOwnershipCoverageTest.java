@@ -30,6 +30,12 @@ import net.tfminecraft.vehicleframework.util.TabCompletion;
 import net.tfminecraft.vehicleframework.vehicles.*;
 import net.tfminecraft.vehicleframework.vehicles.state.VehicleState;
 import net.tfminecraft.vehicleframework.weapons.ammunition.Ammunition;
+import net.tfminecraft.tlibs.character.*;
+import net.tfminecraft.vehicleframework.api.*;
+import net.tfminecraft.vehicleframework.events.VehicleOwnershipEditCheckEvent;
+import net.tfminecraft.vehicleframework.managers.inventory.WhitelistPickerHolder;
+import net.tfminecraft.vehicleframework.ownership.OwnershipActions;
+import net.tfminecraft.vehicleframework.ownership.OwnershipFixture;
 
 class CommandAndOwnershipCoverageTest {
     private final List<AutoCloseable> scopes = new ArrayList<>();
@@ -46,6 +52,12 @@ class CommandAndOwnershipCoverageTest {
     private VehicleFramework previousPlugin, plugin;
     private boolean previousAllowWhitelist;
     private MockedStatic<VehicleFramework> framework;
+    private MockedStatic<Bukkit> bukkit;
+    private MockedStatic<Characters> characters;
+    private final org.bukkit.plugin.PluginManager plugins = mock(org.bukkit.plugin.PluginManager.class);
+    private final org.bukkit.plugin.ServicesManager services = mock(org.bukkit.plugin.ServicesManager.class);
+    private final CharacterSession kira = OwnershipFixture.session("alex", "kira", 1);
+    private final CharacterSession bren = OwnershipFixture.session("bren", "bren", 2);
     private final Map<String, Ammunition> previousAmmo = new HashMap<>(AmmunitionLoader.get());
     private final Map<String, Vehicle> previousVehicles = new HashMap<>(VehicleLoader.get());
 
@@ -63,11 +75,17 @@ class CommandAndOwnershipCoverageTest {
         });
         keep(mockConstruction(ItemStack.class, (item, context) -> configure(item, (Material) context.arguments().get(0))));
         previousAllowWhitelist = Cache.allowWhitelist; Cache.allowWhitelist = true;
+        // Ownership buttons ask listeners before they are shown.
+        bukkit = keep(mockStatic(Bukkit.class)); bukkit.when(Bukkit::getPluginManager).thenReturn(plugins);
+        bukkit.when(Bukkit::getServicesManager).thenReturn(services); bukkit.when(Bukkit::isPrimaryThread).thenReturn(true);
+        characters = keep(mockStatic(Characters.class));
+        owner.setOwner("player_Alex");
         AmmunitionLoader.get().clear(); VehicleLoader.get().clear();
     }
     @AfterEach void cleanup() throws Exception {
         Collections.reverse(scopes); for (AutoCloseable scope : scopes) scope.close();
         VehicleFramework.plugin = previousPlugin; Cache.allowWhitelist = previousAllowWhitelist;
+        OwnershipFixture.mode(OwnershipIdentity.NAMES); OwnershipFixture.lookup(null);
         AmmunitionLoader.get().clear(); AmmunitionLoader.get().putAll(previousAmmo);
         VehicleLoader.get().clear(); VehicleLoader.get().putAll(previousVehicles);
     }
@@ -151,6 +169,7 @@ class CommandAndOwnershipCoverageTest {
     void ownershipMenuReflectsWhitelistTicketsAndLinkedTrainOwnership(boolean enabled) {
         owner.setWhiteListed(enabled); owner.setWhiteList(new ArrayList<>(List.of("player_Alex", "group_staff")));
         ActiveVehicle locomotive = mock(ActiveVehicle.class); OwnerData trainOwner = new OwnerData(); trainOwner.setTicketsEnabled(enabled);
+        trainOwner.setOwner("player_Alex");
         when(locomotive.getOwnerData()).thenReturn(trainOwner); when(vehicle.ticketSource()).thenReturn(locomotive);
         ownership.ownershipGui(null, player, vehicle, true); Inventory menu = menus.get(0);
         assertEquals(enabled ? Material.LIME_DYE : Material.GRAY_DYE, menu.getItem(0).getType());
@@ -196,6 +215,115 @@ class CommandAndOwnershipCoverageTest {
         assertNull(completion.onTabComplete(player, command, "vf", new String[]{"track", "unknown", ""}));
         assertNull(completion.onTabComplete(player, command, "vf", new String[]{"unknown", ""}));
         when(command.getName()).thenReturn("other"); assertNull(completion.onTabComplete(player, command, "other", new String[]{""}));
+    }
+
+    /** Stands in for TLibs 2.5.0's facade. */
+    public static final class Lookup {
+        public static List<CharacterInfo> findByName(String name) { return List.of(); }
+    }
+
+    private void charactersMode() {
+        OwnershipFixture.mode(OwnershipIdentity.CHARACTERS);
+        characters.when(() -> Characters.currentSession(player)).thenReturn(Optional.of(kira));
+        characters.when(() -> Characters.isCurrent(kira)).thenReturn(true);
+        owner.setOwner(VehicleOwners.character(kira.ref().characterId()));
+        characters.when(() -> Characters.info(kira.ref().characterId())).thenReturn(Optional.of(
+                new CharacterInfo(kira.ref(), "Kira", CharacterStatus.ALIVE, null, Set.of(), 0, null)));
+        OfflinePlayer account = mock(OfflinePlayer.class); when(account.getName()).thenReturn("Steve");
+        bukkit.when(() -> Bukkit.getOfflinePlayer(kira.ref().ownerId())).thenReturn(account);
+        OfflinePlayer other = mock(OfflinePlayer.class); when(other.getName()).thenReturn("BrenAccount");
+        bukkit.when(() -> Bukkit.getOfflinePlayer(bren.ref().ownerId())).thenReturn(other);
+    }
+
+    @Test void characterOwnersSeeEveryControlAndTheirCharactersName() {
+        charactersMode();
+        ownership.ownershipGui(null, player, vehicle, true); Inventory menu = menus.get(0);
+        for (int slot : new int[]{0, 2, 4, 6, 8}) assertNotEquals(Material.GRAY_STAINED_GLASS_PANE, menu.getItem(slot).getType(), "slot " + slot);
+        assertEquals("§7Owner: §fKira", menu.getItem(OwnershipGUIManager.OWNER_SLOT).getItemMeta().getDisplayName());
+        assertEquals(List.of("§7Click to pick a nearby player"), menu.getItem(2).getItemMeta().getLore());
+        when(player.hasPermission("vf.admin")).thenReturn(true);
+        ownership.ownershipGui(menu, player, vehicle, false);
+        assertEquals("§7Owner: §fKira (Steve)", menu.getItem(OwnershipGUIManager.OWNER_SLOT).getItemMeta().getDisplayName());
+    }
+
+    @Test void controlsTheViewerMayNotUseAreHidden() {
+        charactersMode();
+        doAnswer(call -> {
+            if (call.getArgument(0) instanceof VehicleOwnershipEditCheckEvent check
+                    && check.getReason().orElse(null) == OwnershipReason.TICKETS_TOGGLE) check.deny();
+            return null;
+        }).when(plugins).callEvent(any(VehicleOwnershipEditCheckEvent.class));
+        Inventory menu = inventory(27, null); ownership.ownershipGui(menu, player, vehicle, false);
+        assertEquals(Material.GRAY_STAINED_GLASS_PANE, menu.getItem(8).getType());
+        assertEquals(Material.BARRIER, menu.getItem(6).getType());
+        characters.when(() -> Characters.currentSession(player)).thenReturn(Optional.of(bren));
+        characters.when(() -> Characters.isCurrent(bren)).thenReturn(true);
+        ownership.ownershipGui(menu, player, vehicle, false);
+        for (int slot : new int[]{0, 2, 6, 8}) assertEquals(Material.GRAY_STAINED_GLASS_PANE, menu.getItem(slot).getType(), "slot " + slot);
+        assertEquals(Material.CHEST, menu.getItem(4).getType());
+    }
+
+    @Test void characterWhitelistsShowCapturedNamesAndGreyOutOldEntries() {
+        charactersMode();
+        String crew = VehicleOwners.whitelistEntry(bren.ref(), "Bren");
+        owner.setWhiteList(new ArrayList<>(List.of(crew, "player_Old")));
+        ownership.whitelistGui(null, player, vehicle, true); Inventory menu = menus.get(0);
+        assertEquals("§eBren", menu.getItem(0).getItemMeta().getDisplayName());
+        assertEquals(List.of("§cClick to remove from whitelist"), menu.getItem(0).getItemMeta().getLore());
+        assertEquals(crew, menu.getItem(0).getItemMeta().getPersistentDataContainer().get(new NamespacedKey("vehicleframework", "vf_whitelist_entry"), PersistentDataType.STRING));
+        assertEquals("§8Old", menu.getItem(1).getItemMeta().getDisplayName());
+        assertEquals("§7Old entry: no longer grants access", menu.getItem(1).getItemMeta().getLore().getFirst());
+        when(player.hasPermission("vf.admin")).thenReturn(true);
+        ownership.whitelistGui(menu, player, vehicle, false);
+        assertEquals("§7Account: §fBrenAccount", menu.getItem(0).getItemMeta().getLore().getFirst());
+    }
+
+    @Test void thePickerShowsUpToTwentyFiveHeadsAndTypedNamesOnlyWhenTLibsCanFindThem() {
+        charactersMode();
+        List<WhitelistPickerHolder.Candidate> many = new ArrayList<>();
+        for (int i = 0; i < 30; i++) many.add(new WhitelistPickerHolder.Candidate(OwnershipFixture.session("a" + i, "c" + i, i), "Player " + i));
+        OwnershipFixture.lookup(Lookup.class);
+        ownership.pickerGui(player, vehicle, many); Inventory picker = menus.get(0);
+        WhitelistPickerHolder holder = (WhitelistPickerHolder) picker.getHolder();
+        assertEquals(VFGUI.WHITELIST_PICKER, holder.getType()); assertEquals(25, holder.getCandidates().size());
+        assertEquals("§ePlayer 24", picker.getItem(24).getItemMeta().getDisplayName());
+        assertEquals(Material.PLAYER_HEAD, picker.getItem(0).getType());
+        assertEquals(Material.WRITABLE_BOOK, picker.getItem(OwnershipGUIManager.PICKER_TYPED_SLOT).getType());
+        assertEquals("§7Back", picker.getItem(OwnershipGUIManager.BACK_SLOT).getItemMeta().getDisplayName());
+        assertTrue(holder.candidate(25).isEmpty()); assertTrue(holder.candidate(-1).isEmpty());
+        assertEquals("Player 3", holder.candidate(3).orElseThrow().name());
+        verify(player).openInventory(picker);
+        OwnershipFixture.lookup(String.class);
+        ownership.pickerGui(player, vehicle, List.of()); Inventory empty = menus.get(1);
+        assertEquals("§7Nobody nearby", empty.getItem(13).getItemMeta().getDisplayName());
+        assertEquals(Material.GRAY_STAINED_GLASS_PANE, empty.getItem(OwnershipGUIManager.PICKER_TYPED_SLOT).getType());
+    }
+
+    @Test void findVehiclesListsTheCurrentCharactersVehiclesAndExplainsWhenItCannot() {
+        charactersMode();
+        assertTrue(run(player, "findvehicles"));
+        verify(vehicles).listOwnedVehicles(VehicleOwners.character(kira.ref().characterId()));
+        characters.when(() -> Characters.currentSession(player)).thenReturn(Optional.empty());
+        assertTrue(run(player, "findvehicles")); verify(player).sendMessage(OwnershipActions.NEED_CHARACTER);
+        OwnershipFixture.mode(OwnershipIdentity.DISABLED);
+        assertTrue(run(player, "findvehicles")); verify(player).sendMessage(OwnershipActions.DISABLED);
+        verify(vehicles, times(1)).listOwnedVehicles(anyString());
+    }
+
+    @Test void staffCanNameTheTakeoverTargetAndListTheQuarantine() {
+        assertNull(new TabCompletion().onTabComplete(player, command, "vf", new String[]{"admin", ""}));
+        when(player.hasPermission("vf.admin")).thenReturn(true);
+        assertEquals(List.of("quarantine"), new TabCompletion().onTabComplete(player, command, "vf", new String[]{"admin", ""}));
+        assertTrue(new TabCompletion().onTabComplete(player, command, "vf", new String[]{""}).contains("admin"));
+        assertTrue(run(player, "takeover", "Bren")); verify(vehicles).startTakeover(player, "Bren");
+        assertFalse(run(player, "takeover", "Bren", "extra"));
+        assertFalse(run(player, "admin", "other")); assertFalse(run(player, "admin"));
+        when(services.getRegistrations(VehicleQuarantineSource.class)).thenReturn(List.of());
+        assertTrue(run(player, "admin", "QUARANTINE"));
+        verify(player).sendMessage(contains("No quarantine list is registered"));
+        CommandSender console = mock(CommandSender.class); when(console.hasPermission("vf.admin")).thenReturn(true);
+        assertTrue(run(console, "admin", "quarantine"));
+        verify(console).sendMessage(contains("No quarantine list is registered"));
     }
 
     private boolean run(CommandSender sender, String... args) { return commands.onCommand(sender, command, "vf", args); }

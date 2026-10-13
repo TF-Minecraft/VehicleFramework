@@ -31,7 +31,13 @@ public class TabCompletion implements TabCompleter {
 					completions.add("takeover");
                     completions.add("reload");
                     completions.add("track");
+                    completions.add("admin");
                 }
+                return completions;
+            }
+
+            if (args[0].equalsIgnoreCase("admin") && args.length == 2 && Permissions.isAdmin(sender)) {
+                completions.add("quarantine");
                 return completions;
             }
 

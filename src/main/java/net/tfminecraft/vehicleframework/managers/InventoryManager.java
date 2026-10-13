@@ -18,6 +18,7 @@ import net.tfminecraft.vehicleframework.util.Text;
 import net.tfminecraft.vehicleframework.enums.SeatType;
 import net.tfminecraft.vehicleframework.enums.VFGUI;
 import net.tfminecraft.vehicleframework.managers.inventory.VFInventoryHolder;
+import net.tfminecraft.vehicleframework.ownership.OwnershipActions;
 import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.component.Engine;
@@ -52,9 +53,8 @@ public class InventoryManager {
 			i.setItem(x, getSeatItem(v, seat));
 			x++;
 		}
-		// Slot 25 – ownership settings button (owner only)
-		if(v.getOwnerData().getOwner().equalsIgnoreCase("player_" + p.getName())) {
-			
+		// Slot 25 – ownership settings button (owner, or staff on an owned vehicle)
+		if(OwnershipActions.mayOpenMenu(p, v)) {
 			i.setItem(25, ownershipGUI.createOwnershipButton());
 		}
 		if(v.isPassenger(p, false)) i.setItem(26, createDismountButton());

@@ -336,11 +336,10 @@ class VehicleManagerCoverageTest {
     }
 
     @Test
-    void storedAndLiveDamageOwnershipAndMetadataUseTheCurrentRepository() {
+    void storedAndLiveDamageAndMetadataUseTheCurrentRepository() {
         assertFalse(manager.unloadedDamage(null, .2, .03)); assertFalse(manager.unloadedDamage(" ", .2, .03));
         assertFalse(manager.unloadedDamage("offline", .2, .03));
         assertTrue(manager.readStoredVehicle("offline").isEmpty());
-        manager.clearOwnership(null); manager.clearOwnership(" "); manager.clearOwnership("offline");
         ActiveVehicle v = vehicle("v"); register(v); v.getOwnerData().setOwner("player_Ryan");
         try (MockedStatic<VehicleHealthDecay> decay = mockStatic(VehicleHealthDecay.class)) {
             manager.unloadedDamage(" v ", .2, .03);
@@ -349,11 +348,12 @@ class VehicleManagerCoverageTest {
         VehiclePersistence persistence = persistence();
         when(persistence.applyStoredDecay("offline", .2, .03)).thenReturn(true);
         assertTrue(manager.unloadedDamage(" offline ", .2, .03));
+        try (MockedStatic<VehicleHealthDecay> decay = mockStatic(VehicleHealthDecay.class)) {
+            when(persistence.saveLive(v)).thenReturn(true);
+            assertTrue(manager.unloadedDamage("v", .2, .03)); verify(persistence).saveLive(v);
+        }
         StoredVehicleMeta meta = new StoredVehicleMeta("offline", "Old cart", "cart", "player_Ryan");
         when(persistence.readMeta("offline")).thenReturn(Optional.of(meta)); assertSame(meta, manager.readStoredVehicle("offline").orElseThrow());
-        manager.clearOwnership("v"); assertEquals("none", v.getOwnerData().getOwner()); assertFalse(v.getOwnerData().isWhiteListed());
-        verify(persistence).saveLive(v);
-        manager.clearOwnership("offline"); verify(persistence).clearOwnership("offline");
     }
 
     @Test
@@ -409,10 +409,9 @@ class VehicleManagerCoverageTest {
     @Test
     void timersRunIndependentTicksAndSkipUnavailablePersistence() throws Exception {
         ActiveVehicle v = vehicle("v"); register(v); Player player = player("Ryan");
-        NamingData naming = mock(NamingData.class); when(naming.tick()).thenReturn(true); map("naming").put(player, naming);
         manager.start(); assertEquals(3, timers.size()); verify(manager.getSpawnManager()).start();
         timers.get(0).run(); timers.get(1).run(); timers.get(2).run();
-        verify(v).tick(); verify(v).slowTick(); verify(player).sendMessage("§cNaming timed out.");
+        verify(v).tick(); verify(v).slowTick();
         doThrow(new IllegalStateException("broken tick")).when(v).tick();
         doThrow(new IllegalStateException("broken slow tick")).when(v).slowTick();
         manager.towSelect(player, v); when(v.getEntity().getLocation()).thenReturn(new Location(world, 100, 64, 0));
@@ -457,43 +456,17 @@ class VehicleManagerCoverageTest {
     }
 
     @Test
-    void ownershipMenuTogglesListsTicketsAndClearOwnership() {
-        ActiveVehicle v = vehicle("v"); Player player = player("Ryan");
-        v.getOwnerData().setOwner("player_Ryan");
-        InventoryClickEvent event = click(player, v, VFGUI.OWNERSHIP, 0, item(Material.PAPER, null));
-        manager.ownershipClick(event); assertTrue(v.getOwnerData().isWhiteListed()); verify(event).setCancelled(true);
-        when(event.getSlot()).thenReturn(8); manager.ownershipClick(event); assertTrue(v.getOwnerData().isTicketsEnabled());
-        when(event.getSlot()).thenReturn(4); manager.ownershipClick(event); verify(ownership.constructed().getFirst()).whitelistGui(null, player, v, true);
-        when(event.getSlot()).thenReturn(6); manager.ownershipClick(event); assertEquals("none", v.getOwnerData().getOwner()); assertFalse(v.getOwnerData().isWhiteListed());
-    }
-
-    @Test
-    void chatAddsWhitelistNamesRejectsDuplicatesAndSupportsCancellation() {
-        ActiveVehicle v = vehicle("v"); Player player = player("Ryan");
-        InventoryClickEvent menu = click(player, v, VFGUI.OWNERSHIP, 2, item(Material.PAPER, null));
-        for (String message : List.of(" Alice ", "Alice", "cancel")) {
-            manager.ownershipClick(menu);
-            AsyncPlayerChatEvent chat = new AsyncPlayerChatEvent(true, player, message, new HashSet<>());
-            manager.nameVehicle(chat); assertTrue(chat.isCancelled());
-            scheduled.removeFirst().run();
-        }
-        assertEquals(List.of("player_Alice"), v.getOwnerData().getWhiteList());
-        verify(player).sendMessage("§cAlice is already on the whitelist."); verify(player).sendMessage("§cCancelled.");
-        AsyncPlayerChatEvent normal = new AsyncPlayerChatEvent(true, player, "hello", new HashSet<>()); manager.nameVehicle(normal); assertFalse(normal.isCancelled());
-        InventoryClickEvent remove = click(player, v, VFGUI.WHITELIST, 0, item(Material.PLAYER_HEAD, "player_Alice"));
-        manager.whitelistClick(remove); assertTrue(v.getOwnerData().getWhiteList().isEmpty());
-        when(remove.getSlot()).thenReturn(26); manager.whitelistClick(remove); verify(ownership.constructed().getFirst()).ownershipGui(null, player, v, true);
-    }
-
-    @Test
-    void takeoverCanExpireAndCanReplaceAnExistingOwner() {
-        Player player = player("Ryan"); ActiveVehicle v = vehicle("v"); register(v);
-        manager.startTakeover(player); manager.startTakeover(player); verify(scheduler).cancelTask(1);
-        scheduled.removeLast().run(); verify(player).sendMessage("§cTakeover expired.");
-        manager.startTakeover(player); PlayerInteractEntityEvent event = interact(player, v.getEntity());
-        manager.vehicleInteract(event); assertEquals("player_Ryan", v.getOwnerData().getOwner()); assertTrue(event.isCancelled());
-        v.getOwnerData().setOwner("player_Other"); manager.startTakeover(player); manager.vehicleInteract(interact(player, v.getEntity()));
-        assertEquals("player_Ryan", v.getOwnerData().getOwner());
+    void aPendingTakeoverConsumesTheNextVehicleClickThroughTheOwnershipEvents() {
+        Player player = player("Ryan"); when(player.hasPermission("vf.admin")).thenReturn(true);
+        ActiveVehicle v = vehicle("v"); register(v); v.getOwnerData().setOwner("player_Other");
+        when(persistence().saveLive(v)).thenReturn(true);
+        manager.startTakeover(player, "Bren"); verify(player).sendMessage(OwnershipManager.TYPED_NAMES_OFF);
+        manager.startTakeover(player);
+        PlayerInteractEntityEvent event = interact(player, v.getEntity());
+        manager.vehicleInteract(event);
+        assertTrue(event.isCancelled()); assertEquals("player_Ryan", v.getOwnerData().getOwner());
+        verify(plugins).callEvent(isA(VehicleOwnershipChangeEvent.class));
+        verify(plugins, never()).callEvent(isA(VehiclePreInteractEvent.class));
     }
 
     @Test
@@ -512,6 +485,7 @@ class VehicleManagerCoverageTest {
     void interactionClaimsOwnershipAndRoutesToolsFuelSkinNamingAndSeatMenus() throws Exception {
         Player player = player("Ryan"); ActiveVehicle v = vehicle("v"); register(v);
         when(v.getComponent(Component.HARNESS)).thenReturn(null);
+        when(persistence().saveLive(v)).thenReturn(true);
         manager.vehicleInteract(interact(player, v.getEntity()));
         assertEquals("player_Ryan", v.getOwnerData().getOwner());
         verify(inventories.constructed().getFirst()).seatSelection(null, player, v, true);
@@ -522,7 +496,7 @@ class VehicleManagerCoverageTest {
         map("cooldown").clear(); ItemStack nameTag = item(Material.NAME_TAG, null); when(player.getInventory().getItemInMainHand()).thenReturn(nameTag);
         manager.vehicleInteract(interact(player, v.getEntity()));
         AsyncPlayerChatEvent chat = new AsyncPlayerChatEvent(true, player, "Express_Cart", new HashSet<>());
-        manager.nameVehicle(chat); assertTrue(chat.isCancelled()); scheduled.removeFirst().run(); verify(v).setName("Express Cart");
+        manager.getOwnershipManager().chat(chat); assertTrue(chat.isCancelled()); scheduled.removeLast().run(); verify(v).setName("Express Cart");
         map("cooldown").clear(); when(items.getChecker().checkItemWithPath(any(), eq(Cache.destroyItem))).thenReturn(true);
         manager.vehicleInteract(interact(player, v.getEntity())); verify(v).remove(VehicleRemoveReason.PLAYER_DESTROY);
     }
@@ -637,11 +611,10 @@ class VehicleManagerCoverageTest {
     }
 
     @Test
-    void quitAndDeathDismountRidersAndCancelPendingTakeovers() {
+    void quitAndDeathDismountRiders() {
         Player player = player("Ryan"); ActiveVehicle v = vehicle("v"); register(v); when(v.isPassenger(player, false)).thenReturn(true);
-        manager.startTakeover(player);
         PlayerQuitEvent quit = mock(PlayerQuitEvent.class); when(quit.getPlayer()).thenReturn(player);
-        manager.playerLeave(quit); verify(scheduler).cancelTask(1); verify(v).dismountPassenger(player, false);
+        manager.playerLeave(quit); verify(v).dismountPassenger(player, false);
         PlayerDeathEvent death = mock(PlayerDeathEvent.class); when(death.getEntity()).thenReturn(player);
         manager.passengerDeath(death); verify(v, times(2)).dismountPassenger(player, false);
     }
@@ -918,10 +891,6 @@ class VehicleManagerCoverageTest {
     @Test
     void ownershipAndInputDefensiveHelpersRejectMissingParticipants() throws Exception {
         // These guards protect future event/API callers; assert their null contract without fabricated Bukkit events.
-        var claim = VehicleManager.class.getDeclaredMethod("claimOwnership", Player.class, ActiveVehicle.class);
-        claim.setAccessible(true);
-        assertEquals(false, claim.invoke(manager, null, vehicle("v")));
-        assertEquals(false, claim.invoke(manager, player("Ryan"), null));
         var shifting = VehicleManager.class.getDeclaredMethod("mountedShifting", Player.class);
         shifting.setAccessible(true); assertEquals(false, shifting.invoke(manager, new Object[]{null}));
         var cooldown = VehicleManager.class.getDeclaredMethod("putEjectCooldown", Player.class, ActiveVehicle.class);

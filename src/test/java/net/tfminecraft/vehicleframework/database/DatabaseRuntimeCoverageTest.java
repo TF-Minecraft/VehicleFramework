@@ -74,7 +74,6 @@ class DatabaseRuntimeCoverageTest {
             assertTrue(closed.listByOwner("player_Alice").isEmpty());
             assertTrue(closed.listPlayerOwned().isEmpty());
             assertTrue(closed.readMeta(ID).isEmpty());
-            assertFalse(closed.clearOwnership(ID));
             assertFalse(closed.applyStoredDecay(ID, .1, .03));
             assertFalse(closed.saveLive(snapshot(PAYLOAD)));
         }
@@ -83,12 +82,11 @@ class DatabaseRuntimeCoverageTest {
         assertFalse(new VehiclePersistence(broken).hasLiveInChunk("world", 0, 0));
     }
 
-    @Test void ownershipAndDecayChangesCommitTogetherAndSurviveRestart() {
+    @Test void decayChangesCommitAndSurviveRestart() {
         Path file = directory.resolve("mutations.db");
         VehicleRepository repository = VehicleRepository.open(file.toFile());
         try (var templates = mockStatic(VehicleLoader.class)) {
             VehiclePersistence persistence = new VehiclePersistence(repository);
-            assertFalse(persistence.clearOwnership("missing"));
             assertFalse(persistence.applyStoredDecay("missing", .1, .03));
             assertTrue(persistence.loadIncomplete("missing").isEmpty());
             assertFalse(persistence.tombstone(null)); assertFalse(persistence.tombstone(" "));
@@ -102,21 +100,16 @@ class DatabaseRuntimeCoverageTest {
             assertTrue(persistence.applyStoredDecay(ID, 0, .03));
             assertEquals(1, repository.findLive(ID).orElseThrow().getRevision());
             assertTrue(persistence.applyStoredDecay(ID, .1, .03));
-            assertTrue(persistence.clearOwnership(ID));
             assertTrue(persistence.checkpointWal(false)); assertTrue(persistence.checkpointWal(true));
         } finally { repository.close(); }
         repository = VehicleRepository.open(file.toFile());
         try {
             VehicleSnapshot row = repository.findLive(ID).orElseThrow();
             var payload = JsonParser.parseString(row.getPayloadJson()).getAsJsonObject();
-            assertEquals(3, row.getRevision()); assertEquals("none", row.getOwner());
-            assertEquals("none", payload.get("owner").getAsString());
-            assertFalse(payload.get("whitelisted").getAsBoolean());
-            assertTrue(payload.getAsJsonArray("whitelist").isEmpty());
+            assertEquals(2, row.getRevision()); assertEquals("player_Alice", payload.get("owner").getAsString());
             assertEquals(15, payload.getAsJsonObject("components").getAsJsonObject("hull").get("damage").getAsDouble());
             repository.saveLive(snapshot("{"));
             VehiclePersistence persistence = new VehiclePersistence(repository);
-            assertFalse(persistence.clearOwnership(ID));
             assertFalse(persistence.applyStoredDecay(ID, .1, .03));
             assertEquals("{", repository.findLive(ID).orElseThrow().getPayloadJson());
         } finally { repository.close(); }

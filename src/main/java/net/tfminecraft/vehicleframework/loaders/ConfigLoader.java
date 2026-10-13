@@ -11,8 +11,21 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.VFLogger;
+import net.tfminecraft.vehicleframework.ownership.OwnershipMode;
 
 public class ConfigLoader {
+
+	/** The raw {@code ownership-identity} value, or {@code null} when missing or unreadable. */
+	public String readOwnershipIdentity(File configFile) {
+		FileConfiguration config = new YamlConfiguration();
+		try {
+			config.load(configFile);
+		} catch (IOException | InvalidConfigurationException e) {
+			VFLogger.log("Could not read " + OwnershipMode.CONFIG_KEY + ": " + e.getMessage());
+			return null;
+		}
+		return config.getString(OwnershipMode.CONFIG_KEY);
+	}
 
 	public void load(File configFile) {
 		VFLogger.info("Loading config...");

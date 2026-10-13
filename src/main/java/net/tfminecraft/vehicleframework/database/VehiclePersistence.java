@@ -5,9 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import org.json.simple.JSONArray;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -216,40 +213,6 @@ public final class VehiclePersistence {
 		} catch (Exception ex) {
 			log("SQLite meta read failed: " + ex.getMessage());
 			return Optional.empty();
-		}
-	}
-
-	@SuppressWarnings("unchecked")
-	public boolean clearOwnership(String uuid) {
-		try {
-			boolean[] saved = { false };
-			repository.runInTransaction(() -> {
-				Optional<VehicleSnapshot> existing = repository.findLive(uuid);
-				if (existing.isEmpty()) {
-					return;
-				}
-				VehicleSnapshot row = existing.get();
-				JSONParser parser = new JSONParser();
-				JSONObject json;
-				try {
-					json = (JSONObject) parser.parse(row.getPayloadJson());
-				} catch (Exception parseError) {
-					throw new RuntimeException(parseError);
-				}
-				json.put("owner", "none");
-				json.put("whitelisted", false);
-				json.put("whitelist", new JSONArray());
-				VehicleSnapshot next = row.withPayload(
-						json.toJSONString(),
-						row.getName(),
-						"none",
-						System.currentTimeMillis());
-				saved[0] = repository.saveLive(next);
-			});
-			return saved[0];
-		} catch (Exception ex) {
-			log("SQLite clear ownership failed for " + uuid + ": " + ex.getMessage());
-			return false;
 		}
 	}
 

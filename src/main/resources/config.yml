@@ -110,6 +110,12 @@ skin-item: m.utils.vehicle_skin
 destroy-item: v.blaze_rod
 ticket-item: v.paper
 
+##Who owns vehicles. Read at startup only.
+##  characters: owners and whitelist entries are RPCharacters characters (needs RPCharacters)
+##  names: owners and whitelist entries are account names (servers without RPCharacters)
+##Leaving it unset while RPCharacters is installed turns ownership off until it is set.
+#ownership-identity: characters
+
 ##Can players set up whitelists for their vehicle
 allow-whitelist: true
 whitelisted-by-default: true

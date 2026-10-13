@@ -172,22 +172,17 @@ class RuntimeValuesCoverageTest {
   }
 
   @Test
-  void namingTimeoutAndStoredSummariesRetainTheirPublicValues() {
-    ActiveVehicle vehicle = r.vehicle();
-    NamingData naming = new NamingData(vehicle);
-    assertSame(vehicle, naming.getVehicle());
-    for (int i = 0; i < 30; i++) assertFalse(naming.tick());
-    assertTrue(naming.tick());
-    assertTrue(naming.tick());
+  void storedSummariesRetainTheirPublicValues() {
     StoredVehicleMeta stored = new StoredVehicleMeta("uuid", "Wagon", "cart", "player_alex");
     assertEquals("uuid", stored.getUuid());
     assertEquals("Wagon", stored.getName());
     assertEquals("cart", stored.getTypeId());
     assertEquals("player_alex", stored.getOwner());
     for (String owner :
-        Arrays.asList(null, "", " ", "none", "player_", "player_none", "company_acme"))
+        Arrays.asList(null, "", " ", "none", "player_", "player_none", "company_acme", "char_none", "char_x"))
       assertFalse(StoredVehicleMeta.isPlayerOwner(owner));
     assertTrue(StoredVehicleMeta.isPlayerOwner("PLAYER_alex"));
+    assertTrue(StoredVehicleMeta.isPlayerOwner("char_" + java.util.UUID.randomUUID()));
     Location location = new Location(r.world, 1, 64, 2);
     OwnedVehicleSummary summary =
         new OwnedVehicleSummary(

@@ -1,6 +1,7 @@
 package net.tfminecraft.vehicleframework;
 
 import java.io.File;
+import java.util.Locale;
 
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
@@ -8,6 +9,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import net.tfminecraft.coreprotect.CoreProtect;
 import net.tfminecraft.coreprotect.CoreProtectAPI;
+import net.tfminecraft.vehicleframework.api.OwnershipIdentity;
 import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.database.LogWriter;
 import net.tfminecraft.vehicleframework.database.PersistenceLog;
@@ -24,6 +26,8 @@ import net.tfminecraft.vehicleframework.loaders.ArmorTemplateLoader;
 import net.tfminecraft.vehicleframework.loaders.DeathTemplateLoader;
 import net.tfminecraft.vehicleframework.managers.CommandManager;
 import net.tfminecraft.vehicleframework.managers.VehicleManager;
+import net.tfminecraft.vehicleframework.ownership.CharacterLookup;
+import net.tfminecraft.vehicleframework.ownership.OwnershipMode;
 import net.tfminecraft.vehicleframework.protocol.VehiclePacketListener;
 import org.bstats.bukkit.Metrics;
 import net.tfminecraft.vehicleframework.util.MythicMobsIntegration;
@@ -60,6 +64,7 @@ public class VehicleFramework extends JavaPlugin{
 	private static TrackRegistry trackRegistry;
 	private static TrackDisplayManager trackDisplayManager;
 	private static VehiclePacketListener packetListener;
+	private String ownershipValue = "";
 	
 	@Override
 	public void onEnable() {
@@ -81,6 +86,7 @@ public class VehicleFramework extends JavaPlugin{
 		}
 		createConfigs();
 		loadConfigs();
+		configureOwnership();
 		Cache.applyTrackDisplayStyle();
 		VFLogger.info("Starting systems...");
 		registerListeners();
@@ -117,6 +123,7 @@ public class VehicleFramework extends JavaPlugin{
 	}
 	public void registerListeners() {
 		getServer().getPluginManager().registerEvents(vehicleManager, this);
+		getServer().getPluginManager().registerEvents(vehicleManager.getOwnershipManager(), this);
 		getServer().getPluginManager().registerEvents(vehicleManager.getSpawnManager(), this);
 		getServer().getPluginManager().registerEvents(vehicleManager.getRepairManager(), this);
 		getServer().getPluginManager().registerEvents(new TrackToolListener(), this);
@@ -131,6 +138,16 @@ public class VehicleFramework extends JavaPlugin{
 		packetListener = listener;
 		listener.register();
 	}
+	/** Reads the identity mode once; a reload does not change it. */
+	void configureOwnership() {
+		String value = configLoader.readOwnershipIdentity(new File(getDataFolder(), "config.yml"));
+		ownershipValue = normalised(value);
+		boolean characters = getServer().getPluginManager().getPlugin(OwnershipMode.CHARACTER_PLUGIN) != null;
+		if (OwnershipMode.configure(value, characters) == OwnershipIdentity.CHARACTERS) {
+			CharacterLookup.probe();
+		}
+	}
+
 	public void startManagers() {
 		vehicleManager.start();
 	}
@@ -294,6 +311,7 @@ public class VehicleFramework extends JavaPlugin{
 		Cache.removeLights();
 		Cache.removeProjectiles();
 		loadConfigs();
+		warnIfOwnershipChanged();
 		vehicleManager.reload();
 		if (trackDisplayManager != null) {
 			trackDisplayManager.reloadSwitches();
@@ -301,6 +319,18 @@ public class VehicleFramework extends JavaPlugin{
 		PersistenceLog.append("RELOAD_END pendingSpawns cycle=" + PersistenceLog.spawnCycle());
 	}
 	
+	private void warnIfOwnershipChanged() {
+		String value = normalised(configLoader.readOwnershipIdentity(new File(getDataFolder(), "config.yml")));
+		if (!value.equals(ownershipValue)) {
+			VFLogger.log(OwnershipMode.CONFIG_KEY + " is read at startup only; ownership stays "
+					+ OwnershipMode.identity().name().toLowerCase(Locale.ROOT) + " until a restart.");
+		}
+	}
+
+	private static String normalised(String value) {
+		return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+	}
+
 	//Access we dont need static variables all over the place:
 	public static TrackRegistry getTrackRegistry() {
 		return trackRegistry;

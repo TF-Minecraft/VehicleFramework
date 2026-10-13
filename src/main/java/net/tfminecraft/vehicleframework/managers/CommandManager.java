@@ -22,6 +22,10 @@ import net.tfminecraft.vehicleframework.permissions.Permissions;
 import net.tfminecraft.vehicleframework.tracks.TrackCommands;
 import net.tfminecraft.vehicleframework.util.EnumDisplayConverter;
 import net.tfminecraft.vehicleframework.data.OwnedVehicleSummary;
+import net.tfminecraft.vehicleframework.api.OwnershipIdentity;
+import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
+import net.tfminecraft.vehicleframework.ownership.OwnershipActions;
+import net.tfminecraft.vehicleframework.ownership.OwnershipMode;
 import net.tfminecraft.vehicleframework.VFLogger;
 import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
@@ -65,9 +69,15 @@ public class CommandManager implements Listener, CommandExecutor{
 					return true;
 				}
 				Player p = (Player) sender;
-				String owner = "player_" + p.getName();
+				Optional<String> owner = OwnershipAccess.ownerValue(p);
+				if(owner.isEmpty()) {
+					p.sendMessage(OwnershipMode.identity() == OwnershipIdentity.DISABLED
+							? OwnershipActions.DISABLED
+							: OwnershipActions.NEED_CHARACTER);
+					return true;
+				}
 				List<OwnedVehicleSummary> owned =
-						VehicleFramework.getVehicleManager().listOwnedVehicles(owner);
+						VehicleFramework.getVehicleManager().listOwnedVehicles(owner.get());
 				if(owned.isEmpty()) {
 					p.sendMessage("§7You do not own any vehicles.");
 					return true;
@@ -128,13 +138,21 @@ public class CommandManager implements Listener, CommandExecutor{
 				sender.sendMessage("§cYou do not have access to this command!");
 				return true;
 			}
-			if(args[0].equalsIgnoreCase("takeover") && args.length == 1) {
+			if(args[0].equalsIgnoreCase("takeover") && (args.length == 1 || args.length == 2)) {
 				if(!(sender instanceof Player)) {
 					sender.sendMessage("§cOnly players can use this command.");
 					return true;
 				}
 				Player p = (Player) sender;
-				VehicleFramework.getVehicleManager().startTakeover(p);
+				if (args.length == 1) {
+					VehicleFramework.getVehicleManager().startTakeover(p);
+				} else {
+					VehicleFramework.getVehicleManager().startTakeover(p, args[1]);
+				}
+				return true;
+			}
+			if(args[0].equalsIgnoreCase("admin") && args.length == 2 && args[1].equalsIgnoreCase("quarantine")) {
+				QuarantineCommand.list(sender);
 				return true;
 			}
 			if(args[0].equalsIgnoreCase("reload") && args.length == 1) {
