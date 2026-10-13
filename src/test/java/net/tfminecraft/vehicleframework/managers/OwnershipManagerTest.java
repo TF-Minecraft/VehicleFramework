@@ -547,6 +547,27 @@ class OwnershipManagerTest {
 		assertFalse(manager.getPending().has(alex, Kind.WHITELIST_ADD));
 	}
 
+	@Test
+	void aPendingWhitelistEntryForAStaleVehicleChangesAndSavesNothing() {
+		ActiveVehicle v = vehicle(owner(kira));
+		InventoryClickEvent typed = click(alex, new WhitelistPickerHolder(v, List.of()), OwnershipGUIManager.PICKER_TYPED_SLOT, item(Material.WRITABLE_BOOK, null));
+		Lookup.results.add(info(bren, "Bren"));
+		manager.pickerClick(typed);
+		when(v.isDestroyed()).thenReturn(true);
+		chat(alex, "Bren");
+		when(v.isDestroyed()).thenReturn(false);
+		manager.pickerClick(typed);
+		when(vehicles.get(v.getEntity())).thenReturn(mock(ActiveVehicle.class));
+		chat(alex, "Bren");
+		manager.pickerClick(typed);
+		when(vehicles.get(v.getEntity())).thenReturn(null);
+		chat(alex, "Bren");
+		verify(alex, times(3)).sendMessage(OwnershipManager.VEHICLE_GONE);
+		assertTrue(v.getOwnerData().getWhiteList().isEmpty());
+		verify(persistence, never()).saveLive(any(ActiveVehicle.class));
+		assertTrue(fired(VehicleOwnershipChangeEvent.class).isEmpty());
+	}
+
 	// ── Rename ──────────────────────────────────────────────────────────────
 
 	@Test
@@ -569,6 +590,7 @@ class OwnershipManagerTest {
 		when(vehicles.get(v.getEntity())).thenReturn(null);
 		chat(alex, "Gone");
 		verify(v, never()).setName("Gone");
+		verify(alex).sendMessage(OwnershipManager.VEHICLE_GONE);
 		tasks.getFirst().run();
 		verify(alex, never()).sendMessage("§cNaming timed out.");
 	}

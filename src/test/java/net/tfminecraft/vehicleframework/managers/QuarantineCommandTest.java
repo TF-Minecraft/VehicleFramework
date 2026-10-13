@@ -69,16 +69,18 @@ class QuarantineCommandTest {
 		verify(staff).sendMessage("§eQuarantined vehicles: §f2");
 		verify(staff).sendMessage("§7" + STORED + " §8cart 'Old cart' §fplayer_Gone §7- name does not round-trip");
 		verify(staff).sendMessage("§7" + MISSING + " §8(not stored) §fplayer_Lost §7- no heir");
+		verify(staff, never()).sendMessage(contains("metadata unavailable"));
 	}
 
 	@Test
-	void aVehicleReadFailureStillListsTheQuarantine() {
+	void aVehicleReadFailureListsTheQuarantineAsMetadataUnavailable() {
 		VehicleQuarantineSource factions = () -> List.of(new QuarantinedVehicle(STORED, "player_Gone", "no heir"));
 		List<RegisteredServiceProvider<VehicleQuarantineSource>> sources = List.of(source("SimpleFactions", factions));
 		when(services.getRegistrations(VehicleQuarantineSource.class)).thenReturn(sources);
 		store.when(OwnershipStore::listOwnershipMeta).thenThrow(new IllegalStateException("SQLite is not open"));
 		QuarantineCommand.list(staff);
-		verify(staff).sendMessage("§7" + STORED + " §8(not stored) §fplayer_Gone §7- no heir");
+		verify(staff).sendMessage("§7" + STORED + " §8(metadata unavailable) §fplayer_Gone §7- no heir");
+		verify(staff, never()).sendMessage(contains("(not stored)"));
 		log.verify(() -> VFLogger.log(contains("Could not read vehicles for the quarantine list")));
 	}
 }

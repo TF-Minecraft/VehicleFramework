@@ -41,22 +41,24 @@ public final class QuarantineCommand {
 			}
 		}
 		sender.sendMessage("§eQuarantined vehicles: §f" + vehicles.size());
-		Map<UUID, OwnershipMeta> known = known();
+		Optional<Map<UUID, OwnershipMeta>> known = known();
 		for (QuarantinedVehicle vehicle : vehicles) {
-			String label = Optional.ofNullable(known.get(vehicle.vehicleId()))
-					.map(meta -> " §8" + meta.typeId() + " '" + meta.name() + "'")
-					.orElse(" §8(not stored)");
+			String label = known.isEmpty() ? " §8(metadata unavailable)"
+					: Optional.ofNullable(known.get().get(vehicle.vehicleId()))
+							.map(meta -> " §8" + meta.typeId() + " '" + meta.name() + "'")
+							.orElse(" §8(not stored)");
 			sender.sendMessage("§7" + vehicle.vehicleId() + label + " §f" + vehicle.owner() + " §7- " + vehicle.reason());
 		}
 	}
 
-	private static Map<UUID, OwnershipMeta> known() {
+	/** Stored vehicles by ID, or empty when they could not be read. */
+	private static Optional<Map<UUID, OwnershipMeta>> known() {
 		try {
-			return OwnershipStore.listOwnershipMeta().stream()
-					.collect(Collectors.toMap(OwnershipMeta::vehicleId, Function.identity()));
+			return Optional.of(OwnershipStore.listOwnershipMeta().stream()
+					.collect(Collectors.toMap(OwnershipMeta::vehicleId, Function.identity())));
 		} catch (RuntimeException ex) {
 			VFLogger.log("Could not read vehicles for the quarantine list: " + ex);
-			return Map.of();
+			return Optional.empty();
 		}
 	}
 }

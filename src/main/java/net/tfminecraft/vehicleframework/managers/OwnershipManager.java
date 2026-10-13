@@ -62,6 +62,7 @@ public class OwnershipManager implements Listener {
 	public static final String NO_SINGLE_MATCH = "§cNo single living character is called §f%s§c.";
 	public static final String TYPED_NAMES_OFF = "§cTyped character names are not available on this server.";
 	public static final String SESSION_CHANGED = "§cYour character changed, so nothing was done.";
+	public static final String VEHICLE_GONE = "§cThat vehicle is no longer here, so nothing was done.";
 	public static final String ID_PREFIX = "id:";
 	public static final String TAKEOVER_USAGE = "§cUsage: /vf takeover [character name | id:<character uuid>]";
 	public static final String NAMES_MODE_TAKEOVER = "§cThis server identifies owners by account name, so a takeover is always for yourself: use /vf takeover.";
@@ -422,6 +423,10 @@ public class OwnershipManager implements Listener {
 			return;
 		}
 		ActiveVehicle v = action.vehicle();
+		if (!stillLoaded(v)) {
+			p.sendMessage(VEHICLE_GONE);
+			return;
+		}
 		String name = message.trim();
 		if (OwnershipMode.characters()) {
 			Optional<CharacterInfo> found = single(name);
@@ -464,13 +469,21 @@ public class OwnershipManager implements Listener {
 			return;
 		}
 		ActiveVehicle v = action.vehicle();
-		if (vehicles.get(v.getEntity()) == null) return;
+		if (!stillLoaded(v)) {
+			p.sendMessage(VEHICLE_GONE);
+			return;
+		}
 		v.setName(StringFormatter.formatHex(message.replace("_", " ")));
 		p.sendMessage("§aRenamed the vehicle to " + v.getName());
 		p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1f);
 	}
 
 	// ── Helpers ──────────────────────────────────────────────────────────────
+
+	/** Whether a pending action's vehicle is still the registered, undestroyed one. */
+	private boolean stillLoaded(ActiveVehicle v) {
+		return !v.isDestroyed() && vehicles.get(v.getEntity()) == v;
+	}
 
 	/** Players with a current character within 16 blocks of the vehicle or aboard it, not yet listed. */
 	List<WhitelistPickerHolder.Candidate> candidates(ActiveVehicle v) {
