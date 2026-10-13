@@ -2,27 +2,30 @@ package net.tfminecraft.vehicleframework.vehicles.handlers;
 
 import net.tfminecraft.vehicleframework.data.OwnerData;
 import net.tfminecraft.vehicleframework.enums.SeatType;
+import net.tfminecraft.vehicleframework.ownership.AccessKey;
 
 public final class VehicleTicketRules {
 	private VehicleTicketRules() {
 	}
 
+	/** Names mode: owner and entries are account names. */
 	public static boolean ownerOrWhitelisted(OwnerData data, String playerName) {
-		if (data == null || playerName == null) {
+		return ownerOrWhitelisted(data, AccessKey.name(playerName));
+	}
+
+	/** A {@code null} key (no identity) matches nobody. */
+	public static boolean ownerOrWhitelisted(OwnerData data, AccessKey key) {
+		if (data == null || key == null) {
 			return false;
 		}
-		String playerEntry = "player_" + playerName;
-		if (data.getOwner() != null && data.getOwner().equalsIgnoreCase(playerEntry)) {
+		if (key.owns(data.getOwner())) {
 			return true;
 		}
 		if (data.getWhiteList() == null) {
 			return false;
 		}
 		for (String entry : data.getWhiteList()) {
-			if (entry == null) {
-				continue;
-			}
-			if (entry.equalsIgnoreCase(playerEntry) || entry.equalsIgnoreCase(playerName)) {
+			if (key.matchesEntry(entry)) {
 				return true;
 			}
 		}
@@ -30,15 +33,23 @@ public final class VehicleTicketRules {
 	}
 
 	public static boolean mayEnter(OwnerData access, OwnerData tickets, String playerName, SeatType seat, boolean hasMatchingTicket) {
-		return mayEnter(tickets.isTicketsEnabled(), seat, ownerOrWhitelisted(access, playerName), hasMatchingTicket);
+		return mayEnter(access, tickets, AccessKey.name(playerName), seat, hasMatchingTicket);
+	}
+
+	public static boolean mayEnter(OwnerData access, OwnerData tickets, AccessKey key, SeatType seat, boolean hasMatchingTicket) {
+		return mayEnter(tickets.isTicketsEnabled(), seat, ownerOrWhitelisted(access, key), hasMatchingTicket);
 	}
 
 	public static boolean mayOpenSeatMenu(OwnerData access, String playerName, boolean hasMatchingTicket) {
-		return mayOpenSeatMenu(access, access, playerName, hasMatchingTicket);
+		return mayOpenSeatMenu(access, access, AccessKey.name(playerName), hasMatchingTicket);
+	}
+
+	public static boolean mayOpenSeatMenu(OwnerData access, OwnerData tickets, String playerName, boolean hasMatchingTicket) {
+		return mayOpenSeatMenu(access, tickets, AccessKey.name(playerName), hasMatchingTicket);
 	}
 
 	// Whitelists belong to the selected vehicle; coupled cars share only the locomotive's tickets.
-	public static boolean mayOpenSeatMenu(OwnerData access, OwnerData tickets, String playerName, boolean hasMatchingTicket) {
+	public static boolean mayOpenSeatMenu(OwnerData access, OwnerData tickets, AccessKey key, boolean hasMatchingTicket) {
 		if (access == null) {
 			return true;
 		}
@@ -47,7 +58,7 @@ public final class VehicleTicketRules {
 				|| access.getOwner().equalsIgnoreCase("none")) {
 			return true;
 		}
-		if (ownerOrWhitelisted(access, playerName)) {
+		if (ownerOrWhitelisted(access, key)) {
 			return true;
 		}
 		return tickets != null && tickets.isTicketsEnabled() && hasMatchingTicket;

@@ -17,6 +17,10 @@ public class VFLogger {
 		Bukkit.getLogger().warning("[VehicleFramework] Error! " + error);
 	}
 
+	public static void severe(String error) {
+		Bukkit.getLogger().severe("[VehicleFramework] " + error);
+	}
+
 	public static void info(String info) {
 		Bukkit.getLogger().info("[VehicleFramework] " + info);
 	}

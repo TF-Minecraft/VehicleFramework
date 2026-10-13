@@ -18,6 +18,22 @@ public class OwnerData {
         whiteListed = Cache.allowWhitelist && Cache.whitelistedByDefault;
     }
 
+    /** A detached copy of every field. */
+    public OwnerData copy() {
+        OwnerData copy = new OwnerData();
+        copy.restore(this);
+        return copy;
+    }
+
+    /** Puts back every field of an earlier {@link #copy()}. */
+    public void restore(OwnerData from) {
+        this.owner = from.owner;
+        this.whiteList = new ArrayList<>(from.whiteList);
+        this.whiteListed = from.whiteListed;
+        this.ticketsEnabled = from.ticketsEnabled;
+        this.ticketId = from.ticketId;
+    }
+
     // Owner
     public void setOwner(String owner) {
         this.owner = owner;

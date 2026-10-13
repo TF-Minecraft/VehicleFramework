@@ -135,11 +135,17 @@ public final class VehicleRepository {
 			WHERE deleted = 0 AND owner = ? COLLATE NOCASE
 			""";
 
+	// Personal owners: legacy player_<name> or char_<characterId>, never player_none or char_none.
 	private static final String SELECT_LIVE_PLAYER_OWNED = SELECT_COLUMNS + """
 			WHERE deleted = 0
-			  AND owner LIKE 'player_%' COLLATE NOCASE
-			  AND owner != 'player_none' COLLATE NOCASE
-			  AND length(owner) > 7
+			  AND (
+			    (owner LIKE 'player\\_%' ESCAPE '\\'
+			      AND owner != 'player_none' COLLATE NOCASE
+			      AND length(owner) > 7)
+			    OR (owner LIKE 'char\\_%' ESCAPE '\\'
+			      AND owner != 'char_none' COLLATE NOCASE
+			      AND length(owner) = 41)
+			  )
 			""";
 
 	private static final String TOMBSTONE_REVISION = """

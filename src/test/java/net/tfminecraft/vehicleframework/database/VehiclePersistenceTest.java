@@ -173,6 +173,26 @@ class VehiclePersistenceTest {
 	}
 
 	@Test
+	void personalOwnersAreCharactersOrLegacyNamesButNeverPlaceholders() {
+		VehicleRepository repository = VehicleRepository.open(tempDir.resolve("vehicles.db").toFile());
+		try {
+			String character = "char_" + java.util.UUID.randomUUID();
+			List<String> owners = List.of(character, "player_Alice", "CHAR_NONE", "player_none", "none", "playerXAlice",
+					"charXnone", "char_short");
+			for (int i = 0; i < owners.size(); i++) {
+				repository.saveLive(new VehicleSnapshot("v" + i, "horse_cart", "Cart", owners.get(i), "world", 0, 64, 0, 0, 0, 0,
+						PAYLOAD, 2, 1, false, 1));
+			}
+			List<String> personal = new VehiclePersistence(repository).listPlayerOwned().stream()
+					.map(net.tfminecraft.vehicleframework.data.StoredVehicleMeta::getOwner).sorted().toList();
+			assertEquals(List.of(character, "player_Alice").stream().sorted().toList(), personal);
+			assertEquals(1, new VehiclePersistence(repository).listByOwner(character.toUpperCase()).size());
+		} finally {
+			repository.close();
+		}
+	}
+
+	@Test
 	void payloadMutationBumpsRevision() {
 		VehicleRepository repository = VehicleRepository.open(tempDir.resolve("vehicles.db").toFile());
 		try {

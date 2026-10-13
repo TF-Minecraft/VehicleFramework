@@ -3,7 +3,6 @@ api-version: '1.21.4'
 name: VehicleFramework
 version: ${project.version}
 author: Drefvelin
-folia-supported: true
 
 depend: [NBTAPI, ModelEngine, ProtocolLib, TLibs]
 softdepend: [MythicMobs, CoreProtect]

@@ -7,6 +7,7 @@ import org.bukkit.inventory.PlayerInventory;
 
 import net.tfminecraft.tlibs.TLibs;
 import net.tfminecraft.vehicleframework.cache.Cache;
+import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
 import net.tfminecraft.vehicleframework.permissions.Permissions;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 
@@ -46,8 +47,7 @@ public final class VehicleTicketInteract {
 		if (Permissions.isAdmin(player)) {
 			return true;
 		}
-		String owner = vehicle.ticketSource().getOwnerData().getOwner();
-		return owner != null && owner.equalsIgnoreCase("player_" + player.getName());
+		return OwnershipAccess.isOwner(player, vehicle.ticketSource().getOwnerData());
 	}
 
 	private static void mintOne(Player player, ItemStack hand, ActiveVehicle source) {

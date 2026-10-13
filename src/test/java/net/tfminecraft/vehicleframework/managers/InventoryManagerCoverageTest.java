@@ -64,6 +64,9 @@ class InventoryManagerCoverageTest {
         when(VehicleFramework.plugin.getServer()).thenReturn(server);
         keep(mockConstruction(ItemStack.class, (item, context) -> configure(item, (Material) context.arguments().get(0))));
         ownership = keep(mockConstruction(OwnershipGUIManager.class));
+        // The ownership button asks listeners whether the menu may open.
+        keep(mockStatic(org.bukkit.Bukkit.class)).when(org.bukkit.Bukkit::getPluginManager)
+                .thenReturn(mock(org.bukkit.plugin.PluginManager.class));
         when(server.createInventory(any(InventoryHolder.class), anyInt(), anyString())).thenAnswer(call -> {
             Inventory inventory = inventory(call.getArgument(1), call.getArgument(0));
             created.add(inventory); return inventory;

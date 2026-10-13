@@ -7,6 +7,7 @@ import org.bukkit.inventory.PlayerInventory;
 
 import net.tfminecraft.tlibs.TLibs;
 import net.tfminecraft.vehicleframework.cache.Cache;
+import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
 import net.tfminecraft.vehicleframework.permissions.Permissions;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.handlers.TrainHandler;
@@ -50,8 +51,7 @@ public final class TrainTapeInteract {
 		if (Permissions.isAdmin(player)) {
 			return true;
 		}
-		String owner = vehicle.getOwnerData().getOwner();
-		return owner != null && owner.equalsIgnoreCase("player_" + player.getName());
+		return OwnershipAccess.isOwner(player, vehicle.getOwnerData());
 	}
 
 	private static boolean toggleRecord(Player player, TrainHandler train, ItemStack hand) {

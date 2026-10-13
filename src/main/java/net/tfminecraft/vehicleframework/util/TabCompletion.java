@@ -31,8 +31,19 @@ public class TabCompletion implements TabCompleter {
 					completions.add("takeover");
                     completions.add("reload");
                     completions.add("track");
+                    completions.add("admin");
                 }
                 return completions;
+            }
+
+            if (args[0].equalsIgnoreCase("admin") && args.length == 2 && Permissions.isAdmin(sender)) {
+                completions.add("quarantine");
+                return completions;
+            }
+
+            if (args[0].equalsIgnoreCase("takeover") && args.length >= 2 && Permissions.isAdmin(sender)) {
+                return net.tfminecraft.vehicleframework.managers.OwnershipManager.takeoverSuggestions(
+                        java.util.Arrays.copyOfRange(args, 1, args.length));
             }
 
             if (args[0].equalsIgnoreCase("spawn") && args.length == 2) {
