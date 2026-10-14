@@ -30,7 +30,6 @@ import net.tfminecraft.vehicleframework.api.VehicleOwners;
 import net.tfminecraft.vehicleframework.api.VehicleOwnershipAuthority;
 import net.tfminecraft.vehicleframework.data.OwnerData;
 import net.tfminecraft.vehicleframework.database.VehiclePersistence;
-import net.tfminecraft.vehicleframework.events.VehicleOwnerClaimedEvent;
 import net.tfminecraft.vehicleframework.events.VehicleOwnershipChangeEvent;
 import net.tfminecraft.vehicleframework.events.VehicleOwnershipChangedEvent;
 import net.tfminecraft.vehicleframework.events.VehicleOwnershipEditCheckEvent;
@@ -184,17 +183,16 @@ class OwnershipActionsTest {
 	}
 
 	@Test
-	void aWrittenClaimFiresPreLegacyAndPostEventsUnderOneOperation() {
+	void aWrittenClaimFiresOnlyPreAndPostEventsUnderOneOperation() {
 		String owner = "char_" + kira.ref().characterId();
 		assertEquals(Optional.of(Result.OK), claim(d -> d.setOwner(owner)));
 		assertEquals(owner, data.getOwner());
-		assertEquals(3, events.size());
+		assertEquals(2, events.size());
 		VehicleOwnershipChangeEvent pre = (VehicleOwnershipChangeEvent) events.get(0);
-		VehicleOwnerClaimedEvent legacy = (VehicleOwnerClaimedEvent) events.get(1);
-		VehicleOwnershipChangedEvent post = (VehicleOwnershipChangedEvent) events.get(2);
+		VehicleOwnershipChangedEvent post = (VehicleOwnershipChangedEvent) events.get(1);
 		assertEquals("none", pre.getPreviousOwner()); assertEquals(owner, pre.getNewOwner());
 		assertEquals(kira.ref(), pre.getTarget().orElseThrow());
-		assertEquals(owner, legacy.getNewOwner()); assertSame(alex, legacy.getPlayer());
+		assertSame(alex, pre.getPlayer());
 		assertTrue(post.isSuccess()); assertEquals(pre.getOperationId(), post.getOperationId());
 		assertEquals("none", post.getPrevious().owner()); assertEquals(owner, post.getCurrent().owner());
 		assertEquals(java.util.UUID.fromString(vehicle.getUUID()), post.getVehicleId());
@@ -208,22 +206,10 @@ class OwnershipActionsTest {
 		}).when(plugins).callEvent(any(Event.class));
 		assertTrue(claim(d -> d.setOwner("char_x")).isEmpty());
 		assertEquals("none", data.getOwner());
-		assertTrue(fired(VehicleOwnerClaimedEvent.class).isEmpty());
 		VehicleOwnershipChangedEvent post = fired(VehicleOwnershipChangedEvent.class).getFirst();
 		assertFalse(post.isSuccess());
 		assertEquals(fired(VehicleOwnershipChangeEvent.class).getFirst().getOperationId(), post.getOperationId());
 		verify(persistence, never()).saveLive(any(ActiveVehicle.class));
-	}
-
-	@Test
-	void theLegacyClaimEventCanStillVetoAClaim() {
-		doAnswer(call -> {
-			if (call.getArgument(0) instanceof VehicleOwnerClaimedEvent legacy) legacy.setCancelled(true);
-			return events.add(call.getArgument(0));
-		}).when(plugins).callEvent(any(Event.class));
-		assertTrue(claim(d -> d.setOwner("char_x")).isEmpty());
-		assertEquals("none", data.getOwner());
-		assertFalse(fired(VehicleOwnershipChangedEvent.class).getFirst().isSuccess());
 	}
 
 	@Test

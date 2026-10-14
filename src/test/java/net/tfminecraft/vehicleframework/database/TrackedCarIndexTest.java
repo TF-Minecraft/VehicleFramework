@@ -1,15 +1,26 @@
 package net.tfminecraft.vehicleframework.database;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.AdditionalAnswers.delegatesTo;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.withSettings;
 
 import java.nio.file.Path;
+import java.sql.Connection;
 import java.util.List;
+import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import net.tfminecraft.tlibs.database.SqliteDatabase;
 
 class TrackedCarIndexTest {
 	private static final String SPLINE = "11111111-2222-3333-4444-555555555555";
@@ -92,6 +103,62 @@ class TrackedCarIndexTest {
 			throw new IllegalStateException("rollback");
 		}));
 		assertEquals(2, failure.getSuppressed().length);
+	}
+
+	@Test
+	void errorRollbackRestoresBothIndexesAndRowsAcrossReopen() {
+		java.io.File file = tempDir.resolve("error-rollback.db").toFile();
+		SqliteDatabase sqlite = new SqliteDatabase(file);
+		// Model the runtime provider's Error rollback contract with the older compile pin.
+		try (var databases = mockConstruction(SqliteDatabase.class,
+				withSettings().defaultAnswer(delegatesTo(sqlite)), (database, context) -> {
+			doAnswer(invocation -> {
+				Connection connection = sqlite.getConnection();
+				connection.setAutoCommit(false);
+				try {
+					invocation.<Consumer<Connection>>getArgument(0).accept(connection);
+					connection.commit();
+				} catch (RuntimeException | Error failure) {
+					connection.rollback();
+					throw failure;
+				} finally {
+					connection.setAutoCommit(true);
+				}
+				return null;
+			}).when(database).runTransaction(any());
+		})) {
+			VehicleRepository repository = VehicleRepository.open(file);
+			try {
+				assertTrue(repository.saveLive(snapshot("car-1", payload(7, null), false)));
+				Error failure = new AssertionError("rollback");
+				assertSame(failure, assertThrows(Error.class, () -> repository.runInTransaction(() -> {
+					repository.tombstone("car-1");
+					repository.saveLive(new VehicleSnapshot("car-2", "wagon", "world", 65.5, 64, 2.5,
+							0f, 4, 0, payload(9, null), VehicleRepository.SCHEMA_VERSION, 1, false,
+							System.currentTimeMillis()));
+					throw failure;
+				})));
+				assertErrorRollbackState(repository);
+			} finally {
+				repository.close();
+			}
+		} finally {
+			sqlite.close();
+		}
+		VehicleRepository reopened = VehicleRepository.open(file);
+		try {
+			assertErrorRollbackState(reopened);
+		} finally {
+			reopened.close();
+		}
+	}
+
+	private static void assertErrorRollbackState(VehicleRepository repository) {
+		assertTrue(repository.findLive("car-1").isPresent());
+		assertTrue(repository.findLive("car-2").isEmpty());
+		assertTrue(repository.hasLiveInChunk("world", 0, 0));
+		assertFalse(repository.hasLiveInChunk("world", 4, 0));
+		assertEquals(List.of(car("car-1", 7, null)), repository.trackedCars());
 	}
 
 	private static TrackedCar car(String uuid, double s, String parent) {

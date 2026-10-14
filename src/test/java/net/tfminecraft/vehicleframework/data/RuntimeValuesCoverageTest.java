@@ -369,16 +369,6 @@ class RuntimeValuesCoverageTest {
     assertSame(payload, remove.getPayload());
     assertSame(VehicleRemoveEvent.getHandlerList(), remove.getHandlers());
     assertTrue(new VehicleRemoveEvent(vehicle, null).getPayload().isRemove());
-    VehicleOwnerClaimedEvent owner =
-        new VehicleOwnerClaimedEvent(player, vehicle, "none", "player_alex");
-    assertSame(player, owner.getPlayer());
-    assertSame(vehicle, owner.getVehicle());
-    assertEquals("none", owner.getPreviousOwner());
-    assertEquals("player_alex", owner.getNewOwner());
-    assertFalse(owner.isCancelled());
-    owner.setCancelled(true);
-    assertTrue(owner.isCancelled());
-    assertSame(VehicleOwnerClaimedEvent.getHandlerList(), owner.getHandlers());
     VehiclePreInteractEvent interact = new VehiclePreInteractEvent(player, vehicle);
     assertSame(vehicle, interact.getVehicle());
     assertFalse(interact.isCancelled());
