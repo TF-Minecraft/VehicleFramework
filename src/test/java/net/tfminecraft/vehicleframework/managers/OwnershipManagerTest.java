@@ -52,7 +52,6 @@ import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.data.OwnerData;
 import net.tfminecraft.vehicleframework.database.VehiclePersistence;
 import net.tfminecraft.vehicleframework.enums.VFGUI;
-import net.tfminecraft.vehicleframework.events.VehicleOwnerClaimedEvent;
 import net.tfminecraft.vehicleframework.events.VehicleOwnershipChangeEvent;
 import net.tfminecraft.vehicleframework.events.VehicleOwnershipChangedEvent;
 import net.tfminecraft.vehicleframework.events.VehicleOwnershipEditCheckEvent;
@@ -238,7 +237,7 @@ class OwnershipManagerTest {
 		VehicleOwnershipChangeEvent pre = fired(VehicleOwnershipChangeEvent.class).getFirst();
 		assertEquals(OwnershipReason.CLAIM, pre.getReason()); assertEquals(kira.ref(), pre.getActor().orElseThrow());
 		assertEquals(kira.ref(), pre.getTarget().orElseThrow());
-		assertEquals(owner(kira), fired(VehicleOwnerClaimedEvent.class).getFirst().getNewOwner());
+		assertEquals(owner(kira), pre.getNewOwner());
 		assertTrue(fired(VehicleOwnershipChangedEvent.class).getFirst().isSuccess());
 		verify(persistence).saveLive(v);
 	}
@@ -610,7 +609,6 @@ class OwnershipManagerTest {
 		VehicleOwnershipChangeEvent pre = fired(VehicleOwnershipChangeEvent.class).getFirst();
 		assertEquals(OwnershipReason.TAKEOVER, pre.getReason()); assertTrue(pre.isStaff());
 		assertEquals(warden.ref(), pre.getTarget().orElseThrow());
-		assertTrue(fired(VehicleOwnerClaimedEvent.class).isEmpty());
 		verify(staff).sendMessage("§aYou are now the owner of §eCart§a.");
 	}
 
@@ -623,7 +621,7 @@ class OwnershipManagerTest {
 		assertTrue(manager.takeover(staff, v));
 		assertEquals(owner(bren), v.getOwnerData().getOwner());
 		assertEquals(OwnershipReason.CLAIM, fired(VehicleOwnershipChangeEvent.class).getFirst().getReason());
-		assertEquals(1, fired(VehicleOwnerClaimedEvent.class).size());
+		assertEquals(1, fired(VehicleOwnershipChangeEvent.class).size());
 		verify(staff).sendMessage("§eCart§a now belongs to §eBren§a.");
 		Lookup.results.clear();
 		manager.startTakeover(staff, "Bren");

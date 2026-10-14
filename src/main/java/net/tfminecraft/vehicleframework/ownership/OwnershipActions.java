@@ -16,7 +16,6 @@ import net.tfminecraft.vehicleframework.api.VehicleFrameworkApi.Result;
 import net.tfminecraft.vehicleframework.api.VehicleOwners;
 import net.tfminecraft.vehicleframework.api.VehicleOwnershipAuthority;
 import net.tfminecraft.vehicleframework.data.OwnerData;
-import net.tfminecraft.vehicleframework.events.VehicleOwnerClaimedEvent;
 import net.tfminecraft.vehicleframework.events.VehicleOwnershipChangeEvent;
 import net.tfminecraft.vehicleframework.events.VehicleOwnershipChangedEvent;
 import net.tfminecraft.vehicleframework.events.VehicleOwnershipEditCheckEvent;
@@ -139,7 +138,7 @@ public final class OwnershipActions {
 	}
 
 	/**
-	 * Fires the pre-write event (and the legacy claim event for claims), writes, and always fires
+	 * Fires the pre-write event, writes, and always fires
 	 * the post-write event under the same operation ID.
 	 *
 	 * @return the write result, or empty if a listener cancelled the change
@@ -161,14 +160,6 @@ public final class OwnershipActions {
 			Bukkit.getPluginManager().callEvent(pre);
 			if (pre.isCancelled()) {
 				return Optional.empty();
-			}
-			if (change.reason() == OwnershipReason.CLAIM) {
-				VehicleOwnerClaimedEvent legacy =
-						new VehicleOwnerClaimedEvent(actor.player(), vehicle, previousOwner, newOwner);
-				Bukkit.getPluginManager().callEvent(legacy);
-				if (legacy.isCancelled()) {
-					return Optional.empty();
-				}
 			}
 			result = OwnershipStore.writeLive(vehicle, change.mutation());
 			return Optional.of(result);

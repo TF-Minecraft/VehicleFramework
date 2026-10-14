@@ -732,10 +732,10 @@ class VehicleManagerCoverageTest {
     @Test
     void interactionHonorsCancelledOwnershipCooldownAndItemIntegrations() throws Exception {
         ActiveVehicle v = vehicle("v"); Player player = player("Ryan"); register(v);
-        doAnswer(call -> { if (call.getArgument(0) instanceof VehicleOwnerClaimedEvent claim) claim.setCancelled(true); return null; }).when(plugins).callEvent(any(Event.class));
+        doAnswer(call -> { if (call.getArgument(0) instanceof VehicleOwnershipChangeEvent claim) claim.setCancelled(true); return null; }).when(plugins).callEvent(any(Event.class));
         manager.vehicleInteract(interact(player, v.getEntity())); assertEquals("none", v.getOwnerData().getOwner());
         map("cooldown").put(player, Long.MAX_VALUE);
-        manager.vehicleInteract(interact(player, v.getEntity())); verify(plugins, times(1)).callEvent(isA(VehicleOwnerClaimedEvent.class));
+        manager.vehicleInteract(interact(player, v.getEntity())); verify(plugins, times(1)).callEvent(isA(VehicleOwnershipChangeEvent.class));
         map("cooldown").clear(); tapeInteractions.when(() -> TrainTapeInteract.handle(player, v)).thenReturn(true);
         PlayerInteractEntityEvent event = interact(player, v.getEntity()); manager.vehicleInteract(event); assertTrue(event.isCancelled());
         map("cooldown").clear(); tapeInteractions.when(() -> TrainTapeInteract.handle(player, v)).thenReturn(false);

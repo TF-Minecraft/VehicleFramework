@@ -483,7 +483,7 @@ public final class VehicleRepository {
 		}
 		try {
 			database.runTransaction(connection -> work.run());
-		} catch (RuntimeException failure) {
+		} catch (RuntimeException | Error failure) {
 			// Row mutations update these caches eagerly; rollback must restore them too.
 			try {
 				rebuildOccupiedChunks();
