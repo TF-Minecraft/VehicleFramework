@@ -194,9 +194,47 @@ class CommandAndOwnershipCoverageTest {
         assertEquals(Material.GRAY_STAINED_GLASS_PANE, menu.getItem(0).getType()); verify(player).openInventory(menu);
     }
 
+    @Test void completionFiltersEveryCurrentTokenAndConsoleOnlySeesUsableActions() {
+        TabCompletion tabs = new TabCompletion();
+        when(player.hasPermission("vf.admin")).thenReturn(true);
+        assertEquals(List.of("spawn"), tabs.onTabComplete(player, command, "vf", new String[]{"SP"}));
+        assertEquals(List.of(), tabs.onTabComplete(player, command, "vf", new String[]{"unmatched"}));
+        assertEquals(List.of(), tabs.onTabComplete(player, command, "vf", new String[0]));
+        assertEquals(List.of(), tabs.onTabComplete(player, command, "vf", new String[]{"admin", "x"}));
+        assertEquals(List.of("quarantine"), tabs.onTabComplete(player, command, "vf", new String[]{"admin", "QU"}));
+        assertEquals(List.of("bind"), tabs.onTabComplete(player, command, "vf", new String[]{"track", "bi"}));
+        assertEquals(List.of("10"), tabs.onTabComplete(player, command, "vf", new String[]{"kill", "1"}));
+        Vehicle wagon = mock(Vehicle.class); when(wagon.getId()).thenReturn("Wagon");
+        Vehicle cart = mock(Vehicle.class); when(cart.getId()).thenReturn("cart");
+        VehicleLoader.get().put("wagon", wagon); VehicleLoader.get().put("cart", cart);
+        assertEquals(List.of("Wagon"), tabs.onTabComplete(player, command, "vf", new String[]{"spawn", "WA"}));
+        TrackRegistry registry = mock(TrackRegistry.class);
+        TrackSpline track = mock(TrackSpline.class);
+        UUID id = UUID.fromString("abcdef00-0000-0000-0000-000000000001"); when(track.getId()).thenReturn(id);
+        when(registry.inWorld("world")).thenReturn(List.of(track));
+        framework.when(VehicleFramework::getTrackRegistry).thenReturn(registry);
+        for (String action : List.of("delete", "clearance", "info", "particles", "bind")) {
+            assertEquals(List.of(id.toString()), tabs.onTabComplete(player, command, "vf", new String[]{"track", action, "AB"}));
+            assertEquals(List.of(), tabs.onTabComplete(player, command, "vf", new String[]{"track", action, "deadbeef"}));
+        }
+        var console = mock(CommandSender.class);
+        when(console.hasPermission("vf.admin")).thenReturn(true);
+        assertEquals(List.of("reload", "admin", "track"), tabs.onTabComplete(console, command, "vf", new String[]{""}));
+        assertEquals(List.of("reload"), tabs.onTabComplete(console, command, "vf", new String[]{"RE"}));
+        assertEquals(List.of("quarantine"), tabs.onTabComplete(console, command, "vf", new String[]{"admin", "Q"}));
+        assertEquals(List.of("resync"), tabs.onTabComplete(console, command, "vf", new String[]{"track", "R"}));
+        for (String[] args : new String[][]{{"spawn", ""}, {"track", "info", ""}, {"reload", ""}}) {
+            assertEquals(List.of(), tabs.onTabComplete(console, command, "vf", args));
+        }
+        when(console.hasPermission("vf.admin")).thenReturn(false);
+        assertEquals(List.of(), tabs.onTabComplete(console, command, "vf", new String[]{""}));
+        when(command.getName()).thenReturn("other");
+        assertEquals(List.of(), tabs.onTabComplete(console, command, "other", new String[]{""}));
+    }
+
     @Test void completionsFollowPermissionsAndOfferKnownVehiclesAndWorldTracks() {
         TabCompletion completion = new TabCompletion();
-        assertNull(completion.onTabComplete(mock(CommandSender.class), command, "vf", new String[]{""}));
+        assertEquals(List.of(), completion.onTabComplete(mock(CommandSender.class), command, "vf", new String[]{""}));
         assertEquals(List.of("findvehicles", "keybinds"), completion.onTabComplete(player, command, "vf", new String[]{""}));
         assertTrue(completion.onTabComplete(player, command, "vf", new String[]{"spawn", ""}).isEmpty());
         when(player.hasPermission("vehicleframework.spawn")).thenReturn(true);
@@ -211,7 +249,7 @@ class CommandAndOwnershipCoverageTest {
         assertTrue(completion.onTabComplete(player, command, "vf", new String[]{"track", "delete", ""}).isEmpty());
         TrackRegistry registry = mock(TrackRegistry.class); TrackSpline track = mock(TrackSpline.class); UUID id = UUID.randomUUID(); when(track.getId()).thenReturn(id);
         when(registry.inWorld("world")).thenReturn(List.of(track)); framework.when(VehicleFramework::getTrackRegistry).thenReturn(registry);
-        for (String verb : List.of("delete", "clearance")) assertEquals(List.of(id.toString()), completion.onTabComplete(player, command, "vf", new String[]{"track", verb, ""}));
+        for (String verb : List.of("delete", "clearance", "info", "particles", "bind")) assertEquals(List.of(id.toString()), completion.onTabComplete(player, command, "vf", new String[]{"track", verb, ""}));
         assertNull(completion.onTabComplete(player, command, "vf", new String[]{"track", "unknown", ""}));
         assertNull(completion.onTabComplete(player, command, "vf", new String[]{"unknown", ""}));
         when(command.getName()).thenReturn("other"); assertNull(completion.onTabComplete(player, command, "other", new String[]{""}));

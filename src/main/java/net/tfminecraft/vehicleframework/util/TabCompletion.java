@@ -15,7 +15,21 @@ import net.tfminecraft.vehicleframework.vehicles.Vehicle;
 public class TabCompletion implements TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command cmd, String label, String[] args) {
-        if (!(sender instanceof Player)) return null;
+        if (args.length == 0) return List.of();
+        List<String> options = candidates(sender, cmd, args);
+        if (options == null) return null;
+        String prefix = args[args.length - 1];
+        return options.stream().filter(option -> option.regionMatches(true, 0, prefix, 0, prefix.length())).toList();
+    }
+
+    private List<String> candidates(CommandSender sender, Command cmd, String[] args) {
+        if (!(sender instanceof Player)) {
+            if (!cmd.getName().equalsIgnoreCase("vf") || !Permissions.isAdmin(sender)) return List.of();
+            if (args.length == 1) return List.of("reload", "admin", "track");
+            if (args.length == 2 && args[0].equalsIgnoreCase("admin")) return List.of("quarantine");
+            if (args.length == 2 && args[0].equalsIgnoreCase("track")) return List.of("resync");
+            return List.of();
+        }
         List<String> completions = new ArrayList<>();
 
         if (cmd.getName().equalsIgnoreCase("vf")) {
@@ -70,7 +84,8 @@ public class TabCompletion implements TabCompleter {
                     return completions;
                 }
                 if (args.length == 3 && sender instanceof Player player
-                        && (args[1].equalsIgnoreCase("delete") || args[1].equalsIgnoreCase("clearance"))) {
+                        && List.of("delete", "clearance", "info", "particles", "bind")
+                                .contains(args[1].toLowerCase(java.util.Locale.ROOT))) {
                     var registry = net.tfminecraft.vehicleframework.VehicleFramework.getTrackRegistry();
                     if (registry != null) {
                         for (net.tfminecraft.vehicleframework.tracks.TrackSpline spline
