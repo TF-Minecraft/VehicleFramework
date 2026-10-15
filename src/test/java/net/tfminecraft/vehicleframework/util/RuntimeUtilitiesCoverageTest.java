@@ -907,7 +907,7 @@ class RuntimeUtilitiesCoverageTest {
     Command command = mock(Command.class);
     when(command.getName()).thenReturn("vf");
     Player player = r.entity(Player.class, new Location(r.world, 0, 64, 0));
-    assertNull(tabs.onTabComplete(mock(CommandSender.class), command, "vf", new String[] {""}));
+    assertEquals(List.of(), tabs.onTabComplete(mock(CommandSender.class), command, "vf", new String[] {""}));
     assertEquals(
         List.of("findvehicles", "keybinds"),
         tabs.onTabComplete(player, command, "vf", new String[] {""}));
@@ -960,7 +960,7 @@ class RuntimeUtilitiesCoverageTest {
     registry.replace(elsewhere);
     r.framework.when(VehicleFramework::getTrackRegistry).thenReturn(registry);
     try {
-      for (String sub : List.of("delete", "clearance"))
+      for (String sub : List.of("delete", "clearance", "info", "particles", "bind"))
         assertEquals(
             List.of(local.getId().toString()),
             tabs.onTabComplete(player, command, "vf", new String[] {"track", sub, ""}));
@@ -970,7 +970,6 @@ class RuntimeUtilitiesCoverageTest {
     assertEquals(
         List.of("10", "20", "50"),
         tabs.onTabComplete(player, command, "vf", new String[] {"kill", ""}));
-    assertNull(tabs.onTabComplete(player, command, "vf", new String[] {"track", "info", ""}));
     assertNull(tabs.onTabComplete(player, command, "vf", new String[] {"unknown", ""}));
     when(command.getName()).thenReturn("other");
     assertNull(tabs.onTabComplete(player, command, "other", new String[] {""}));
