@@ -92,6 +92,8 @@ public class Weapon {
 			projectileClusterAmount = config.getInt("projectile-cluster-amount");
 		}
 		damageData = new DamageData((List<String>) config.getList("damage", new ArrayList<String>()));
+		// Landing must not wreck guns; components already get FALL 0 from armour templates.
+		damageData.getModifiers().putIfAbsent("FALL", 0.0);
 		if(config.isConfigurationSection("animations")) {
 			animationHandler = new AnimationHandler(config.getConfigurationSection("animations"));
 		} else {

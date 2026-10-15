@@ -253,6 +253,18 @@ class WeaponsCoverageTest {
   }
 
   @Test
+  void fallDamageSparesWeaponsUnlessConfigured() throws Exception {
+    Weapon stored = new Weapon("aa", new YamlConfiguration());
+    ActiveWeapon active = new ActiveWeapon(model, vehicle, stored, null);
+    active.damage("FALL", 40);
+    active.damage("PROJECTILE", 10);
+    assertEquals(10, active.getHealthData().getDamage());
+
+    Weapon fragile = new Weapon("fragile", Rig.yaml("damage: [fall(0.5)]\n"));
+    assertEquals(0.5, fragile.getDamageData().getModifier("FALL"));
+  }
+
+  @Test
   void defaultsAndFallbacksSupportEveryProjectileType() throws Exception {
     Weapon stored = new Weapon("default", new YamlConfiguration());
     assertEquals("default", stored.getName());
