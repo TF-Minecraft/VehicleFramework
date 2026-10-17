@@ -2,6 +2,7 @@ package net.tfminecraft.vehicleframework.managers;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -258,7 +259,7 @@ public class OwnershipGUIManager {
         lore.add(groupMembers(group, name));
         lore.add("§7Counts only while whitelisting is on");
         lore.add("");
-        lore.add(fixed ? "§7Faction vehicles always admit their faction" : "§eClick to toggle");
+        lore.add(fixed ? "§7This vehicle always admits its " + groupLabel(group).toLowerCase(Locale.ROOT) : "§eClick to toggle");
         m.setLore(lore);
         i.setItemMeta(m);
         return i;

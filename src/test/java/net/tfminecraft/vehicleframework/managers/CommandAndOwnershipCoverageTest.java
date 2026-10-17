@@ -301,7 +301,7 @@ class CommandAndOwnershipCoverageTest {
         ItemStack faction = menu.getItem(OwnershipGUIManager.groupSlot(AccessGroup.FACTION));
         assertEquals(Material.LIME_DYE, faction.getType()); assertEquals("§aFaction: ALWAYS ON", faction.getItemMeta().getDisplayName());
         assertEquals(List.of("§7Members of §fThe Bog§7 may board", "§7Counts only while whitelisting is on", "",
-                "§7Faction vehicles always admit their faction"), faction.getItemMeta().getLore());
+                "§7This vehicle always admits its faction"), faction.getItemMeta().getLore());
         ItemStack guild = menu.getItem(12);
         assertEquals("§7Guild: OFF", guild.getItemMeta().getDisplayName());
         assertEquals("§7Members of §fSmiths§7 may board", guild.getItemMeta().getLore().getFirst());
