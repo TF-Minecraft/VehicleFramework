@@ -45,8 +45,10 @@ import net.tfminecraft.tlibs.character.CharacterStatus;
 import net.tfminecraft.tlibs.character.Characters;
 import net.tfminecraft.vehicleframework.VFLogger;
 import net.tfminecraft.vehicleframework.VehicleFramework;
+import net.tfminecraft.vehicleframework.api.AccessGroup;
 import net.tfminecraft.vehicleframework.api.OwnershipIdentity;
 import net.tfminecraft.vehicleframework.api.OwnershipReason;
+import net.tfminecraft.vehicleframework.api.VehicleAccessGroups;
 import net.tfminecraft.vehicleframework.api.VehicleOwners;
 import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.data.OwnerData;
@@ -231,7 +233,9 @@ class OwnershipManagerTest {
 		ActiveVehicle v = vehicle("none");
 		v.getOwnerData().setWhiteList(new ArrayList<>(List.of("char_old")));
 		v.getOwnerData().setWhiteListed(true);
+		v.getOwnerData().toggleAccessGroup(AccessGroup.FACTION);
 		assertTrue(manager.claim(alex, v));
+		assertTrue(v.getOwnerData().getAccessGroups().isEmpty(), "a new owner never inherits the old crew's groups");
 		assertEquals(owner(kira), v.getOwnerData().getOwner());
 		assertTrue(v.getOwnerData().getWhiteList().isEmpty()); assertFalse(v.getOwnerData().isWhiteListed());
 		VehicleOwnershipChangeEvent pre = fired(VehicleOwnershipChangeEvent.class).getFirst();
@@ -309,9 +313,11 @@ class OwnershipManagerTest {
 	void clearingOwnershipEmptiesTheCrewInCharactersModeOnly() {
 		ActiveVehicle v = vehicle(owner(kira));
 		v.getOwnerData().setWhiteList(new ArrayList<>(List.of("char_crew"))); v.getOwnerData().setWhiteListed(true);
+		v.getOwnerData().toggleAccessGroup(AccessGroup.GUILD);
 		manager.ownershipClick(menu(alex, v, 6));
 		assertEquals("none", v.getOwnerData().getOwner());
 		assertTrue(v.getOwnerData().getWhiteList().isEmpty()); assertFalse(v.getOwnerData().isWhiteListed());
+		assertTrue(v.getOwnerData().getAccessGroups().isEmpty());
 		verify(alex).sendMessage("§7Ownership of §fCart§7 has been removed.");
 		assertEquals(OwnershipReason.CLEAR, fired(VehicleOwnershipChangeEvent.class).getFirst().getReason());
 		assertEquals("none", fired(VehicleOwnershipChangeEvent.class).getFirst().getNewOwner());
@@ -321,6 +327,52 @@ class OwnershipManagerTest {
 		manager.ownershipClick(menu(alex, named, 6));
 		assertEquals("none", named.getOwnerData().getOwner());
 		assertEquals(List.of("player_Bob"), named.getOwnerData().getWhiteList()); assertFalse(named.getOwnerData().isWhiteListed());
+	}
+
+	private VehicleAccessGroups groupService() {
+		VehicleAccessGroups groups = mock(VehicleAccessGroups.class);
+		when(groups.ready()).thenReturn(true);
+		when(groups.alwaysOpen(any(), any())).thenReturn(Set.of());
+		when(services.load(VehicleAccessGroups.class)).thenReturn(groups);
+		return groups;
+	}
+
+	@Test
+	void aGroupSwitchFlipsThroughTheOwnershipEventsAndRefreshesTheMenu() {
+		groupService();
+		ActiveVehicle v = vehicle(owner(kira));
+		InventoryClickEvent click = menu(alex, v, OwnershipGUIManager.groupSlot(AccessGroup.ALLY));
+		manager.ownershipClick(click);
+		assertEquals(Set.of(AccessGroup.ALLY), v.getOwnerData().getAccessGroups());
+		VehicleOwnershipChangeEvent pre = fired(VehicleOwnershipChangeEvent.class).getFirst();
+		assertEquals(OwnershipReason.ALLY_ACCESS_TOGGLE, pre.getReason());
+		assertEquals(owner(kira), pre.getNewOwner());
+		assertEquals(Set.of(AccessGroup.ALLY), fired(VehicleOwnershipChangedEvent.class).getFirst().getCurrent().accessGroups());
+		verify(gui).ownershipGui(click.getView().getTopInventory(), alex, v, false);
+		manager.ownershipClick(menu(alex, v, OwnershipGUIManager.groupSlot(AccessGroup.ALLY)));
+		assertTrue(v.getOwnerData().getAccessGroups().isEmpty());
+		verify(persistence, times(2)).saveLive(v);
+		manager.ownershipClick(menu(bystander, v, OwnershipGUIManager.groupSlot(AccessGroup.GUILD)));
+		verify(bystander).sendMessage(OwnershipActions.NOT_OWNER);
+		assertTrue(v.getOwnerData().getAccessGroups().isEmpty());
+	}
+
+	@Test
+	void aFixedGroupCannotBeSwitchedOffAndMissingSupportIgnoresTheClick() {
+		VehicleAccessGroups groups = groupService();
+		ActiveVehicle v = vehicle(owner(kira));
+		when(groups.alwaysOpen(any(), any())).thenReturn(Set.of(AccessGroup.FACTION));
+		manager.ownershipClick(menu(alex, v, OwnershipGUIManager.groupSlot(AccessGroup.FACTION)));
+		verify(alex).sendMessage("§7This vehicle always admits its faction.");
+		assertTrue(v.getOwnerData().getAccessGroups().isEmpty());
+		Cache.allowWhitelist = false;
+		manager.ownershipClick(menu(alex, v, OwnershipGUIManager.groupSlot(AccessGroup.GUILD)));
+		Cache.allowWhitelist = true;
+		when(services.load(VehicleAccessGroups.class)).thenReturn(null);
+		manager.ownershipClick(menu(alex, v, OwnershipGUIManager.groupSlot(AccessGroup.GUILD)));
+		manager.ownershipClick(menu(alex, v, 9));
+		assertTrue(v.getOwnerData().getAccessGroups().isEmpty());
+		assertTrue(fired(VehicleOwnershipChangeEvent.class).isEmpty());
 	}
 
 	@Test

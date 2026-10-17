@@ -123,7 +123,49 @@ class VehicleTicketRulesTest {
 		car.setTicketsEnabled(true);
 		locomotive.setTicketsEnabled(false);
 		assertFalse(VehicleTicketRules.mayOpenSeatMenu(car, locomotive, "Nowko", true));
-		assertTrue(VehicleTicketRules.mayEnter(car, locomotive, "Nowko", SeatType.PASSENGER, false));
+		assertFalse(VehicleTicketRules.mayEnter(car, locomotive, "Nowko", SeatType.PASSENGER, true));
+	}
+
+	@Test
+	void ticketPastWhitelist_onlyCoversPassengerSeats() {
+		OwnerData access = gatedAccess();
+		access.setTicketsEnabled(true);
+		assertTrue(VehicleTicketRules.mayEnter(access, access, false, SeatType.PASSENGER, true));
+		assertFalse(VehicleTicketRules.mayEnter(access, access, false, SeatType.CAPTAIN, true));
+		assertFalse(VehicleTicketRules.mayEnter(access, access, false, SeatType.GUNNER, true));
+		assertFalse(VehicleTicketRules.mayEnter(access, access, false, SeatType.MECHANIC, true));
+		assertFalse(VehicleTicketRules.mayEnter(access, null, false, SeatType.PASSENGER, true));
+	}
+
+	@Test
+	void admittedRider_takesAnySeatWithoutTicket() {
+		OwnerData access = gatedAccess();
+		access.setTicketsEnabled(true);
+		assertTrue(VehicleTicketRules.mayOpenSeatMenu(access, access, true, false));
+		assertTrue(VehicleTicketRules.mayEnter(access, access, true, SeatType.CAPTAIN, false));
+		assertTrue(VehicleTicketRules.mayEnter(access, access, true, SeatType.PASSENGER, false));
+	}
+
+	@Test
+	void whitelistOff_ticketsStillGateOnlyPassengers() {
+		OwnerData access = gatedAccess();
+		access.setWhiteListed(false);
+		access.setTicketsEnabled(true);
+		assertTrue(VehicleTicketRules.mayOpenSeatMenu(access, access, false, false));
+		assertTrue(VehicleTicketRules.mayEnter(access, access, false, SeatType.CAPTAIN, false));
+		assertFalse(VehicleTicketRules.mayEnter(access, access, false, SeatType.PASSENGER, false));
+		assertTrue(VehicleTicketRules.mayEnter(access, null, false, SeatType.PASSENGER, false));
+	}
+
+	@Test
+	void gated_needsWhitelistOnAndAnOwner() {
+		assertFalse(VehicleTicketRules.gated(null));
+		OwnerData access = gatedAccess();
+		assertTrue(VehicleTicketRules.gated(access));
+		access.setOwner("NONE");
+		assertFalse(VehicleTicketRules.gated(access));
+		access.setOwner(null);
+		assertFalse(VehicleTicketRules.gated(access));
 	}
 
 	private static OwnerData gatedAccess() {

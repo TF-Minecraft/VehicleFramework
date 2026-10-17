@@ -1,9 +1,14 @@
 package net.tfminecraft.vehicleframework.data;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
+import net.tfminecraft.vehicleframework.api.AccessGroup;
 import net.tfminecraft.vehicleframework.cache.Cache;
 
 public class OwnerData {
@@ -12,6 +17,7 @@ public class OwnerData {
     private boolean whiteListed = false;
     private boolean ticketsEnabled = false;
     private String ticketId;
+    private EnumSet<AccessGroup> accessGroups = EnumSet.noneOf(AccessGroup.class);
 
     public OwnerData() {
         owner = "none";
@@ -32,6 +38,7 @@ public class OwnerData {
         this.whiteListed = from.whiteListed;
         this.ticketsEnabled = from.ticketsEnabled;
         this.ticketId = from.ticketId;
+        this.accessGroups = EnumSet.copyOf(from.accessGroups);
     }
 
     // Owner
@@ -68,6 +75,28 @@ public class OwnerData {
 
     public boolean isWhiteListed() {
         return whiteListed;
+    }
+
+    // Group switches
+    public Set<AccessGroup> getAccessGroups() {
+        return Set.copyOf(accessGroups);
+    }
+
+    public boolean hasAccessGroup(AccessGroup group) {
+        return accessGroups.contains(group);
+    }
+
+    public void setAccessGroups(Collection<AccessGroup> groups) {
+        accessGroups = EnumSet.noneOf(AccessGroup.class);
+        if (groups != null) {
+            groups.stream().filter(Objects::nonNull).forEach(accessGroups::add);
+        }
+    }
+
+    public void toggleAccessGroup(AccessGroup group) {
+        if (!accessGroups.remove(group)) {
+            accessGroups.add(group);
+        }
     }
 
     public boolean isTicketsEnabled() {

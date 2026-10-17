@@ -7,6 +7,8 @@ import org.bukkit.entity.Player;
 import net.tfminecraft.tlibs.character.CharacterSession;
 import net.tfminecraft.vehicleframework.api.OwnershipIdentity;
 import net.tfminecraft.vehicleframework.data.OwnerData;
+import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
+import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleTicketRules;
 
 /** Resolves players to owner identities. Characters mode asks the provider on every call. */
 public final class OwnershipAccess {
@@ -45,5 +47,10 @@ public final class OwnershipAccess {
 	public static boolean isOwner(Player player, OwnerData data) {
 		AccessKey key = key(player);
 		return key != null && data != null && key.owns(data.getOwner());
+	}
+
+	/** Whether the key owns the vehicle, is on its whitelist, or is in a group it admits. */
+	public static boolean admits(ActiveVehicle vehicle, AccessKey key) {
+		return VehicleTicketRules.ownerOrWhitelisted(vehicle.getOwnerData(), key) || GroupAccess.admits(vehicle, key);
 	}
 }

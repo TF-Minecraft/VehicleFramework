@@ -501,6 +501,31 @@ class VehicleManagerCoverageTest {
     }
 
     @Test
+    void aTicketPastTheWhitelistOnlyOpensPassengerSeatsAndRefusalsSayWhy() {
+        ActiveVehicle v = vehicle("v"); Player player = player("Ryan"); register(v);
+        v.getOwnerData().setWhiteListed(true); v.getOwnerData().setOwner("player_Other");
+        Seat captain = mock(Seat.class); when(captain.getType()).thenReturn(SeatType.CAPTAIN);
+        Seat passenger = mock(Seat.class); when(passenger.getType()).thenReturn(SeatType.PASSENGER);
+        when(v.getSeatHandler().getSeat("captain")).thenReturn(captain);
+        when(v.getSeatHandler().getSeat("passenger")).thenReturn(passenger);
+        when(v.addPassenger(eq(player), any(Seat.class))).thenReturn(MountResult.MOUNTED);
+        manager.mount(player, "passenger", v);
+        verify(player).sendMessage(VehicleManager.NOT_ALLOWED_ABOARD);
+        v.getOwnerData().setTicketsEnabled(true);
+        manager.mount(player, "passenger", v);
+        verify(player).sendMessage(VehicleManager.TICKET_NEEDED);
+        tickets.when(() -> VehicleTicketItems.inventoryHas(player, v.getOwnerData().getTicketId())).thenReturn(true);
+        manager.mount(player, "captain", v);
+        verify(player).sendMessage(VehicleManager.TICKET_PASSENGER_ONLY);
+        verify(v, never()).addPassenger(player, captain);
+        manager.mount(player, "passenger", v);
+        verify(v).addPassenger(player, passenger);
+        v.getOwnerData().addToWhiteList("player_Ryan");
+        manager.mount(player, "captain", v);
+        verify(v).addPassenger(player, captain);
+    }
+
+    @Test
     void aPendingTakeoverConsumesTheNextVehicleClickThroughTheOwnershipEvents() {
         Player player = player("Ryan"); when(player.hasPermission("vf.admin")).thenReturn(true);
         ActiveVehicle v = vehicle("v"); register(v); v.getOwnerData().setOwner("player_Other");

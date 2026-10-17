@@ -1,8 +1,11 @@
 package net.tfminecraft.vehicleframework.database;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 
@@ -15,6 +18,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import net.tfminecraft.vehicleframework.api.AccessGroup;
 import net.tfminecraft.vehicleframework.enums.Component;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTape;
 
@@ -24,6 +28,7 @@ import net.tfminecraft.vehicleframework.tracks.ThrottleTape;
  */
 public final class VehiclePayloadCodec {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+	public static final String ACCESS_GROUPS = "accessGroups";
 
 	private VehiclePayloadCodec() {
 	}
@@ -197,6 +202,7 @@ public final class VehiclePayloadCodec {
 			}
 			incomplete.setTicketId(ticketId);
 			incomplete.setTicketsEnabled(ticketsEnabled);
+			incomplete.setAccessGroups(accessGroups(json.get(ACCESS_GROUPS)));
 			return Optional.of(incomplete);
 		} catch (Exception ex) {
 			return Optional.empty();
@@ -224,6 +230,7 @@ public final class VehiclePayloadCodec {
 			whitelistArray.addAll(vehicle.getWhitelist());
 		}
 		json.put("whitelist", whitelistArray);
+		putAccessGroups(json, vehicle.getAccessGroups());
 
 		JSONObject componentsObject = new JSONObject();
 		if (vehicle.getComponents() != null) {
@@ -336,6 +343,33 @@ public final class VehiclePayloadCodec {
 			containerList.add(containerJson);
 		}
 		return containerList;
+	}
+
+	/** The group switches in a payload's {@code accessGroups} array; unknown names are skipped. */
+	public static Set<AccessGroup> accessGroups(Object stored) {
+		Set<AccessGroup> groups = EnumSet.noneOf(AccessGroup.class);
+		if (stored instanceof JSONArray array) {
+			for (Object name : array) {
+				AccessGroup.parse(name).ifPresent(groups::add);
+			}
+		}
+		return groups;
+	}
+
+	/** Writes the switches that are on, in declaration order; with none on the key is left out. */
+	@SuppressWarnings("unchecked")
+	public static void putAccessGroups(JSONObject json, Collection<AccessGroup> groups) {
+		JSONArray names = new JSONArray();
+		for (AccessGroup group : AccessGroup.values()) {
+			if (groups != null && groups.contains(group)) {
+				names.add(group.name());
+			}
+		}
+		if (names.isEmpty()) {
+			json.remove(ACCESS_GROUPS);
+		} else {
+			json.put(ACCESS_GROUPS, names);
+		}
 	}
 
 	private static String stringOrNull(Object value) {

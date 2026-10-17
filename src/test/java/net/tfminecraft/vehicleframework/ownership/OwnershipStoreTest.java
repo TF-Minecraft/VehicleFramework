@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
@@ -29,6 +30,7 @@ import com.google.gson.JsonParser;
 
 import net.tfminecraft.vehicleframework.VFLogger;
 import net.tfminecraft.vehicleframework.VehicleFramework;
+import net.tfminecraft.vehicleframework.api.AccessGroup;
 import net.tfminecraft.vehicleframework.api.OwnerChange;
 import net.tfminecraft.vehicleframework.api.OwnershipIdentity;
 import net.tfminecraft.vehicleframework.api.OwnershipMeta;
@@ -52,6 +54,7 @@ class OwnershipStoreTest {
 	private static final UUID KIRA = UUID.fromString("0b1f2e9c-6a3d-4c55-8a7e-2f1d9c3b4a51");
 	private static final String PAYLOAD = "{\"id\":\"cart\",\"owner\":\"player_Alice\",\"whitelisted\":true,"
 			+ "\"whitelist\":[\"player_Bob\"],\"ticketsEnabled\":true,\"ticketId\":\"t-1\",\"components\":{\"hull\":{\"damage\":5}}}";
+	private static final String GROUP_PAYLOAD = PAYLOAD.replace("\"ticketId\"", "\"accessGroups\":[\"ALLY\"],\"ticketId\"");
 
 	@TempDir Path temp;
 	private final List<AutoCloseable> scopes = new ArrayList<>();
@@ -193,7 +196,7 @@ class OwnershipStoreTest {
 	@EnumSource(SystemReason.class)
 	void eachReasonDisposesOfTheWhitelistAsDesigned(SystemReason reason) {
 		Cache.allowWhitelist = true; Cache.whitelistedByDefault = true;
-		store(STORED, PAYLOAD);
+		store(STORED, GROUP_PAYLOAD);
 		OwnerChange change = reason == SystemReason.MIGRATE
 				? OwnerChange.seeded("char_" + KIRA, List.of("char_seed"))
 				: OwnerChange.character(KIRA);
@@ -212,6 +215,9 @@ class OwnershipStoreTest {
 		};
 		assertEquals(expectedEntries, entries);
 		assertEquals(expectedFlag, json.get("whitelisted").getAsBoolean());
+		boolean keepsGroups = reason == SystemReason.RESTAMP || reason == SystemReason.MIGRATE;
+		assertEquals(keepsGroups, json.has("accessGroups"), "group switches after " + reason);
+		assertEquals(keepsGroups ? Set.of(AccessGroup.ALLY) : Set.of(), written().getFirst().getCurrent().accessGroups());
 		assertEquals("char_" + KIRA, json.get("owner").getAsString());
 		assertTrue(json.get("ticketsEnabled").getAsBoolean(), "tickets never change");
 		assertEquals("t-1", json.get("ticketId").getAsString());

@@ -2,10 +2,12 @@ package net.tfminecraft.vehicleframework.database;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import com.google.gson.JsonObject;
 import org.json.simple.JSONObject;
 
+import net.tfminecraft.vehicleframework.api.AccessGroup;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTape;
 
 public class IncompleteVehicle {
@@ -37,6 +39,7 @@ public class IncompleteVehicle {
 	private JSONObject locomotiveOverdrive;
 	private boolean ticketsEnabled = false;
 	private String ticketId;
+	private Set<AccessGroup> accessGroups = Set.of();
 
 	public IncompleteVehicle(String uuid, String id, String name, String skin, List<IncompleteComponent> components, List<IncompleteWeapon> weapons, List<RotationData> rotations, List<PassengerData> passengers, List<JsonObject> containers, int throttle, int gear, float yaw, double fuel, String owner, boolean whitelisted, List<String> whitelist) {
 		this(uuid, id, name, skin, components, weapons, rotations, passengers, containers, throttle, gear, yaw, fuel, owner, whitelisted, whitelist, ConsistData.unbound());
@@ -159,5 +162,13 @@ public class IncompleteVehicle {
 
 	public void setTicketId(String ticketId) {
 		this.ticketId = ticketId;
+	}
+
+	public Set<AccessGroup> getAccessGroups() {
+		return accessGroups;
+	}
+
+	public void setAccessGroups(Set<AccessGroup> accessGroups) {
+		this.accessGroups = accessGroups == null ? Set.of() : Set.copyOf(accessGroups);
 	}
 }

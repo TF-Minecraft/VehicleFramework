@@ -1,6 +1,6 @@
 package net.tfminecraft.vehicleframework.api;
 
-/** Why a vehicle's owner, whitelist or tickets changed. */
+/** Why a vehicle's owner, whitelist, group access or tickets changed. */
 public enum OwnershipReason {
 	/** A player claimed an unowned vehicle, including a staff takeover of an unowned one. */
 	CLAIM,
@@ -13,6 +13,11 @@ public enum OwnershipReason {
 	WHITELIST_TOGGLE,
 	/** Tickets toggled on the vehicle's ticket source (the locomotive of a coupled car). */
 	TICKETS_TOGGLE,
+	/** The owner flipped one group switch; see {@link AccessGroup#toggle()}. */
+	FACTION_ACCESS_TOGGLE,
+	GUILD_ACCESS_TOGGLE,
+	ALLY_ACCESS_TOGGLE,
+	VASSAL_ACCESS_TOGGLE,
 	MIGRATE,
 	RESTAMP,
 	RELEASE,

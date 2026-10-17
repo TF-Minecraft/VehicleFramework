@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import java.util.*;
 import java.util.logging.Logger;
 import net.tfminecraft.vehicleframework.VFLogger;
+import net.tfminecraft.vehicleframework.api.AccessGroup;
 import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.enums.*;
 import net.tfminecraft.vehicleframework.events.*;
@@ -169,6 +170,27 @@ class RuntimeValuesCoverageTest {
       Cache.allowWhitelist = allow;
       Cache.whitelistedByDefault = defaults;
     }
+  }
+
+  @Test
+  void groupSwitchesToggleIndependentlyAndSurviveCopyAndRestore() {
+    OwnerData owner = new OwnerData();
+    assertTrue(owner.getAccessGroups().isEmpty());
+    owner.toggleAccessGroup(AccessGroup.FACTION);
+    owner.toggleAccessGroup(AccessGroup.ALLY);
+    owner.toggleAccessGroup(AccessGroup.ALLY);
+    assertTrue(owner.hasAccessGroup(AccessGroup.FACTION));
+    assertFalse(owner.hasAccessGroup(AccessGroup.ALLY));
+    OwnerData copy = owner.copy();
+    owner.setAccessGroups(null);
+    assertTrue(owner.getAccessGroups().isEmpty());
+    assertEquals(Set.of(AccessGroup.FACTION), copy.getAccessGroups());
+    owner.restore(copy);
+    assertEquals(Set.of(AccessGroup.FACTION), owner.getAccessGroups());
+    owner.setAccessGroups(Arrays.asList(AccessGroup.GUILD, null));
+    assertEquals(Set.of(AccessGroup.GUILD), owner.getAccessGroups());
+    assertThrows(UnsupportedOperationException.class,
+        () -> owner.getAccessGroups().add(AccessGroup.VASSAL));
   }
 
   @Test

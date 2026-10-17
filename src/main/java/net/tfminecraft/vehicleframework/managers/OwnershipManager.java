@@ -21,6 +21,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 
@@ -30,6 +31,7 @@ import net.tfminecraft.tlibs.character.CharacterSession;
 import net.tfminecraft.tlibs.character.CharacterSessionEndEvent;
 import net.tfminecraft.tlibs.objects.api.subapi.StringFormatter;
 import net.tfminecraft.vehicleframework.VehicleFramework;
+import net.tfminecraft.vehicleframework.api.AccessGroup;
 import net.tfminecraft.vehicleframework.api.OwnershipReason;
 import net.tfminecraft.vehicleframework.api.VehicleFrameworkApi.Result;
 import net.tfminecraft.vehicleframework.api.VehicleOwners;
@@ -40,6 +42,7 @@ import net.tfminecraft.vehicleframework.enums.VFGUI;
 import net.tfminecraft.vehicleframework.managers.inventory.VFInventoryHolder;
 import net.tfminecraft.vehicleframework.managers.inventory.WhitelistPickerHolder;
 import net.tfminecraft.vehicleframework.ownership.CharacterLookup;
+import net.tfminecraft.vehicleframework.ownership.GroupAccess;
 import net.tfminecraft.vehicleframework.ownership.OwnerNames;
 import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
 import net.tfminecraft.vehicleframework.ownership.OwnershipActions;
@@ -285,6 +288,7 @@ public class OwnershipManager implements Listener {
 				if (change(p, v, OwnershipReason.CLEAR, null, null, data -> {
 					data.setOwner(VehicleOwners.NONE);
 					data.setWhiteListed(false);
+					data.setAccessGroups(null);
 					if (OwnershipMode.characters()) data.setWhiteList(new ArrayList<>());
 				})) {
 					p.closeInventory();
@@ -296,8 +300,19 @@ public class OwnershipManager implements Listener {
 					gui.ownershipGui(e.getView().getTopInventory(), p, v, false);
 				}
 			}
-			default -> {
-			}
+			default -> OwnershipGUIManager.groupAt(e.getSlot())
+					.ifPresent(group -> toggleGroup(p, v, group, e.getView().getTopInventory()));
+		}
+	}
+
+	private void toggleGroup(Player p, ActiveVehicle v, AccessGroup group, Inventory menu) {
+		if (!Cache.allowWhitelist || GroupAccess.service().isEmpty()) return;
+		if (GroupAccess.alwaysOpen(v).contains(group)) {
+			p.sendMessage("§7This vehicle always admits its " + OwnershipGUIManager.groupLabel(group).toLowerCase(Locale.ROOT) + ".");
+			return;
+		}
+		if (change(p, v, group.toggle(), null, null, data -> data.toggleAccessGroup(group))) {
+			gui.ownershipGui(menu, p, v, false);
 		}
 	}
 
@@ -534,6 +549,7 @@ public class OwnershipManager implements Listener {
 			if (OwnershipMode.characters()) {
 				data.setWhiteList(new ArrayList<>());
 				data.setWhiteListed(false);
+				data.setAccessGroups(null);
 			}
 		};
 	}

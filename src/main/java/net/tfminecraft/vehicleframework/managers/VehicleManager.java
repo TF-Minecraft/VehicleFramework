@@ -102,6 +102,10 @@ import net.tfminecraft.vehicleframework.vehicles.handlers.train.DeckBody;
 import net.tfminecraft.vehicleframework.vehicles.Vehicle;
 
 public class VehicleManager implements Listener{
+	public static final String TICKET_NEEDED = "§cYou need a ticket for this vehicle.";
+	public static final String TICKET_PASSENGER_ONLY = "§cA ticket only lets you ride in a passenger seat.";
+	public static final String NOT_ALLOWED_ABOARD = "§cThe owner has not allowed you aboard this vehicle.";
+
 	private ItemAPI api = TLibs.getItemAPI();
 	private InventoryManager inv = new InventoryManager();
 	private RepairManager repairManager = new RepairManager(this);
@@ -429,10 +433,11 @@ public class VehicleManager implements Listener{
 		ActiveVehicle ticketSource = v.ticketSource();
 		boolean hasTicket = VehicleTicketItems.inventoryHas(
 				p, ticketSource.getOwnerData().getTicketId());
-		if (!VehicleTicketRules.mayOpenSeatMenu(v.getOwnerData(), ticketSource.getOwnerData(), OwnershipAccess.key(p), hasTicket)) {
+		boolean admitted = OwnershipAccess.admits(v, OwnershipAccess.key(p));
+		if (!VehicleTicketRules.mayOpenSeatMenu(v.getOwnerData(), ticketSource.getOwnerData(), admitted, hasTicket)) {
 	    	p.sendMessage(ticketSource.getOwnerData().isTicketsEnabled()
 	    			? "§cYou need a ticket to board this vehicle."
-	    			: "§cThe owner has not allowed you aboard this vehicle.");
+	    			: NOT_ALLOWED_ABOARD);
 	    	return;
 	    }
 	    // Check if this player was ejected by the owner and is still on cooldown for this vehicle
@@ -903,7 +908,16 @@ public class VehicleManager implements Listener{
 		}
 		ActiveVehicle source = v.ticketSource();
 		boolean has = VehicleTicketItems.inventoryHas(p, source.getOwnerData().getTicketId());
-		return VehicleTicketRules.mayEnter(v.getOwnerData(), source.getOwnerData(), OwnershipAccess.key(p), seat.getType(), has);
+		boolean admitted = OwnershipAccess.admits(v, OwnershipAccess.key(p));
+		if (VehicleTicketRules.mayEnter(v.getOwnerData(), source.getOwnerData(), admitted, seat.getType(), has)) {
+			return true;
+		}
+		if (!source.getOwnerData().isTicketsEnabled()) {
+			p.sendMessage(NOT_ALLOWED_ABOARD);
+		} else {
+			p.sendMessage(has ? TICKET_PASSENGER_ONLY : TICKET_NEEDED);
+		}
+		return false;
 	}
 
 	private void putEjectCooldown(Player player, ActiveVehicle vehicle) {
@@ -1038,7 +1052,6 @@ public class VehicleManager implements Listener{
 			return;
 		}
 		if (!allowTicketSeat(p, v, s)) {
-			p.sendMessage("§cYou need a ticket for this vehicle.");
 			return;
 		}
 		takeSeat(p, v, s);
@@ -1118,7 +1131,6 @@ public class VehicleManager implements Listener{
 			return;
 		}
 		if (!allowTicketSeat(p, v, seat)) {
-			p.sendMessage("§cYou need a ticket for this vehicle.");
 			return;
 		}
 		if (ejectUntil(p, v) > System.currentTimeMillis()) {

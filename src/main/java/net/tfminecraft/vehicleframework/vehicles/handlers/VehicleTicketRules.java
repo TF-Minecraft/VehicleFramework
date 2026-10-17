@@ -37,7 +37,19 @@ public final class VehicleTicketRules {
 	}
 
 	public static boolean mayEnter(OwnerData access, OwnerData tickets, AccessKey key, SeatType seat, boolean hasMatchingTicket) {
-		return mayEnter(tickets.isTicketsEnabled(), seat, ownerOrWhitelisted(access, key), hasMatchingTicket);
+		return mayEnter(access, tickets, ownerOrWhitelisted(access, key), seat, hasMatchingTicket);
+	}
+
+	/**
+	 * Admitted players (owner, whitelist or an admitted group) may take any seat. Past a whitelist
+	 * that would refuse them, a ticket only covers passenger seats.
+	 */
+	public static boolean mayEnter(OwnerData access, OwnerData tickets, boolean admitted, SeatType seat, boolean hasMatchingTicket) {
+		boolean ticketsEnabled = tickets != null && tickets.isTicketsEnabled();
+		if (!admitted && gated(access)) {
+			return ticketsEnabled && seat == SeatType.PASSENGER && hasMatchingTicket;
+		}
+		return mayEnter(ticketsEnabled, seat, admitted, hasMatchingTicket);
 	}
 
 	public static boolean mayOpenSeatMenu(OwnerData access, String playerName, boolean hasMatchingTicket) {
@@ -50,18 +62,22 @@ public final class VehicleTicketRules {
 
 	// Whitelists belong to the selected vehicle; coupled cars share only the locomotive's tickets.
 	public static boolean mayOpenSeatMenu(OwnerData access, OwnerData tickets, AccessKey key, boolean hasMatchingTicket) {
-		if (access == null) {
-			return true;
-		}
-		if (!access.isWhiteListed()
-				|| access.getOwner() == null
-				|| access.getOwner().equalsIgnoreCase("none")) {
-			return true;
-		}
-		if (ownerOrWhitelisted(access, key)) {
+		return mayOpenSeatMenu(access, tickets, ownerOrWhitelisted(access, key), hasMatchingTicket);
+	}
+
+	public static boolean mayOpenSeatMenu(OwnerData access, OwnerData tickets, boolean admitted, boolean hasMatchingTicket) {
+		if (!gated(access) || admitted) {
 			return true;
 		}
 		return tickets != null && tickets.isTicketsEnabled() && hasMatchingTicket;
+	}
+
+	/** Whether the vehicle's whitelist is enforced: switched on, on an owned vehicle. */
+	public static boolean gated(OwnerData access) {
+		return access != null
+				&& access.isWhiteListed()
+				&& access.getOwner() != null
+				&& !access.getOwner().equalsIgnoreCase("none");
 	}
 
 	public static boolean mayEnter(boolean ticketsEnabled, SeatType seat, boolean ownerOrWhitelist, boolean hasMatchingTicket) {

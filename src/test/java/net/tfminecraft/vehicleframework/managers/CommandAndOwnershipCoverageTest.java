@@ -284,6 +284,55 @@ class CommandAndOwnershipCoverageTest {
         assertEquals("§7Owner: §fKira (Steve)", menu.getItem(OwnershipGUIManager.OWNER_SLOT).getItemMeta().getDisplayName());
     }
 
+    @Test void groupSwitchesShowTheOwnersGroupsAndAFixedFactionAsAlwaysOn() {
+        charactersMode();
+        UUID id = UUID.randomUUID(); when(vehicle.getUUID()).thenReturn(id.toString());
+        String stamp = owner.getOwner();
+        VehicleAccessGroups groups = mock(VehicleAccessGroups.class);
+        when(groups.ready()).thenReturn(true);
+        when(groups.alwaysOpen(id, stamp)).thenReturn(Set.of(AccessGroup.FACTION));
+        when(groups.describe(AccessGroup.FACTION, id, stamp)).thenReturn(Optional.of("The Bog"));
+        when(groups.describe(AccessGroup.GUILD, id, stamp)).thenReturn(Optional.of("Smiths"));
+        when(groups.describe(AccessGroup.ALLY, id, stamp)).thenReturn(Optional.of("The Bog"));
+        when(groups.describe(AccessGroup.VASSAL, id, stamp)).thenReturn(Optional.empty());
+        when(services.load(VehicleAccessGroups.class)).thenReturn(groups);
+        owner.toggleAccessGroup(AccessGroup.ALLY);
+        Inventory menu = inventory(27, null); ownership.ownershipGui(menu, player, vehicle, false);
+        ItemStack faction = menu.getItem(OwnershipGUIManager.groupSlot(AccessGroup.FACTION));
+        assertEquals(Material.LIME_DYE, faction.getType()); assertEquals("§aFaction: ALWAYS ON", faction.getItemMeta().getDisplayName());
+        assertEquals(List.of("§7Members of §fThe Bog§7 may board", "§7Counts only while whitelisting is on", "",
+                "§7Faction vehicles always admit their faction"), faction.getItemMeta().getLore());
+        ItemStack guild = menu.getItem(12);
+        assertEquals("§7Guild: OFF", guild.getItemMeta().getDisplayName());
+        assertEquals("§7Members of §fSmiths§7 may board", guild.getItemMeta().getLore().getFirst());
+        assertEquals("§eClick to toggle", guild.getItemMeta().getLore().getLast());
+        ItemStack allies = menu.getItem(14);
+        assertEquals(Material.LIME_DYE, allies.getType()); assertEquals("§aAllies: ON", allies.getItemMeta().getDisplayName());
+        assertEquals("§7Factions allied with §fThe Bog§7 may board", allies.getItemMeta().getLore().getFirst());
+        assertEquals("§7The owner is not in a faction", menu.getItem(16).getItemMeta().getLore().getFirst());
+        assertEquals("§7Vassals: OFF", menu.getItem(16).getItemMeta().getDisplayName());
+        when(groups.describe(AccessGroup.GUILD, id, stamp)).thenReturn(Optional.empty());
+        when(groups.describe(AccessGroup.VASSAL, id, stamp)).thenReturn(Optional.of("The Bog"));
+        ownership.ownershipGui(menu, player, vehicle, false);
+        assertEquals("§7The owner is not in a guild", menu.getItem(12).getItemMeta().getLore().getFirst());
+        assertEquals("§7Direct vassals of §fThe Bog§7 may board", menu.getItem(16).getItemMeta().getLore().getFirst());
+        doAnswer(call -> {
+            if (call.getArgument(0) instanceof VehicleOwnershipEditCheckEvent check
+                    && check.getReason().orElse(null) == OwnershipReason.VASSAL_ACCESS_TOGGLE) check.deny();
+            return null;
+        }).when(plugins).callEvent(any(VehicleOwnershipEditCheckEvent.class));
+        ownership.ownershipGui(menu, player, vehicle, false);
+        assertEquals(Material.GRAY_STAINED_GLASS_PANE, menu.getItem(16).getType(), "a vetoed switch is hidden");
+        assertEquals(Material.LIME_DYE, menu.getItem(14).getType());
+        Cache.allowWhitelist = false; ownership.ownershipGui(menu, player, vehicle, false);
+        for (int slot : new int[]{10, 12, 14, 16}) assertEquals(Material.GRAY_STAINED_GLASS_PANE, menu.getItem(slot).getType(), "slot " + slot);
+        Cache.allowWhitelist = true; when(services.load(VehicleAccessGroups.class)).thenReturn(null);
+        ownership.ownershipGui(menu, player, vehicle, false);
+        for (int slot : new int[]{10, 12, 14, 16}) assertEquals(Material.GRAY_STAINED_GLASS_PANE, menu.getItem(slot).getType(), "slot " + slot);
+        assertEquals(Optional.of(AccessGroup.VASSAL), OwnershipGUIManager.groupAt(16));
+        assertTrue(OwnershipGUIManager.groupAt(11).isEmpty());
+    }
+
     @Test void controlsTheViewerMayNotUseAreHidden() {
         charactersMode();
         doAnswer(call -> {

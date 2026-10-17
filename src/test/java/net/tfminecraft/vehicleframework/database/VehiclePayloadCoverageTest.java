@@ -31,6 +31,26 @@ import net.tfminecraft.vehicleframework.weapons.ammunition.Ammunition;
 class VehiclePayloadCoverageTest {
     static final String ID = "11111111-2222-3333-4444-555555555555";
 
+    @Test void groupSwitchesRoundTripInOrderAndSkipUnknownNames() {
+        IncompleteVehicle decoded = VehiclePayloadCodec.decode("""
+            {"id":"cart","accessGroups":["vassal","FACTION","cult",null]}
+            """, ID).orElseThrow();
+        assertEquals(Set.of(net.tfminecraft.vehicleframework.api.AccessGroup.FACTION,
+                net.tfminecraft.vehicleframework.api.AccessGroup.VASSAL), decoded.getAccessGroups());
+        String encoded = VehiclePayloadCodec.encode(decoded);
+        assertTrue(encoded.indexOf("FACTION") < encoded.indexOf("VASSAL"), "declaration order");
+        assertEquals(decoded.getAccessGroups(), VehiclePayloadCodec.decode(encoded, ID).orElseThrow().getAccessGroups());
+        IncompleteVehicle plain = VehiclePayloadCodec.decode("{\"id\":\"cart\",\"accessGroups\":\"FACTION\"}", ID).orElseThrow();
+        assertTrue(plain.getAccessGroups().isEmpty());
+        assertFalse(VehiclePayloadCodec.encode(plain).contains("accessGroups"), "no switch on leaves the key out");
+        plain.setAccessGroups(null);
+        assertTrue(plain.getAccessGroups().isEmpty());
+        JSONObject json = new JSONObject();
+        json.put("accessGroups", "stale");
+        VehiclePayloadCodec.putAccessGroups(json, null);
+        assertFalse(json.containsKey("accessGroups"));
+    }
+
     @Test void completePayloadRoundTripsStateWithoutDependingOnDefaultLocale() {
         Locale previous = Locale.getDefault();
         Ammunition ammo = mock(Ammunition.class);

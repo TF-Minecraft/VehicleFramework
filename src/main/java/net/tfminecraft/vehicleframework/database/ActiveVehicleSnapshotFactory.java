@@ -119,6 +119,7 @@ public final class ActiveVehicleSnapshotFactory {
 			whitelistArray.add(entry);
 		}
 		vehicleData.put("whitelist", whitelistArray);
+		VehiclePayloadCodec.putAccessGroups(vehicleData, v.getOwnerData().getAccessGroups());
 		if (v.hasContainers()) {
 			saveContainers(new ArrayList<>(v.getContainerHandler().getContainers().values()), vehicleData);
 		}
