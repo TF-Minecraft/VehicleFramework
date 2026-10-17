@@ -112,7 +112,7 @@ class RuntimeSupportCoverageTest {
         OwnerData locomotive = new OwnerData(); locomotive.setTicketsEnabled(true);
         assertTrue(VehicleTicketRules.mayOpenSeatMenu(access, locomotive, "Guest", true));
         assertFalse(VehicleTicketRules.mayEnter(access, locomotive, "Guest", SeatType.PASSENGER, false));
-        assertTrue(VehicleTicketRules.mayEnter(access, locomotive, "Guest", null, false));
+        assertFalse(VehicleTicketRules.mayEnter(access, locomotive, "Guest", null, false));
         access.setOwner(null); assertTrue(VehicleTicketRules.mayOpenSeatMenu(access, "Guest", false));
         access.setOwner("none"); assertTrue(VehicleTicketRules.mayOpenSeatMenu(access, "Guest", false));
     }

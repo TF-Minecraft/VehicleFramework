@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,29 @@ class OwnershipValuesTest {
 		assertThrows(UnsupportedOperationException.class, () -> values.whitelist().add("x"));
 		assertEquals(List.of(), new OwnershipValues(null, null, false, false, null).whitelist());
 		assertEquals("none", new OwnershipValues(null, null, false, false, null).owner());
+	}
+
+	@Test
+	void groupSwitchesAreAnImmutableCopyAndDefaultToNone() {
+		assertEquals(Set.of(), new OwnershipValues("none", List.of(), false, false, null).accessGroups());
+		assertEquals(Set.of(), new OwnershipValues("none", List.of(), false, false, null, null).accessGroups());
+		Set<AccessGroup> groups = new java.util.HashSet<>(Arrays.asList(AccessGroup.ALLY, null));
+		OwnershipValues values = new OwnershipValues("none", List.of(), false, false, null, groups);
+		groups.add(AccessGroup.GUILD);
+		assertEquals(Set.of(AccessGroup.ALLY), values.accessGroups());
+		assertThrows(UnsupportedOperationException.class, () -> values.accessGroups().add(AccessGroup.VASSAL));
+	}
+
+	@Test
+	void accessGroupsParseStoredNamesAndPointAtTheirOwnToggle() {
+		assertEquals(Optional.of(AccessGroup.VASSAL), AccessGroup.parse(" vassal "));
+		assertEquals(Optional.empty(), AccessGroup.parse("cult"));
+		assertEquals(Optional.empty(), AccessGroup.parse(null));
+		assertEquals(OwnershipReason.FACTION_ACCESS_TOGGLE, AccessGroup.FACTION.toggle());
+		assertEquals(OwnershipReason.GUILD_ACCESS_TOGGLE, AccessGroup.GUILD.toggle());
+		assertEquals(OwnershipReason.ALLY_ACCESS_TOGGLE, AccessGroup.ALLY.toggle());
+		assertEquals(OwnershipReason.VASSAL_ACCESS_TOGGLE, AccessGroup.VASSAL.toggle());
+		for (AccessGroup group : AccessGroup.values()) assertFalse(group.toggle().isSystem(), group.name());
 	}
 
 	@Test

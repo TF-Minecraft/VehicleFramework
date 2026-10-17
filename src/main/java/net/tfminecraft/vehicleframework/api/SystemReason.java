@@ -2,16 +2,16 @@ package net.tfminecraft.vehicleframework.api;
 
 /**
  * Reasons accepted by {@link VehicleFrameworkApi#setOwnership}. Each decides what happens to the
- * whitelist entries and the whitelist flag; tickets are never changed.
+ * whitelist entries, the whitelist flag and the group switches; tickets are never changed.
  *
  * <table>
  * <caption>Whitelist disposition</caption>
- * <tr><th>Reason</th><th>Entries</th><th>Flag</th></tr>
- * <tr><td>RESTAMP</td><td>kept</td><td>kept</td></tr>
- * <tr><td>MIGRATE</td><td>as seeded ({@link OwnerChange#whitelist()}, kept when null)</td><td>kept</td></tr>
- * <tr><td>CONSTRUCT</td><td>emptied</td><td>on if {@code allow-whitelist} and {@code whitelisted-by-default}</td></tr>
- * <tr><td>RELEASE, HANDOVER</td><td>emptied</td><td>off</td></tr>
- * <tr><td>TRANSFER</td><td>emptied</td><td>kept</td></tr>
+ * <tr><th>Reason</th><th>Entries</th><th>Flag</th><th>Group switches</th></tr>
+ * <tr><td>RESTAMP</td><td>kept</td><td>kept</td><td>kept</td></tr>
+ * <tr><td>MIGRATE</td><td>as seeded ({@link OwnerChange#whitelist()}, kept when null)</td><td>kept</td><td>kept</td></tr>
+ * <tr><td>CONSTRUCT</td><td>emptied</td><td>on if {@code allow-whitelist} and {@code whitelisted-by-default}</td><td>off</td></tr>
+ * <tr><td>RELEASE, HANDOVER</td><td>emptied</td><td>off</td><td>off</td></tr>
+ * <tr><td>TRANSFER</td><td>emptied</td><td>kept</td><td>off</td></tr>
  * </table>
  */
 public enum SystemReason {

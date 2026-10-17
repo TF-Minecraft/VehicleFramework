@@ -373,6 +373,7 @@ public class ActiveVehicle {
 		ownerData.setWhiteList(inc.getWhitelist());
 		ownerData.setTicketId(inc.getTicketId());
 		ownerData.setTicketsEnabled(inc.isTicketsEnabled());
+		ownerData.setAccessGroups(inc.getAccessGroups());
 		setFuel(inc.getFuel());
 		if(hasComponent(Component.ENGINE)) {
 			Engine e = (Engine) getComponent(Component.ENGINE);

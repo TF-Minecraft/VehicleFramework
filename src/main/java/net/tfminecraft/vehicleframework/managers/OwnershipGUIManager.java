@@ -2,6 +2,9 @@ package net.tfminecraft.vehicleframework.managers;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
 
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -11,6 +14,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
+import net.tfminecraft.vehicleframework.api.AccessGroup;
 import net.tfminecraft.vehicleframework.api.OwnershipReason;
 import net.tfminecraft.vehicleframework.api.VehicleOwners;
 import net.tfminecraft.vehicleframework.api.WhitelistEntry;
@@ -18,6 +22,7 @@ import net.tfminecraft.vehicleframework.enums.VFGUI;
 import net.tfminecraft.vehicleframework.managers.inventory.VFInventoryHolder;
 import net.tfminecraft.vehicleframework.managers.inventory.WhitelistPickerHolder;
 import net.tfminecraft.vehicleframework.ownership.CharacterLookup;
+import net.tfminecraft.vehicleframework.ownership.GroupAccess;
 import net.tfminecraft.vehicleframework.ownership.OwnerNames;
 import net.tfminecraft.vehicleframework.ownership.OwnershipActions;
 import net.tfminecraft.vehicleframework.ownership.OwnershipMode;
@@ -30,6 +35,21 @@ public class OwnershipGUIManager {
     public static final int PICKER_TYPED_SLOT = 25;
     public static final int BACK_SLOT = 26;
     public static final int OWNER_SLOT = 22;
+    /** The first group switch; the others follow every second slot in {@link AccessGroup} order. */
+    public static final int FIRST_GROUP_SLOT = 10;
+
+    /** The menu slot of a group switch. */
+    public static int groupSlot(AccessGroup group) {
+        return FIRST_GROUP_SLOT + 2 * group.ordinal();
+    }
+
+    /** The group switch in a menu slot. */
+    public static Optional<AccessGroup> groupAt(int slot) {
+        for (AccessGroup group : AccessGroup.values()) {
+            if (groupSlot(group) == slot) return Optional.of(group);
+        }
+        return Optional.empty();
+    }
 
     // ── Ownership Settings GUI ──────────────────────────────────────────────
 
@@ -59,6 +79,18 @@ public class OwnershipGUIManager {
         ActiveVehicle tickets = v.ticketSource();
         if (OwnershipActions.allowed(p, tickets, OwnershipReason.TICKETS_TOGGLE)) {
             i.setItem(8, createToggleTicketsButton(tickets.getOwnerData().isTicketsEnabled()));
+        }
+        // Slots 10-16 – Group switches, when a faction plugin answers for groups
+        if (Cache.allowWhitelist && GroupAccess.service().isPresent()) {
+            Set<AccessGroup> fixed = GroupAccess.alwaysOpen(v);
+            for (AccessGroup group : AccessGroup.values()) {
+                if (fixed.contains(group)) {
+                    i.setItem(groupSlot(group), createGroupButton(group, true, true, GroupAccess.describe(v, group)));
+                } else if (OwnershipActions.allowed(p, v, group.toggle())) {
+                    i.setItem(groupSlot(group), createGroupButton(group, v.getOwnerData().hasAccessGroup(group), false,
+                            GroupAccess.describe(v, group)));
+                }
+            }
         }
         if (OwnershipMode.characters()) {
             i.setItem(OWNER_SLOT, createOwnerInfo(v.getOwnerData().getOwner(), Permissions.isAdmin(p)));
@@ -186,9 +218,48 @@ public class OwnershipGUIManager {
         m.setDisplayName(enabled ? "§aTickets: ON" : "§7Tickets: OFF");
         List<String> lore = new ArrayList<>();
         lore.add("§7When enabled, passenger seats need a ticket");
+        lore.add("§7A ticket never opens the other seats");
         lore.add("§7Owner right-clicks with the ticket item to mint");
         lore.add("");
         lore.add("§eClick to toggle");
+        m.setLore(lore);
+        i.setItemMeta(m);
+        return i;
+    }
+
+    /** The menu name of a group switch. */
+    public static String groupLabel(AccessGroup group) {
+        return switch (group) {
+            case FACTION -> "Faction";
+            case GUILD -> "Guild";
+            case ALLY -> "Allies";
+            case VASSAL -> "Vassals";
+        };
+    }
+
+    private static String groupMembers(AccessGroup group, Optional<String> name) {
+        if (name.isEmpty()) {
+            return group == AccessGroup.GUILD ? "§7The owner is not in a guild" : "§7The owner is not in a faction";
+        }
+        return switch (group) {
+            case FACTION, GUILD -> "§7Members of §f" + name.get() + "§7 may board";
+            case ALLY -> "§7Factions allied with §f" + name.get() + "§7 may board";
+            case VASSAL -> "§7Direct vassals of §f" + name.get() + "§7 may board";
+        };
+    }
+
+    // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+    @SuppressWarnings("deprecation")
+    private ItemStack createGroupButton(AccessGroup group, boolean enabled, boolean fixed, Optional<String> name) {
+        ItemStack i = new ItemStack(enabled ? Material.LIME_DYE : Material.GRAY_DYE);
+        ItemMeta m = i.getItemMeta();
+        String state = fixed ? "ALWAYS ON" : enabled ? "ON" : "OFF";
+        m.setDisplayName((enabled ? "§a" : "§7") + groupLabel(group) + ": " + state);
+        List<String> lore = new ArrayList<>();
+        lore.add(groupMembers(group, name));
+        lore.add("§7Counts only while whitelisting is on");
+        lore.add("");
+        lore.add(fixed ? "§7This vehicle always admits its " + groupLabel(group).toLowerCase(Locale.ROOT) : "§eClick to toggle");
         m.setLore(lore);
         i.setItemMeta(m);
         return i;

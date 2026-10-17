@@ -26,6 +26,7 @@ import net.tfminecraft.vehicleframework.api.SystemReason;
 import net.tfminecraft.vehicleframework.api.VehicleFrameworkApi.Result;
 import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.data.OwnerData;
+import net.tfminecraft.vehicleframework.database.VehiclePayloadCodec;
 import net.tfminecraft.vehicleframework.database.VehiclePersistence;
 import net.tfminecraft.vehicleframework.database.VehicleRepository;
 import net.tfminecraft.vehicleframework.database.VehicleSnapshot;
@@ -40,7 +41,7 @@ public final class OwnershipStore {
 
 	public static OwnershipValues values(OwnerData data) {
 		return new OwnershipValues(data.getOwner(), data.getWhiteList(), data.isWhiteListed(),
-				data.isTicketsEnabled(), data.getTicketId());
+				data.isTicketsEnabled(), data.getTicketId(), data.getAccessGroups());
 	}
 
 	/**
@@ -109,12 +110,17 @@ public final class OwnershipStore {
 			case CONSTRUCT -> {
 				data.setWhiteList(new ArrayList<>());
 				data.setWhiteListed(Cache.allowWhitelist && Cache.whitelistedByDefault);
+				data.setAccessGroups(null);
 			}
 			case RELEASE, HANDOVER -> {
 				data.setWhiteList(new ArrayList<>());
 				data.setWhiteListed(false);
+				data.setAccessGroups(null);
 			}
-			case TRANSFER -> data.setWhiteList(new ArrayList<>());
+			case TRANSFER -> {
+				data.setWhiteList(new ArrayList<>());
+				data.setAccessGroups(null);
+			}
 			case RESTAMP -> {
 			}
 		}
@@ -154,6 +160,7 @@ public final class OwnershipStore {
 				JSONArray entries = new JSONArray();
 				entries.addAll(data.getWhiteList());
 				json.put("whitelist", entries);
+				VehiclePayloadCodec.putAccessGroups(json, data.getAccessGroups());
 				VehicleSnapshot next = row.withPayload(json.toJSONString(), row.getName(), data.getOwner(),
 						System.currentTimeMillis());
 				if (!repository.saveLive(next)) {
@@ -256,6 +263,7 @@ public final class OwnershipStore {
 		if (Boolean.TRUE.equals(json.get("ticketsEnabled"))) {
 			data.setTicketsEnabled(true);
 		}
+		data.setAccessGroups(VehiclePayloadCodec.accessGroups(json.get(VehiclePayloadCodec.ACCESS_GROUPS)));
 		return data;
 	}
 
