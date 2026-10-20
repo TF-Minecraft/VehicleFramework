@@ -149,7 +149,41 @@ class HealthDecayRuleTest {
 
 		JsonObject noPump = stored("{components:{hull:{damage:0}}}");
 		assertTrue(VehicleHealthDecay.applyToJson(noPump, template, rule));
-		assertEquals(200, damage(noPump, "components", "hull"), EPSILON);
+		assertEquals(180, damage(noPump, "components", "hull"), EPSILON);
+	}
+
+	@Test
+	void aWeakeningPumpNeverLeavesTheHullBelowItsThresholdOverManySteps() {
+		SinkableHull hull = new SinkableHull(config(400));
+		Pump pump = new Pump(pumpConfig());
+		hull.setPump(pump);
+		ActiveVehicle vehicle = live(true, List.of(pump, hull), null);
+		HealthDecayRule rule = new HealthDecayRule(.2, .03, Map.of(), true, false);
+
+		for (int step = 1; step <= 6; step++) {
+			VehicleHealthDecay.applyToLive(vehicle, rule);
+			assertTrue(hull.getHealthData().getHealthPercentage() >= hull.getSinkThreshold(),
+					"step " + step + ": hull " + hull.getHealthData().getHealthPercentage()
+							+ "% under threshold " + hull.getSinkThreshold());
+		}
+		assertEquals(3, pump.getHealthData().getHealthPercentage());
+		assertEquals(80, hull.getHealthData().getHealthPercentage());
+
+		JsonObject stored = stored("{components:{hull:{damage:0},pump:{damage:0}}}");
+		VehicleHealthDecay.applyToJson(stored, template(true, hull, pump), rule);
+		assertEquals(80, damage(stored, "components", "hull"), EPSILON);
+	}
+
+	@Test
+	void aRuleThatDoesNotDecayReadsThePumpAsItIs() {
+		SinkableHull hull = new SinkableHull(config(400));
+		Pump pump = new Pump(pumpConfig());
+		pump.getHealthData().setDamage(40);
+		hull.setPump(pump);
+		hull.getHealthData().setDamage(300);
+		VehicleHealthDecay.applyToLive(live(true, List.of(hull, pump), null), new HealthDecayRule(0, .03, Map.of(), true, false));
+		assertEquals(300, hull.getHealthData().getDamage(), EPSILON);
+		assertEquals(40, pump.getHealthData().getDamage(), EPSILON);
 	}
 
 	@Test

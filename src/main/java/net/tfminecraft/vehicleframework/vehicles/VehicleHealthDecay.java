@@ -74,14 +74,13 @@ public final class VehicleHealthDecay {
 					continue;
 				}
 				if (rule.keepAfloat() && component instanceof SinkableHull hull && vehicle.shouldFloat()) {
-					// Last, so the pump has already decayed when the hull's threshold is read.
 					afloat = hull;
 					continue;
 				}
 				decay(component.getHealthData(), rule.fractionOfMax(), componentFloor(component, rule));
 			}
 			if (afloat != null) {
-				double floor = Math.max(componentFloor(afloat, rule), afloat.getSinkThreshold() / 100.0);
+				double floor = Math.max(componentFloor(afloat, rule), liveSinkThreshold(afloat, rule) / 100.0);
 				decay(afloat.getHealthData(), rule.fractionOfMax(), floor);
 			}
 		}
@@ -165,6 +164,28 @@ public final class VehicleHealthDecay {
 		};
 	}
 
+	/**
+	 * The hull's sink threshold once its pump has decayed as far as this rule takes it. Later steps
+	 * keep weakening the pump, which raises the threshold, and decay never repairs the hull, so the
+	 * hull has to stop at the threshold of the fully decayed pump from the first step.
+	 */
+	private static double liveSinkThreshold(SinkableHull hull, HealthDecayRule rule) {
+		if (!hull.hasPump()) {
+			return SinkableHull.sinkThreshold(null);
+		}
+		HealthData pump = hull.getPump().getHealthData();
+		return pumpSinkThreshold(hull.getPump().getBasePower(), pump.getHealthPercentage(), pump.getHealth(), rule);
+	}
+
+	private static double pumpSinkThreshold(int basePower, int pumpHealth, double pumpMaxHealth, HealthDecayRule rule) {
+		int eventual = pumpHealth;
+		if (rule.fractionOfMax() > 0) {
+			double floor = Math.max(0.0, Math.min(1.0, rule.minHealthFor(PUMP)));
+			eventual = Math.min(pumpHealth, HealthData.percentage(pumpMaxHealth * (1.0 - floor), pumpMaxHealth));
+		}
+		return SinkableHull.sinkThreshold(Pump.powerAt(basePower, eventual));
+	}
+
 	private static double componentFloor(VehicleComponent component, HealthDecayRule rule) {
 		double floor = rule.minHealthFor(component.getType() == null ? null : key(component.getType()));
 		if (rule.keepAloft() && component instanceof Balloon) {
@@ -185,7 +206,6 @@ public final class VehicleHealthDecay {
 			for (Map.Entry<String, JsonElement> entry : components.entrySet()) {
 				String part = entry.getKey();
 				if (safe.sinkableHull() && HULL.equalsIgnoreCase(part)) {
-					// Last, so the pump has already decayed when the hull's threshold is read.
 					afloat = part;
 					continue;
 				}
@@ -196,7 +216,7 @@ public final class VehicleHealthDecay {
 				changed |= decayPart(entry.getValue(), lookup.componentMaxHealth(part), rule.fractionOfMax(), floor);
 			}
 			if (afloat != null) {
-				double floor = Math.max(rule.minHealthFor(afloat), safe.sinkThreshold(components) / 100.0);
+				double floor = Math.max(rule.minHealthFor(afloat), safe.sinkThreshold(components, rule) / 100.0);
 				changed |= decayPart(components.get(afloat), lookup.componentMaxHealth(afloat), rule.fractionOfMax(), floor);
 			}
 		}
@@ -270,15 +290,15 @@ public final class VehicleHealthDecay {
 			return new SafeFloors(balloon, false, null);
 		}
 
-		/** The hull's sink threshold once the stored pump has decayed. */
-		double sinkThreshold(JsonObject components) {
+		/** The hull's sink threshold once the stored pump has decayed as far as the rule takes it. */
+		double sinkThreshold(JsonObject components, HealthDecayRule rule) {
 			if (pump == null) {
 				return SinkableHull.sinkThreshold(null);
 			}
 			int pumpHealth = HealthData.percentage(
 					jsonDouble(member(components, PUMP), "damage"),
 					pump.getHealthData().getHealth());
-			return SinkableHull.sinkThreshold(Pump.powerAt(pump.getBasePower(), pumpHealth));
+			return pumpSinkThreshold(pump.getBasePower(), pumpHealth, pump.getHealthData().getHealth(), rule);
 		}
 	}
 }
