@@ -65,8 +65,17 @@ public class ComponentHandler {
 					break;
 			}
 		}
+		linkPump();
 	}
-	
+
+	/** Gives a sinkable hull the vehicle's pump, which keeps water out of it. */
+	private void linkPump() {
+		if(getComponent(Component.HULL) instanceof SinkableHull hull
+				&& getComponent(Component.PUMP) instanceof Pump pump) {
+			hull.setPump(pump);
+		}
+	}
+
 	public void updateModel(ActiveModel m) {
 		for(VehicleComponent c : components) {
 			c.updateModel(m);
@@ -142,6 +151,7 @@ public class ComponentHandler {
 					break;
 			}
 		}
+		linkPump();
 	}
 	
 	public void damage(String cause, double a) {

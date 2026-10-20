@@ -216,6 +216,16 @@ class VehicleHandlersCoverageTest {
         ComponentHandler sink = new ComponentHandler(vehicle, vehicle.getEntity(), model, null, sinkTemplate);
         assertInstanceOf(SinkableHull.class, sink.getComponent(Component.HULL));
         for (VehicleComponent component : sink.getComponents()) assertEquals(0, component.getHealthData().getDamage());
+        assertSame(sinkTemplate.getComponent(Component.PUMP), ((SinkableHull) sinkTemplate.getComponent(Component.HULL)).getPump());
+        assertSame(sink.getComponent(Component.PUMP), ((SinkableHull) sink.getComponent(Component.HULL)).getPump());
+    }
+
+    @Test void sinkableHullWithoutAPumpStaysUnpumped() {
+        YamlConfiguration config = yaml(); config.createSection("hull", componentConfig().getValues(true)); config.set("hull.sinkable", true);
+        ActiveVehicle vehicle = vehicle(); ComponentHandler template = new ComponentHandler(config);
+        ComponentHandler live = new ComponentHandler(vehicle, vehicle.getEntity(), model(0), null, template);
+        assertFalse(((SinkableHull) template.getComponent(Component.HULL)).hasPump());
+        assertFalse(((SinkableHull) live.getComponent(Component.HULL)).hasPump());
     }
 
     @Test void randomFireIgnitesAnAvailableComponentAndHandlesAnAlreadyBurningVehicle() {
