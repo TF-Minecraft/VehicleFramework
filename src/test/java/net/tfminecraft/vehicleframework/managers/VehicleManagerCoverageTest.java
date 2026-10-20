@@ -388,11 +388,15 @@ class VehicleManagerCoverageTest {
         ActiveVehicle v = vehicle("v"); register(v); v.getOwnerData().setOwner("player_Ryan");
         try (MockedStatic<VehicleHealthDecay> decay = mockStatic(VehicleHealthDecay.class)) {
             manager.unloadedDamage(" v ", .2, .03);
-            decay.verify(() -> VehicleHealthDecay.applyToLive(v, .2, .03));
+            decay.verify(() -> VehicleHealthDecay.applyToLive(v, HealthDecayRule.of(.2, .03)));
         }
+        assertFalse(manager.unloadedDamage("v", null));
         VehiclePersistence persistence = persistence();
-        when(persistence.applyStoredDecay("offline", .2, .03)).thenReturn(true);
+        HealthDecayRule afloat = new HealthDecayRule(.2, .03, Map.of(), true, false);
+        when(persistence.applyStoredDecay("offline", HealthDecayRule.of(.2, .03))).thenReturn(true);
+        when(persistence.applyStoredDecay("offline", afloat)).thenReturn(true);
         assertTrue(manager.unloadedDamage(" offline ", .2, .03));
+        assertTrue(manager.unloadedDamage(" offline ", afloat));
         try (MockedStatic<VehicleHealthDecay> decay = mockStatic(VehicleHealthDecay.class)) {
             when(persistence.saveLive(v)).thenReturn(true);
             assertTrue(manager.unloadedDamage("v", .2, .03)); verify(persistence).saveLive(v);

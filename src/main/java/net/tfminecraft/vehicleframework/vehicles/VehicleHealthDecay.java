@@ -7,17 +7,26 @@ import java.util.Map;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
-import net.tfminecraft.vehicleframework.loaders.VehicleLoader;
+import net.tfminecraft.vehicleframework.data.HealthData;
+import net.tfminecraft.vehicleframework.enums.Component;
+import net.tfminecraft.vehicleframework.vehicles.component.Balloon;
+import net.tfminecraft.vehicleframework.vehicles.component.Pump;
+import net.tfminecraft.vehicleframework.vehicles.component.SinkableHull;
 import net.tfminecraft.vehicleframework.vehicles.component.VehicleComponent;
+import net.tfminecraft.vehicleframework.vehicles.handlers.ComponentHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.WeaponHandler;
 import net.tfminecraft.vehicleframework.weapons.ActiveWeapon;
 import net.tfminecraft.vehicleframework.weapons.Weapon;
 
 /**
- * Generic health decay for spawned and stored vehicles. Callers supply
- * fraction-of-max and remaining-health floor; this class does not know about upkeep.
+ * Generic health decay for spawned and stored vehicles. Callers supply a
+ * {@link HealthDecayRule}; this class does not know about upkeep.
  */
 public final class VehicleHealthDecay {
+	private static final String HULL = key(Component.HULL);
+	private static final String PUMP = key(Component.PUMP);
+	private static final String BALLOON = key(Component.BALLOON);
+
 	private VehicleHealthDecay() {}
 
 	public interface MaxHealthLookup {
@@ -51,20 +60,29 @@ public final class VehicleHealthDecay {
 			ActiveVehicle vehicle,
 			double fractionOfMax,
 			double minHealthFraction) {
-		if (vehicle == null) {
+		applyToLive(vehicle, HealthDecayRule.of(fractionOfMax, minHealthFraction));
+	}
+
+	public static void applyToLive(ActiveVehicle vehicle, HealthDecayRule rule) {
+		if (vehicle == null || rule == null) {
 			return;
 		}
 		if (vehicle.getComponents() != null) {
+			SinkableHull afloat = null;
 			for (VehicleComponent component : vehicle.getComponents()) {
 				if (component == null || component.getHealthData() == null) {
 					continue;
 				}
-				var health = component.getHealthData();
-				health.setDamage(nextDamage(
-						health.getDamage(),
-						health.getHealth(),
-						fractionOfMax,
-						minHealthFraction));
+				if (rule.keepAfloat() && component instanceof SinkableHull hull && vehicle.shouldFloat()) {
+					// Last, so the pump has already decayed when the hull's threshold is read.
+					afloat = hull;
+					continue;
+				}
+				decay(component.getHealthData(), rule.fractionOfMax(), componentFloor(component, rule));
+			}
+			if (afloat != null) {
+				double floor = Math.max(componentFloor(afloat, rule), afloat.getSinkThreshold() / 100.0);
+				decay(afloat.getHealthData(), rule.fractionOfMax(), floor);
 			}
 		}
 		WeaponHandler weapons = vehicle.getWeaponHandler();
@@ -73,12 +91,7 @@ public final class VehicleHealthDecay {
 				if (weapon == null || weapon.getHealthData() == null) {
 					continue;
 				}
-				var health = weapon.getHealthData();
-				health.setDamage(nextDamage(
-						health.getDamage(),
-						health.getHealth(),
-						fractionOfMax,
-						minHealthFraction));
+				decay(weapon.getHealthData(), rule.fractionOfMax(), rule.minHealthFor(weapon.getId()));
 			}
 		}
 	}
@@ -91,10 +104,15 @@ public final class VehicleHealthDecay {
 		if (root == null || lookup == null) {
 			return false;
 		}
-		boolean changed = false;
-		changed |= applySection(root.get("components"), true, lookup, fractionOfMax, minHealthFraction);
-		changed |= applySection(root.get("weapons"), false, lookup, fractionOfMax, minHealthFraction);
-		return changed;
+		return apply(root, lookup, HealthDecayRule.of(fractionOfMax, minHealthFraction), SafeFloors.NONE);
+	}
+
+	/** Applies {@code rule} to a stored payload, reading max health and safe floors from {@code template}. */
+	public static boolean applyToJson(JsonObject root, Vehicle template, HealthDecayRule rule) {
+		if (root == null || template == null || rule == null) {
+			return false;
+		}
+		return apply(root, lookupFromTemplate(template), rule, SafeFloors.of(template, rule));
 	}
 
 	public static MaxHealthLookup lookupFromTemplate(Vehicle template) {
@@ -106,7 +124,7 @@ public final class VehicleHealthDecay {
 					continue;
 				}
 				components.put(
-						component.getType().toString().toLowerCase(Locale.ROOT),
+						key(component.getType()),
 						component.getHealthData().getHealth());
 			}
 		}
@@ -147,38 +165,77 @@ public final class VehicleHealthDecay {
 		};
 	}
 
-	private static boolean applySection(
-			JsonElement sectionElement,
-			boolean components,
-			MaxHealthLookup lookup,
-			double fractionOfMax,
-			double minHealthFraction) {
-		if (sectionElement == null || !sectionElement.isJsonObject()) {
-			return false;
+	private static double componentFloor(VehicleComponent component, HealthDecayRule rule) {
+		double floor = rule.minHealthFor(component.getType() == null ? null : key(component.getType()));
+		if (rule.keepAloft() && component instanceof Balloon) {
+			floor = Math.max(floor, Balloon.NEUTRAL_LIFT_HEALTH);
 		}
-		JsonObject section = sectionElement.getAsJsonObject();
+		return floor;
+	}
+
+	private static void decay(HealthData health, double fractionOfMax, double minHealthFraction) {
+		health.setDamage(nextDamage(health.getDamage(), health.getHealth(), fractionOfMax, minHealthFraction));
+	}
+
+	private static boolean apply(JsonObject root, MaxHealthLookup lookup, HealthDecayRule rule, SafeFloors safe) {
 		boolean changed = false;
-		for (Map.Entry<String, JsonElement> entry : section.entrySet()) {
-			JsonElement partElement = entry.getValue();
-			if (partElement == null || !partElement.isJsonObject()) {
-				continue;
+		JsonObject components = section(root.get("components"));
+		if (components != null) {
+			String afloat = null;
+			for (Map.Entry<String, JsonElement> entry : components.entrySet()) {
+				String part = entry.getKey();
+				if (safe.sinkableHull() && HULL.equalsIgnoreCase(part)) {
+					// Last, so the pump has already decayed when the hull's threshold is read.
+					afloat = part;
+					continue;
+				}
+				double floor = rule.minHealthFor(part);
+				if (safe.balloon() && BALLOON.equalsIgnoreCase(part)) {
+					floor = Math.max(floor, Balloon.NEUTRAL_LIFT_HEALTH);
+				}
+				changed |= decayPart(entry.getValue(), lookup.componentMaxHealth(part), rule.fractionOfMax(), floor);
 			}
-			JsonObject part = partElement.getAsJsonObject();
-			double maxHealth = components
-					? lookup.componentMaxHealth(entry.getKey())
-					: lookup.weaponMaxHealth(entry.getKey());
-			if (maxHealth <= 0.0) {
-				continue;
+			if (afloat != null) {
+				double floor = Math.max(rule.minHealthFor(afloat), safe.sinkThreshold(components) / 100.0);
+				changed |= decayPart(components.get(afloat), lookup.componentMaxHealth(afloat), rule.fractionOfMax(), floor);
 			}
-			double current = jsonDouble(part, "damage");
-			double next = nextDamage(current, maxHealth, fractionOfMax, minHealthFraction);
-			if (Double.compare(current, next) == 0) {
-				continue;
+		}
+		JsonObject weapons = section(root.get("weapons"));
+		if (weapons != null) {
+			for (Map.Entry<String, JsonElement> entry : weapons.entrySet()) {
+				String weapon = entry.getKey();
+				changed |= decayPart(entry.getValue(), lookup.weaponMaxHealth(weapon), rule.fractionOfMax(),
+						rule.minHealthFor(weapon));
 			}
-			part.addProperty("damage", next);
-			changed = true;
 		}
 		return changed;
+	}
+
+	private static boolean decayPart(JsonElement partElement, double maxHealth, double fractionOfMax, double floor) {
+		if (partElement == null || !partElement.isJsonObject() || maxHealth <= 0.0) {
+			return false;
+		}
+		JsonObject part = partElement.getAsJsonObject();
+		double current = jsonDouble(part, "damage");
+		double next = nextDamage(current, maxHealth, fractionOfMax, floor);
+		if (Double.compare(current, next) == 0) {
+			return false;
+		}
+		part.addProperty("damage", next);
+		return true;
+	}
+
+	private static JsonObject section(JsonElement element) {
+		return element != null && element.isJsonObject() ? element.getAsJsonObject() : null;
+	}
+
+	private static JsonObject member(JsonObject section, String name) {
+		for (Map.Entry<String, JsonElement> entry : section.entrySet()) {
+			if (entry.getKey().equalsIgnoreCase(name)) {
+				return section(entry.getValue());
+			}
+		}
+		return null;
 	}
 
 	private static double jsonDouble(JsonObject object, String key) {
@@ -189,6 +246,39 @@ public final class VehicleHealthDecay {
 			return object.get(key).getAsDouble();
 		} catch (RuntimeException e) {
 			return 0.0;
+		}
+	}
+
+	private static String key(Component type) {
+		return type.toString().toLowerCase(Locale.ROOT);
+	}
+
+	/** Which stored parts a rule keeps safe, read from the vehicle's template. */
+	private record SafeFloors(boolean balloon, boolean sinkableHull, Pump pump) {
+		static final SafeFloors NONE = new SafeFloors(false, false, null);
+
+		static SafeFloors of(Vehicle template, HealthDecayRule rule) {
+			ComponentHandler handler = template.getComponentHandler();
+			if (handler == null) {
+				return NONE;
+			}
+			boolean balloon = rule.keepAloft() && handler.getComponent(Component.BALLOON) != null;
+			boolean floats = template.getBehaviourHandler() != null && template.getBehaviourHandler().shouldFloat();
+			if (rule.keepAfloat() && floats && handler.getComponent(Component.HULL) instanceof SinkableHull hull) {
+				return new SafeFloors(balloon, true, hull.hasPump() ? hull.getPump() : null);
+			}
+			return new SafeFloors(balloon, false, null);
+		}
+
+		/** The hull's sink threshold once the stored pump has decayed. */
+		double sinkThreshold(JsonObject components) {
+			if (pump == null) {
+				return SinkableHull.sinkThreshold(null);
+			}
+			int pumpHealth = HealthData.percentage(
+					jsonDouble(member(components, PUMP), "damage"),
+					pump.getHealthData().getHealth());
+			return SinkableHull.sinkThreshold(Pump.powerAt(pump.getBasePower(), pumpHealth));
 		}
 	}
 }

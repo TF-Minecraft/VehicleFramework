@@ -26,6 +26,11 @@ public class Pump extends VehicleComponent{
 	}
 	
 	public int getPower() {
-		return (int) Math.round(power*(healthData.getHealthPercentage()/100.0));
+		return powerAt(power, healthData.getHealthPercentage());
+	}
+
+	/** Pump power left at {@code healthPercentage}% health. */
+	public static int powerAt(int basePower, int healthPercentage) {
+		return (int) Math.round(basePower*(healthPercentage/100.0));
 	}
 }

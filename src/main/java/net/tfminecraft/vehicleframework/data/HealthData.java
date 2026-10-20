@@ -69,6 +69,11 @@ public class HealthData {
 	}
 	
 	public int getHealthPercentage() {
+		return percentage(damage, health);
+	}
+
+	/** Remaining health as a whole percentage, the way vehicles read it. */
+	public static int percentage(double damage, double health) {
 		return (int) Math.round((1-damage/health)*100);
 	}
 	

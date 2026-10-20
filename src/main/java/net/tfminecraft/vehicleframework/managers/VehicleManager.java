@@ -86,6 +86,7 @@ import net.tfminecraft.vehicleframework.util.Damager;
 import net.tfminecraft.vehicleframework.VFLogger;
 import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
+import net.tfminecraft.vehicleframework.vehicles.HealthDecayRule;
 import net.tfminecraft.vehicleframework.vehicles.VehicleHealthDecay;
 import net.tfminecraft.vehicleframework.vehicles.component.Harness;
 import net.tfminecraft.vehicleframework.vehicles.handlers.container.Container;
@@ -175,12 +176,20 @@ public class VehicleManager implements Listener{
 	 * updated in memory then saved; unspawned vehicles are edited on disk in place.
 	 */
 	public boolean unloadedDamage(String vehicleUuid, double fractionOfMax, double minHealthFraction) {
-		if (vehicleUuid == null || vehicleUuid.isBlank()) {
+		return unloadedDamage(vehicleUuid, HealthDecayRule.of(fractionOfMax, minHealthFraction));
+	}
+
+	/**
+	 * Applies one {@link HealthDecayRule} step to a vehicle. Spawned vehicles are
+	 * updated in memory then saved; unspawned vehicles are edited on disk in place.
+	 */
+	public boolean unloadedDamage(String vehicleUuid, HealthDecayRule rule) {
+		if (vehicleUuid == null || vehicleUuid.isBlank() || rule == null) {
 			return false;
 		}
 		ActiveVehicle live = getByUUID(vehicleUuid.trim());
 		if (live != null) {
-			VehicleHealthDecay.applyToLive(live, fractionOfMax, minHealthFraction);
+			VehicleHealthDecay.applyToLive(live, rule);
 			saveLive(live);
 			return true;
 		}
@@ -188,7 +197,7 @@ public class VehicleManager implements Listener{
 		if (persistence == null) {
 			return false;
 		}
-		return persistence.applyStoredDecay(vehicleUuid.trim(), fractionOfMax, minHealthFraction);
+		return persistence.applyStoredDecay(vehicleUuid.trim(), rule);
 	}
 	
 	public ActiveVehicle get(Entity e) {

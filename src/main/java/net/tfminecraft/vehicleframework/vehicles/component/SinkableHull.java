@@ -56,16 +56,26 @@ public class SinkableHull extends Hull{
 	public int getSinkProgress() {
 		return (int) Math.round(sinkProgress);
 	}
+
+	/** Hull health percentage below which this hull takes on water. */
+	public double getSinkThreshold() {
+		return sinkThreshold(hasPump() ? pump.getPower() : null);
+	}
+
+	/** Sink threshold for a hull whose pump has {@code pumpPower} left, or no pump when null. */
+	public static double sinkThreshold(Integer pumpPower) {
+		double pumpThreshold = 80;
+		if(pumpPower != null) {
+			pumpThreshold = 100 - pumpPower;
+		}
+		return Math.min(pumpThreshold, 80);
+	}
 	@Override
 	public void slowTick(List<Player> nearby) {
 		super.slowTick(nearby);
 		if(!v.getBehaviourHandler().shouldFloat()) return;
 		double hullStrength = healthData.getHealthPercentage();
-		double pumpThreshold = 80;
-		if(hasPump()) {
-			pumpThreshold = 100 - pump.getPower();
-		}
-	    if(pumpThreshold > 80) pumpThreshold = 80;
+		double pumpThreshold = getSinkThreshold();
 	    if (hullStrength < pumpThreshold) {
 	    	double rate = Math.round((pumpThreshold - hullStrength)/5);
 	    	if(rate < 1) rate = 1;
