@@ -971,13 +971,31 @@ class WeaponsCoverageTest {
     verify(shell).remove();
     assertEquals(3, r.spawned.size());
     assertEquals(2, Cache.projectiles.size());
-    for (Entity child : r.spawned.subList(1, 3)) {
-      assertEquals(new Vector(0, -3.5, 0), child.getVelocity());
-      when(child.isOnGround()).thenReturn(true);
+    List<Entity> children = r.spawned.subList(1, 3);
+    Map<Entity, Double> startY = new HashMap<>();
+    for (Entity child : children) {
+      verify(child).setGravity(false);
+      verify(child, never()).setVelocity(any());
+      startY.put(child, child.getLocation().getY());
     }
-    r.ticks(7);
+    r.tick();
+    for (Entity child : children)
+      assertEquals(startY.get(child) - 3.5, child.getLocation().getY(), 1e-9);
+    when(r.world.rayTraceBlocks(
+            any(Location.class),
+            any(Vector.class),
+            anyDouble(),
+            eq(FluidCollisionMode.ALWAYS),
+            eq(false)))
+        .thenReturn(new RayTraceResult(new Vector(0, 40, 0)));
+    r.ticks(5);
+    assertEquals(2, Cache.projectiles.size(), "Landed bomblets still wait out the arming delay");
+    r.tick();
     assertTrue(Cache.projectiles.isEmpty());
-    for (Entity child : r.spawned.subList(1, 3)) verify(child).remove();
+    for (Entity child : children) {
+      verify(child).remove();
+      assertEquals(40, child.getLocation().getY(), 1e-9);
+    }
     verify(player)
         .spawnParticle(
             eq(Particle.EXPLOSION_EMITTER),
@@ -1014,6 +1032,82 @@ class WeaponsCoverageTest {
           times(1));
       verify(shell, times(1)).remove();
     }
+  }
+
+  @Test
+  void clusterBombletsFallWithArmourStandDragWithoutVanillaTicks() throws Exception {
+    Entity child = fireCluster(7.5);
+    Location start = child.getLocation();
+    r.tick();
+    Location first = child.getLocation();
+    r.tick();
+    Location second = child.getLocation();
+    assertEquals(start.getY() - 3.5, first.getY(), 1e-9);
+    assertEquals(first.getY() - 3.58 * .98, second.getY(), 1e-9);
+    double firstStepX = first.getX() - start.getX();
+    double secondStepX = second.getX() - first.getX();
+    double firstStepZ = first.getZ() - start.getZ();
+    double secondStepZ = second.getZ() - first.getZ();
+    assertEquals(firstStepX * .91, secondStepX, 1e-9);
+    assertEquals(firstStepZ * .91, secondStepZ, 1e-9);
+    verify(child, never()).isOnGround();
+  }
+
+  @Test
+  void clusterBombletsDetonateNextToBlocksTheyDidNotRayTrace() throws Exception {
+    try (var explosions = mockStatic(ExplosionCreator.class)) {
+      Entity child = fireCluster(0);
+      r.ticks(6);
+      verify(child, never()).remove();
+      Location at = child.getLocation();
+      r.block(at.getBlockX(), at.getBlockY() - 1, at.getBlockZ(), Material.STONE);
+      r.tick();
+      verify(child).remove();
+      assertTrue(Cache.projectiles.isEmpty());
+      explosions.verify(
+          () ->
+              ExplosionCreator.triggerExplosion(
+                  eq(at), anyDouble(), anyDouble(), anyDouble(), anyString(), eq(false)));
+    }
+  }
+
+  @Test
+  void clusterBombletsThatNeverLandAreRemovedWithoutExploding() throws Exception {
+    try (var explosions = mockStatic(ExplosionCreator.class)) {
+      Entity child = fireCluster(0);
+      r.ticks(200);
+      verify(child, never()).remove();
+      r.tick();
+      verify(child).remove();
+      assertTrue(Cache.projectiles.isEmpty());
+      assertEquals(0, r.pending());
+      explosions.verifyNoInteractions();
+    }
+  }
+
+  private Entity fireCluster(double spread) throws Exception {
+    ClusterBomb ammo =
+        (ClusterBomb)
+            ammo(
+                "CLUSTER",
+                "fuse: 1\n"
+                    + "amount: 1\n"
+                    + "spread: " + spread + "\n"
+                    + "explosive: false\n"
+                    + "cluster:\n"
+                    + "  explosive: true\n"
+                    + "  model: {type: item, material: STONE}\n");
+    new ProjectileShooter()
+        .shoot(
+            List.of(),
+            vehicle.getEntity(),
+            new Location(r.world, 0, 1000, 0),
+            new Vector(0, 0, 1),
+            ammo,
+            null);
+    r.tick();
+    assertEquals(2, r.spawned.size());
+    return r.spawned.getLast();
   }
 
   @Test

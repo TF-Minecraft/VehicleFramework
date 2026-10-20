@@ -2,12 +2,14 @@ package net.tfminecraft.vehicleframework.weapons.shooter;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 
 import net.tfminecraft.vehicleframework.VehicleFramework;
@@ -22,6 +24,13 @@ import net.tfminecraft.vehicleframework.weapons.ammunition.data.AmmunitionData;
 
 public class DefaultShooter implements Shooter {
 	//Regular shooting method for things like cannonballs, explode on impact
+	
+	// Vanilla armour stand physics per tick, so bomblets fall as they did under vanilla movement.
+	private static final double CLUSTER_GRAVITY = 0.08;
+	private static final double CLUSTER_VERTICAL_DRAG = 0.98;
+	private static final double CLUSTER_HORIZONTAL_DRAG = 0.91;
+	// Safety stop for a bomblet that never reaches anything.
+	private static final int CLUSTER_MAX_TICKS = 200;
 	
 	private HitChecker checker = new HitChecker();
 	private ProjectileShooter shooter;
@@ -108,28 +117,59 @@ public class DefaultShooter implements Shooter {
 	        Entity armorStand = a.getClusterData().spawn(original);
 	        projectiles.add(armorStand);
 			Cache.projectiles.add(armorStand);
+			// The task below moves it; vanilla gravity would move it a second time near players.
+			armorStand.setGravity(false);
 
 	        Vector velocity = new Vector(
 	            (Math.random() - 0.5) * a.getSpread(),
 	            -3.5, // downward velocity
 	            (Math.random() - 0.5) * a.getSpread()
 	        );
-	        armorStand.setVelocity(velocity);
 
 	        // Handle explosion on ground impact
 	        new BukkitRunnable() {
 	        	int i = 0;
+	        	boolean landed = false;
+	        	Location current = armorStand.getLocation();
 	            public void run() {
-	                if (i > 5 && (checker.hasHit(armorStand, projectiles) || armorStand.isOnGround() || armorStand.isDead())) {
+	                if (i > 5 && (landed || checker.hasHit(armorStand, projectiles) || armorStand.isDead())) {
 	                    shooter.triggerExplosion(players, armorStand.getLocation(), a.getClusterData(), w);
-	                    armorStand.remove();
-						projectiles.remove(armorStand);
-						Cache.projectiles.remove(armorStand);
-	                    cancel();
+	                    removeBomblet();
 	                    return;
+	                }
+	                if (i >= CLUSTER_MAX_TICKS) {
+	                    removeBomblet();
+	                    return;
+	                }
+	                if (!landed) {
+	                    landed = move();
 	                }
 	                a.getData().fx(players, armorStand.getLocation(), 1f, i);
 	                i++;
+	            }
+
+	            // Not left to vanilla physics: entities stop moving outside simulation distance.
+	            private boolean move() {
+	                RayTraceResult hit = world.rayTraceBlocks(current, velocity.clone().normalize(), velocity.length(), FluidCollisionMode.ALWAYS, false);
+	                if (hit != null) {
+	                    // Stop on the surface instead of passing through thin roofs or into the ground.
+	                    current = hit.getHitPosition().toLocation(world, current.getYaw(), current.getPitch());
+	                    armorStand.teleport(current);
+	                    return true;
+	                }
+	                current.add(velocity);
+	                armorStand.teleport(current);
+	                velocity.setX(velocity.getX() * CLUSTER_HORIZONTAL_DRAG);
+	                velocity.setY((velocity.getY() - CLUSTER_GRAVITY) * CLUSTER_VERTICAL_DRAG);
+	                velocity.setZ(velocity.getZ() * CLUSTER_HORIZONTAL_DRAG);
+	                return false;
+	            }
+
+	            private void removeBomblet() {
+	                armorStand.remove();
+	                projectiles.remove(armorStand);
+	                Cache.projectiles.remove(armorStand);
+	                cancel();
 	            }
 	        }.runTaskTimer(VehicleFramework.plugin, 0L, 1L);
 	    }
