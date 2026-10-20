@@ -222,6 +222,9 @@ public final class VehiclePersistence {
 	}
 
 	public boolean applyStoredDecay(String uuid, HealthDecayRule rule) {
+		if (rule == null) {
+			return false;
+		}
 		try {
 			boolean[] saved = { false };
 			repository.runInTransaction(() -> {

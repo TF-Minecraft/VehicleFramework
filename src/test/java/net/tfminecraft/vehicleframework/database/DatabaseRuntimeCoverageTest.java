@@ -14,6 +14,7 @@ import net.tfminecraft.vehicleframework.data.HealthData;
 import net.tfminecraft.vehicleframework.enums.Component;
 import net.tfminecraft.vehicleframework.loaders.VehicleLoader;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
+import net.tfminecraft.vehicleframework.vehicles.HealthDecayRule;
 import net.tfminecraft.vehicleframework.vehicles.Vehicle;
 import net.tfminecraft.vehicleframework.vehicles.component.VehicleComponent;
 
@@ -91,6 +92,7 @@ class DatabaseRuntimeCoverageTest {
             assertTrue(persistence.loadIncomplete("missing").isEmpty());
             assertFalse(persistence.tombstone(null)); assertFalse(persistence.tombstone(" "));
             repository.saveLive(snapshot(PAYLOAD));
+            assertFalse(persistence.applyStoredDecay(ID, (HealthDecayRule) null));
             assertFalse(persistence.applyStoredDecay(ID, .1, .03));
             Vehicle template = mock(Vehicle.class, RETURNS_DEEP_STUBS);
             VehicleComponent hull = mock(VehicleComponent.class);
