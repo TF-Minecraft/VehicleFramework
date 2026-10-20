@@ -12,7 +12,10 @@ import net.tfminecraft.vehicleframework.VFLogger;
 import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.data.DamageData;
 import net.tfminecraft.vehicleframework.util.ConfigMerger;
+import net.tfminecraft.vehicleframework.enums.Component;
 import net.tfminecraft.vehicleframework.vehicles.Vehicle;
+import net.tfminecraft.vehicleframework.vehicles.component.SinkableHull;
+import net.tfminecraft.vehicleframework.vehicles.handlers.ComponentHandler;
 import net.tfminecraft.vehicleframework.vehicles.fuel.Fuel;
 import net.tfminecraft.vehicleframework.weapons.ammunition.*;
 import org.bukkit.*;
@@ -532,7 +535,16 @@ class ConfigurationLoadersCoverageTest {
                     + "  skins: {default: {model: cart_model}}\n"
                     + "  states: {}\n"
                     + "  components: {hull: {health: 100}}\n"
+                    + "  seats: []\n"
+                    + "skiff:\n"
+                    + "  name: Skiff\n"
+                    + "  model: default\n"
+                    + "  skins: {default: {model: skiff_model}}\n"
+                    + "  states: {}\n"
+                    + "  components: {hull: {health: 100, sinkable: true}, pump: {health: 50, power: 40}}\n"
                     + "  seats: []\n"));
+    ComponentHandler skiff = VehicleLoader.getByString("skiff").getComponentHandler();
+    assertSame(skiff.getComponent(Component.PUMP), ((SinkableHull) skiff.getComponent(Component.HULL)).getPump());
     Vehicle cart = VehicleLoader.getByString("cart");
     assertNotNull(cart);
     assertEquals("Cargo Cart", cart.getName());
