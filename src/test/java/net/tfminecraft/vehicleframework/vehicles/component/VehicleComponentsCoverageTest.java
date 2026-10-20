@@ -326,6 +326,7 @@ class VehicleComponentsCoverageTest {
         assertFalse(hull.hasSinkProgress());
         config.set("power", 0); hull.setPump(new Pump(config)); hull.getHealthData().setDamage(30);
         hull.slowTick(List.of()); assertEquals(2, hull.getSinkProgress());
+        hull.getHealthData().setDamage(0); hull.slowTick(List.of()); assertEquals(1, hull.getSinkProgress());
     }
 
     @Test void damagedPumpAndWingsLosePowerWithoutNegativeLift() {
