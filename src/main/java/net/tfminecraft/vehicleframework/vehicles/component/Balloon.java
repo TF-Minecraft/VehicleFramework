@@ -12,6 +12,9 @@ import net.tfminecraft.vehicleframework.enums.Component;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 
 public class Balloon extends VehicleComponent {
+    /** Health share where {@link #getLift()} reaches zero; below it the balloon sinks. */
+    public static final double NEUTRAL_LIFT_HEALTH = 0.5;
+
     private double lift;
     private double delta = 0.0;
 

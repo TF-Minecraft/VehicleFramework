@@ -17,6 +17,7 @@ import net.tfminecraft.vehicleframework.data.StoredVehicleMeta;
 import net.tfminecraft.vehicleframework.loaders.VehicleLoader;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.Vehicle;
+import net.tfminecraft.vehicleframework.vehicles.HealthDecayRule;
 import net.tfminecraft.vehicleframework.vehicles.VehicleHealthDecay;
 
 public final class VehiclePersistence {
@@ -217,6 +218,13 @@ public final class VehiclePersistence {
 	}
 
 	public boolean applyStoredDecay(String uuid, double fractionOfMax, double minHealthFraction) {
+		return applyStoredDecay(uuid, HealthDecayRule.of(fractionOfMax, minHealthFraction));
+	}
+
+	public boolean applyStoredDecay(String uuid, HealthDecayRule rule) {
+		if (rule == null) {
+			return false;
+		}
 		try {
 			boolean[] saved = { false };
 			repository.runInTransaction(() -> {
@@ -231,11 +239,7 @@ public final class VehiclePersistence {
 				if (template == null) {
 					return;
 				}
-				boolean changed = VehicleHealthDecay.applyToJson(
-						root,
-						VehicleHealthDecay.lookupFromTemplate(template),
-						fractionOfMax,
-						minHealthFraction);
+				boolean changed = VehicleHealthDecay.applyToJson(root, template, rule);
 				if (!changed) {
 					saved[0] = true;
 					return;

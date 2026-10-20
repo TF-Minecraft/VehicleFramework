@@ -53,6 +53,7 @@ class VehicleFrameworkCoverageTest {
     private boolean previousCoreProtect;
 
     @BeforeEach void setup() throws Exception {
+        snapshotCache();
         previousPlugin = VehicleFramework.plugin;
         previousCoreProtect = Cache.coreProtect; Cache.coreProtect = false;
         MockedStatic<Bukkit> bukkit = keep(mockStatic(Bukkit.class));
@@ -90,6 +91,31 @@ class VehicleFrameworkCoverageTest {
         VehicleLoader.get().clear(); AmmunitionLoader.get().clear(); FuelLoader.get().clear();
         new WeaponTemplateLoader().clear(); new DeathTemplateLoader().clear(); new ArmorTemplateLoader().clear();
         Collections.reverse(scopes); for (AutoCloseable scope : scopes) scope.close();
+        restoreCache();
+    }
+
+    // onEnable loads config.yml into Cache's statics; put them back so later test classes see the code defaults.
+    private final Map<java.lang.reflect.Field, Object> cacheSnapshot = new HashMap<>();
+
+    private void snapshotCache() throws IllegalAccessException {
+        cacheSnapshot.clear();
+        for (java.lang.reflect.Field field : Cache.class.getDeclaredFields()) {
+            int modifiers = field.getModifiers();
+            if (!java.lang.reflect.Modifier.isStatic(modifiers) || java.lang.reflect.Modifier.isFinal(modifiers)) continue;
+            field.setAccessible(true);
+            cacheSnapshot.put(field, copy(field.get(null)));
+        }
+    }
+
+    private void restoreCache() throws IllegalAccessException {
+        for (Map.Entry<java.lang.reflect.Field, Object> entry : cacheSnapshot.entrySet()) entry.getKey().set(null, copy(entry.getValue()));
+    }
+
+    private static Object copy(Object value) {
+        if (value instanceof List<?> list) return new ArrayList<>(list);
+        if (value instanceof Set<?> set) return new HashSet<>(set);
+        if (value instanceof Map<?, ?> map) return new HashMap<>(map);
+        return value;
     }
 
     @Test void startupCreatesDefaultsRegistersSystemsAndClosesItsDatabase() throws Exception {
