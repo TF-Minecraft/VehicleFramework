@@ -58,6 +58,7 @@ class VehicleManagerCoverageTest {
     private final List<Runnable> scheduled = new ArrayList<>();
     private final List<Runnable> timers = new ArrayList<>();
     private MockedStatic<Bukkit> bukkit;
+    private MockedStatic<VFLogger> logger;
     private MockedStatic<VehiclePersistence> storage;
     private MockedStatic<VehicleLoader> loader;
     private MockedStatic<SpawnManager> spawning;
@@ -93,7 +94,7 @@ class VehicleManagerCoverageTest {
         bukkit.when(Bukkit::getPluginManager).thenReturn(plugins);
         bukkit.when(Bukkit::getScheduler).thenReturn(scheduler);
         bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of());
-        keep(mockStatic(VFLogger.class));
+        logger = keep(mockStatic(VFLogger.class));
         keep(mockStatic(PersistenceLog.class));
         keep(mockStatic(ConsistRelinker.class));
         keep(mockStatic(TrainCollision.class));
@@ -466,9 +467,25 @@ class VehicleManagerCoverageTest {
         manager.towSelect(player, v); when(v.getEntity().getLocation()).thenReturn(new Location(world, 100, 64, 0));
         assertDoesNotThrow(() -> timers.get(0).run()); assertDoesNotThrow(() -> timers.get(1).run());
         assertTrue(map("tow").isEmpty());
-        VehiclePersistence persistence = persistence(); when(persistence.saveLiveResult(v)).thenReturn(VehiclePersistResult.failed("full"));
+        VehiclePersistence persistence = persistence(); ActiveVehicle saved = vehicle("saved"); register(saved);
+        when(persistence.saveLiveBatch(anyCollection())).thenAnswer(call -> {
+            Map<ActiveVehicle, VehiclePersistResult> results = new LinkedHashMap<>();
+            for (ActiveVehicle each : call.<Collection<ActiveVehicle>>getArgument(0))
+                results.put(each, each == v ? VehiclePersistResult.failed("full") : VehiclePersistResult.saved());
+            return results;
+        });
         timers.get(2).run(); verify(persistence).checkpointWal(false); verify(persistence).vacuumIntoBackup();
-        when(v.isDestroyed()).thenReturn(true); timers.get(2).run(); verify(persistence, times(1)).saveLiveResult(v);
+        verify(persistence, never()).saveLiveResult(any());
+        String failed = "Failed to persist " + VehicleManager.describeVehicle(v) + " at " + VehicleManager.describeLocation(v) + " during checkpoint: full";
+        logger.verify(() -> VFLogger.log(failed));
+        logger.verify(() -> VFLogger.log(contains("'Cart saved'")), never());
+        when(v.isDestroyed()).thenReturn(true); timers.get(2).run();
+        verify(persistence).saveLiveBatch(List.of(saved));
+        // The backup copy runs on the first checkpoint and then every BACKUP_EVERY_CHECKPOINTS.
+        for (int i = 2; i < VehicleManager.BACKUP_EVERY_CHECKPOINTS; i++) timers.get(2).run();
+        verify(persistence, times(1)).vacuumIntoBackup();
+        timers.get(2).run(); verify(persistence, times(2)).vacuumIntoBackup();
+        verify(persistence, times(VehicleManager.BACKUP_EVERY_CHECKPOINTS + 1)).checkpointWal(false);
         manager.reload(); verify(manager.getSpawnManager()).reload();
     }
 

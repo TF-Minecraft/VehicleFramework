@@ -1,6 +1,8 @@
 package net.tfminecraft.vehicleframework.database;
 
 import java.io.File;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -64,6 +66,36 @@ public final class VehiclePersistence {
 					uuidOf(vehicle),
 					message == null || message.isBlank() ? "SQLite save failed" : "SQLite save failed: " + message);
 		}
+	}
+
+	/**
+	 * Saves the vehicles in one transaction, so a checkpoint waits for one commit instead of one per vehicle.
+	 * If the transaction itself fails, each vehicle is saved on its own as before, so a rollback loses nothing.
+	 */
+	public Map<ActiveVehicle, VehiclePersistResult> saveLiveBatch(Collection<ActiveVehicle> vehicles) {
+		Map<ActiveVehicle, VehiclePersistResult> results = new LinkedHashMap<>();
+		if (vehicles == null || vehicles.isEmpty()) {
+			return results;
+		}
+		if (repository != null) {
+			try {
+				repository.runInTransaction(() -> {
+					for (ActiveVehicle vehicle : vehicles) {
+						results.put(vehicle, saveLiveResult(vehicle));
+					}
+				});
+				return results;
+			} catch (RuntimeException ex) {
+				String message = ex.getMessage();
+				log("SQLite checkpoint transaction failed, saving vehicles one by one"
+						+ (message == null || message.isBlank() ? "" : ": " + message));
+				results.clear();
+			}
+		}
+		for (ActiveVehicle vehicle : vehicles) {
+			results.put(vehicle, saveLiveResult(vehicle));
+		}
+		return results;
 	}
 
 	public VehiclePersistResult resolveFailedLiveSave(String uuid, String reason) {

@@ -53,6 +53,56 @@ class DatabaseRuntimeCoverageTest {
         }
     }
 
+    @Test void checkpointBatchCommitsEveryVehicleInOneTransactionAndKeepsPerVehicleFailures() {
+        VehicleRepository repository = VehicleRepository.open(directory.resolve("batch.db").toFile());
+        try {
+            VehiclePersistence persistence = new VehiclePersistence(repository);
+            assertTrue(persistence.saveLiveBatch(null).isEmpty());
+            assertTrue(persistence.saveLiveBatch(List.of()).isEmpty());
+            ActiveVehicle first = VehiclePayloadCoverageTest.liveVehicle();
+            ActiveVehicle second = VehiclePayloadCoverageTest.liveVehicle();
+            String secondId = UUID.randomUUID().toString();
+            when(second.getUUID()).thenReturn(secondId);
+            ActiveVehicle broken = VehiclePayloadCoverageTest.liveVehicle();
+            when(broken.getUUID()).thenReturn(UUID.randomUUID().toString());
+            when(broken.getEntity()).thenReturn(null);
+            Map<ActiveVehicle, VehiclePersistResult> results = persistence.saveLiveBatch(List.of(first, broken, second));
+            assertEquals(List.of(first, broken, second), List.copyOf(results.keySet()));
+            assertTrue(results.get(first).isSaved());
+            assertEquals("entity invalid, no SQLite row", results.get(broken).reason());
+            assertTrue(results.get(second).isSaved());
+            assertTrue(repository.findLive(ID).isPresent());
+            assertTrue(repository.findLive(secondId).isPresent());
+            assertTrue(repository.hasLiveInChunk("world", -2, -1));
+        } finally { repository.close(); }
+    }
+
+    @Test void checkpointBatchFallsBackToSingleSavesWhenTheTransactionFails() {
+        VehicleRepository repository = mock(VehicleRepository.class);
+        VehiclePersistence persistence = new VehiclePersistence(repository);
+        ActiveVehicle live = VehiclePayloadCoverageTest.liveVehicle();
+        when(repository.saveLive(any())).thenReturn(true);
+        doAnswer(call -> { call.<Runnable>getArgument(0).run(); return null; }).when(repository).runInTransaction(any());
+        assertTrue(persistence.saveLiveBatch(List.of(live)).get(live).isSaved());
+        verify(repository, times(1)).runInTransaction(any());
+        verify(repository, times(1)).saveLive(any());
+        try (var logger = mockStatic(VFLogger.class)) {
+            doAnswer(call -> { call.<Runnable>getArgument(0).run(); throw new IllegalStateException("cannot commit"); })
+                    .when(repository).runInTransaction(any());
+            assertTrue(persistence.saveLiveBatch(List.of(live)).get(live).isSaved());
+            verify(repository, times(3)).saveLive(any());
+            logger.verify(() -> VFLogger.log("SQLite checkpoint transaction failed, saving vehicles one by one: cannot commit"));
+            doThrow(new IllegalStateException()).when(repository).runInTransaction(any());
+            assertTrue(persistence.saveLiveBatch(List.of(live)).get(live).isSaved());
+            logger.verify(() -> VFLogger.log("SQLite checkpoint transaction failed, saving vehicles one by one"));
+            doThrow(new IllegalStateException(" ")).when(repository).runInTransaction(any());
+            assertTrue(persistence.saveLiveBatch(List.of(live)).get(live).isSaved());
+            logger.verify(() -> VFLogger.log("SQLite checkpoint transaction failed, saving vehicles one by one"), times(2));
+        }
+        VehiclePersistResult missing = new VehiclePersistence(null).saveLiveBatch(List.of(live)).get(live);
+        assertEquals("SQLite is not open", missing.reason());
+    }
+
     @Test void missingRepositoryAndClosedDatabaseFailWithoutMutatingOrThrowing() {
         VehiclePersistence missing = new VehiclePersistence(null);
         assertTrue(missing.saveLiveResult(null).isFailed());

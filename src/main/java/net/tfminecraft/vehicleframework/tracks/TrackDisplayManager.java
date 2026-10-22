@@ -40,6 +40,7 @@ import org.bukkit.persistence.PersistentDataType;
 import net.tfminecraft.tlibs.TLibs;
 import net.tfminecraft.vehicleframework.VFLogger;
 import net.tfminecraft.vehicleframework.VehicleFramework;
+import net.tfminecraft.vehicleframework.bones.ConvertedAngle;
 import net.tfminecraft.vehicleframework.cache.Cache;
 
 public final class TrackDisplayManager implements Listener {
@@ -49,6 +50,9 @@ public final class TrackDisplayManager implements Listener {
 	public static final String KEY_SWITCH = "junction_switch";
 
 	private final List<ItemDisplay> live = new ArrayList<>();
+	// The switch displays in live, with their junction, so the per-tick animation
+	// does not read the tags of every rail display.
+	private final List<SwitchDisplay> switches = new ArrayList<>();
 	private final Set<TrackVisual.Type> missingLogged = new HashSet<>();
 	private final Deque<ChunkRef> resyncQueue = new ArrayDeque<>();
 	private CommandSender resyncNotify;
@@ -301,6 +305,7 @@ public final class TrackDisplayManager implements Listener {
 			}
 		}
 		live.clear();
+		switches.clear();
 	}
 
 	public void spawnChunk(Chunk chunk) {
@@ -567,6 +572,7 @@ public final class TrackDisplayManager implements Listener {
 				it.remove();
 			}
 		}
+		switches.removeIf(entry -> junctionId.equals(entry.junctionId()));
 	}
 
 	private void spawnSwitchInChunk(TrackJunction junction, TrackSpline stem, Chunk chunk) {
@@ -604,6 +610,7 @@ public final class TrackDisplayManager implements Listener {
 					switchKey(), PersistentDataType.STRING, junction.id.toString());
 		});
 		live.add(display);
+		switches.add(new SwitchDisplay(display, junction.id));
 	}
 
 	private static TrackSwitchPose switchPose(TrackSpline stem, TrackJunction junction) {
@@ -626,21 +633,20 @@ public final class TrackDisplayManager implements Listener {
 			return;
 		}
 		float maxDelta = Cache.trackSwitchThrowDegreesPerSecond / 20f;
-		Iterator<ItemDisplay> it = live.iterator();
+		Iterator<SwitchDisplay> it = switches.iterator();
 		while (it.hasNext()) {
-			ItemDisplay display = it.next();
-			if (display == null || display.isDead() || !display.isValid()) {
+			SwitchDisplay entry = it.next();
+			ItemDisplay display = entry.display();
+			if (display.isDead() || !display.isValid()) {
 				it.remove();
+				live.remove(display);
 				continue;
 			}
-			UUID junctionId = readSwitchId(display);
-			if (junctionId == null) {
-				continue;
-			}
-			TrackJunction junction = registry.getJunction(junctionId).orElse(null);
+			TrackJunction junction = registry.getJunction(entry.junctionId()).orElse(null);
 			if (junction == null || junction.branchSplineId == null) {
 				display.remove();
 				it.remove();
+				live.remove(display);
 				continue;
 			}
 			TrackSpline stem = registry.get(junction.stemSplineId).orElse(null);
@@ -648,8 +654,12 @@ public final class TrackDisplayManager implements Listener {
 			if (pose == null) {
 				continue;
 			}
-			float next = TrackSwitchPose.stepYaw(display.getLocation().getYaw(), pose.targetYaw, maxDelta);
 			Location loc = display.getLocation();
+			float next = TrackSwitchPose.stepYaw(loc.getYaw(), pose.targetYaw, maxDelta);
+			// A switch already at its target would only resend the same position.
+			if (Math.abs(ConvertedAngle.shortestDelta(loc.getYaw(), next)) < 1e-4f) {
+				continue;
+			}
 			loc.setYaw(next);
 			display.teleport(loc);
 		}
@@ -789,6 +799,7 @@ public final class TrackDisplayManager implements Listener {
 				it.remove();
 			}
 		}
+		switches.clear();
 	}
 
 	private void tickResync() {
@@ -847,6 +858,7 @@ public final class TrackDisplayManager implements Listener {
 			}
 		}
 		live.removeIf(display -> display == null || display.isDead() || !display.isValid());
+		switches.removeIf(entry -> entry.display().isDead() || !entry.display().isValid());
 	}
 
 	private boolean isTrackDisplay(ItemDisplay display) {
@@ -911,5 +923,8 @@ public final class TrackDisplayManager implements Listener {
 	}
 
 	private record ChunkRef(String world, int x, int z) {
+	}
+
+	private record SwitchDisplay(ItemDisplay display, UUID junctionId) {
 	}
 }

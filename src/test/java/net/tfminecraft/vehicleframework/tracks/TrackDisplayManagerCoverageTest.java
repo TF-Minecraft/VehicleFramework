@@ -506,6 +506,35 @@ class TrackDisplayManagerCoverageTest {
     }
 
     @Test
+    void switchTickSkipsRailTagsAndIdleSwitches() {
+        TrackSpline rail = rail();
+        TrackJunction junction = junction(rail);
+        DisplayState track = spawn(rail.getId(), visual(0, 8));
+        manager.spawnSwitchesForSpline(rail);
+        DisplayState lever = spawned.getLast();
+        PersistentDataContainer railTags = track.entity.getPersistentDataContainer();
+        PersistentDataContainer leverTags = lever.entity.getPersistentDataContainer();
+        clearInvocations(railTags, leverTags);
+        tick.run();
+        verifyNoInteractions(railTags, leverTags);
+        verify(lever.entity, never()).teleport(any(Location.class));
+        junctions.put(junction.id, junction.withThrown(true));
+        tick.run();
+        verify(lever.entity, times(1)).teleport(any(Location.class));
+        for (int i = 0; i < 200; i++) tick.run();
+        float settled = lever.location.getYaw();
+        int moves = mockingDetails(lever.entity).getInvocations().stream()
+                .filter(call -> call.getMethod().getName().equals("teleport")).toList().size();
+        tick.run();
+        assertEquals(settled, lever.location.getYaw());
+        verify(lever.entity, times(moves)).teleport(any(Location.class));
+        manager.onChunkUnload(new ChunkUnloadEvent(chunk(0, 0)));
+        assertTrue(lever.removed);
+        tick.run();
+        verify(lever.entity, times(moves)).teleport(any(Location.class));
+    }
+
+    @Test
     void switchReloadPreservesRailsReplacesSwitchesAndClearsItemCache() {
         TrackSpline rail = rail();
         TrackJunction junction = junction(rail);
