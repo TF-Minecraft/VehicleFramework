@@ -29,18 +29,6 @@ biplane:
         biplane_pirate:
             name: "Biplane (Pirate)"
             model: biplane_pirate
-        biplane_prism:
-            name: "Biplane (Prism)"
-            model: biplane_prism
-        biplane_norain:
-            name: "Biplane (Norain)"
-            model: biplane_norain
-        biplane_zerratoris:
-            name: "Biplane (Zerratoris)"
-            model: biplane_zerratoris
-        biplane_oseni:
-            name: "Biplane (Oseni)"
-            model: biplane_oseni
     death:
         template: explode_medium
         explode:

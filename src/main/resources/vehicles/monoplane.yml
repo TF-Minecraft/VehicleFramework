@@ -29,18 +29,6 @@ monoplane:
         monoplane_pirate:
             name: "Monoplane (Pirate)"
             model: monoplane_pirate
-        monoplane_prism:
-            name: "Monoplane (Prism)"
-            model: monoplane_prism
-        monoplane_norain:
-            name: "Monoplane (Norain)"
-            model: monoplane_norain
-        monoplane_zerratoris:
-            name: "Monoplane (Zerratoris)"
-            model: monoplane_zerratoris
-        monoplane_oseni:
-            name: "Monoplane (Oseni)"
-            model: monoplane_oseni
     death:
         template: explode_medium
         explode:

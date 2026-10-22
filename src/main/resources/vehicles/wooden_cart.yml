@@ -106,7 +106,7 @@ wooden_cart:
                 - small_bomb(3.0)
                 - cannonball(1.3)
             vfx:
-                - vfx1
+                - vfx3
                 - vfx2
     seats:
         - captain(driver)
