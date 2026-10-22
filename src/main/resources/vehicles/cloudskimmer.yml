@@ -5,12 +5,6 @@ cloudskimmer:
         cloudskimmer:
             name: "Cloudskimmer"
             model: cloudskimmer
-        cloudskimmer_prism:
-            name: "Cloudskimmer (Prism)"
-            model: cloudskimmer_prism
-        cloudskimmer_norain:
-            name: "Cloudskimmer (Norain)"
-            model: cloudskimmer_norain
     death:
         template: explode_large
     behaviour:

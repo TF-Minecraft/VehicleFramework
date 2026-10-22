@@ -5,9 +5,6 @@ gyrobomber:
         gyrobomber:
             name: "Gyrobomber"
             model: gyrobomber
-        gyrobomber_prism:
-            name: "Gyrobomber (Prism)"
-            model: gyrobomber_prism
     death:
         template: explode_large
     behaviour:
