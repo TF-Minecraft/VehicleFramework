@@ -106,6 +106,9 @@ public class VehicleManager implements Listener{
 	public static final String TICKET_NEEDED = "§cYou need a ticket for this vehicle.";
 	public static final String TICKET_PASSENGER_ONLY = "§cA ticket only lets you ride in a passenger seat.";
 	public static final String NOT_ALLOWED_ABOARD = "§cThe owner has not allowed you aboard this vehicle.";
+	// Checkpoints run every 5 minutes; the SQLite backup copy runs on every 6th.
+	static final int BACKUP_EVERY_CHECKPOINTS = 6;
+	private int checkpoints;
 
 	private ItemAPI api = TLibs.getItemAPI();
 	private InventoryManager inv = new InventoryManager();
@@ -352,18 +355,24 @@ public class VehicleManager implements Listener{
 					VFLogger.log("Checkpoint skipped: SQLite is not open");
 					return;
 				}
+				List<ActiveVehicle> live = new ArrayList<>();
 				for (ActiveVehicle v : vehicles.values()) {
-					if (v.isDestroyed()) {
-						continue;
+					if (!v.isDestroyed()) {
+						live.add(v);
 					}
-					VehiclePersistResult result = persistence.saveLiveResult(v);
+				}
+				persistence.saveLiveBatch(live).forEach((v, result) -> {
 					if (result.isFailed()) {
 						VFLogger.log("Failed to persist " + describeVehicle(v) + " at " + describeLocation(v)
 								+ " during checkpoint: " + result.reason());
 					}
-				}
+				});
 				persistence.checkpointWal(false);
-				persistence.vacuumIntoBackup();
+				// The backup copies the whole database on the main thread, so it runs every
+				// BACKUP_EVERY_CHECKPOINTS checkpoints (30 minutes), starting with the first.
+				if (checkpoints++ % BACKUP_EVERY_CHECKPOINTS == 0) {
+					persistence.vacuumIntoBackup();
+				}
 	        }
 	    }.runTaskTimer(VehicleFramework.plugin, 0L, 6000L);
 	}
