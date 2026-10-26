@@ -16,10 +16,10 @@ public class ConvertedAngle {
 	
 	public ConvertedAngle(Quaternionf quaternion) {
 
-		// Calculate the yaw (rotation around the Y-axis) in Minecraft's range (-180 to 180)
+		// Inverse of rotateYXZ(yaw, pitch, roll); yaw is in Minecraft's range (-180 to 180)
 		float yawRadians = (float) Math.atan2(
 		    2.0f * (quaternion.w * quaternion.y + quaternion.x * quaternion.z),
-		    1.0f - 2.0f * (quaternion.y * quaternion.y + quaternion.z * quaternion.z)
+		    1.0f - 2.0f * (quaternion.x * quaternion.x + quaternion.y * quaternion.y)
 		);
 		yaw = (float) Math.toDegrees(yawRadians);
 
