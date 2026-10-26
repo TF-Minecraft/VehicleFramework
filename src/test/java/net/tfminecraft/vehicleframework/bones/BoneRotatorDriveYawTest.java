@@ -1,6 +1,7 @@
 package net.tfminecraft.vehicleframework.bones;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -41,6 +42,24 @@ class BoneRotatorDriveYawTest {
 		new RotateController().turnRight(f.rotator, f.vehicle, f.captain);
 
 		assertEquals(-1.2f, boneYaw(f.rotator), 0.01f);
+	}
+
+	@Test
+	void bankedTurnHeadingIsWhereGroundTurningStarts() {
+		Fixture f = new Fixture();
+		f.rotator.reset();
+		f.rotator.rotate(0, 0, -12);
+		for (int i = 0; i < 8; i++) {
+			f.rotator.rotate(-1, 0, 0);
+		}
+		// Landing: level pitch and roll, keep the heading.
+		f.rotator.rotateToTarget(0f, -10f, 0f, 1f, false, true, true);
+		float landed = boneYaw(f.rotator);
+
+		new RotateController().turnLeft(f.rotator, f.vehicle, f.captain);
+
+		assertTrue(Math.abs(landed) > 30f);
+		assertEquals(landed + 1.2f, boneYaw(f.rotator), 0.01f);
 	}
 
 	private static Quaternionf yaw(float degrees) {

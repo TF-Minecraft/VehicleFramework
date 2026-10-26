@@ -197,15 +197,14 @@ public class BoneRotator {
 			if(limits.withinAll((float) (currentAngles.getYaw()-yawOffset), currentAngles.getPitch(), currentAngles.getRoll())) {
 				// Combine the current rotation with the incremental rotation
 				currentRotation.mul(incrementalRotation);
-				if (y != 0.0) {
-					driveYaw = ConvertedAngle.wrapDegrees(driveYaw + (float) Math.toDegrees(y));
-				}
 				
 				// Normalize to avoid floating-point precision errors
 				currentRotation.normalize();
 
 				// Apply the new rotation back to the animator
 				animator.getRotation().set(currentRotation.x, currentRotation.y, currentRotation.z, currentRotation.w);
+				// Local pitch while rolled turns the heading too (banked turns), so re-read it.
+				syncDriveYaw();
 			}
 	    }
 	    // Trigger the animation (update the model with the new rotation)
