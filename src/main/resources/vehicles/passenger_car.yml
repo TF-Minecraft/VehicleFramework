@@ -1,6 +1,9 @@
 passenger_car:
     name: "§l§ePassenger Car"
     model: passenger_car
+    icon:
+        material: coal
+        model_data: 7416
     fixed: true
     skins:
         passenger_car:

@@ -1,6 +1,9 @@
 sloop:
     name: "§l§eSloop"
     model: sloop
+    icon:
+        material: coal
+        model_data: 7418
     skins:
         sloop:
             name: "Sloop"

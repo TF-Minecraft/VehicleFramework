@@ -1,6 +1,9 @@
 behemoth:
     name: "§l§eBehemoth"
     model: behemoth
+    icon:
+        material: coal
+        model_data: 7402
     skins:
         behemoth:
             name: "Behemoth"

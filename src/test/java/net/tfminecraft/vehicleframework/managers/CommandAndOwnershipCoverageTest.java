@@ -28,6 +28,7 @@ import net.tfminecraft.vehicleframework.managers.inventory.VFInventoryHolder;
 import net.tfminecraft.vehicleframework.tracks.*;
 import net.tfminecraft.vehicleframework.util.TabCompletion;
 import net.tfminecraft.vehicleframework.vehicles.*;
+import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleIcon;
 import net.tfminecraft.vehicleframework.vehicles.state.VehicleState;
 import net.tfminecraft.vehicleframework.weapons.ammunition.Ammunition;
 import net.tfminecraft.tlibs.character.*;
@@ -100,6 +101,16 @@ class CommandAndOwnershipCoverageTest {
         Cache.allowWhitelist = false; ownership.ownershipGui(menu, player, vehicle, false);
         assertEquals(Material.GRAY_STAINED_GLASS_PANE, menu.getItem(2).getType());
         assertEquals(Material.GRAY_STAINED_GLASS_PANE, menu.getItem(4).getType());
+    }
+
+    @Test void ownershipMenuShowsTheVehicleIconInItsOwnSlot() {
+        Inventory menu = inventory(27, null); ownership.ownershipGui(menu, player, vehicle, false);
+        assertEquals(Material.GRAY_STAINED_GLASS_PANE, menu.getItem(OwnershipGUIManager.VEHICLE_SLOT).getType());
+        when(vehicle.getIcon()).thenReturn(new VehicleIcon(Material.COAL, null)); when(vehicle.getName()).thenReturn("§l§eBiplane");
+        ownership.ownershipGui(menu, player, vehicle, false);
+        assertEquals(Material.COAL, menu.getItem(OwnershipGUIManager.VEHICLE_SLOT).getType());
+        assertEquals("§l§eBiplane", menu.getItem(OwnershipGUIManager.VEHICLE_SLOT).getItemMeta().getDisplayName());
+        assertTrue(OwnershipGUIManager.groupAt(OwnershipGUIManager.VEHICLE_SLOT).isEmpty());
     }
 
     @Test void commandsRespectNamePermissionAndUnknownArguments() {

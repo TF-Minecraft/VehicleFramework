@@ -1,6 +1,9 @@
 anti_air:
     name: "§l§eAnti-Air"
     model: anti_air
+    icon:
+        material: coal
+        model_data: 7401
     fixed: true
     skins:
         anti_air:

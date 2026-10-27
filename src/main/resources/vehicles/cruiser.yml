@@ -1,6 +1,9 @@
 cruiser:
     name: "§l§eCruiser"
     model: cruiser
+    icon:
+        material: coal
+        model_data: 7407
     skins:
         cruiser:
             name: "Cruiser"

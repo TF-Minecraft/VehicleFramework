@@ -1,6 +1,9 @@
 aa_turret:
     name: "§l§eAnti-Air Turret"
     model: aa_turret
+    icon:
+        material: coal
+        model_data: 7400
     fixed: true
     skins:
         aa_turret:

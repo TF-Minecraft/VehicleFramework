@@ -1,6 +1,9 @@
 field_artillery:
     name: "§l§eField Artillery"
     model: field_artillery
+    icon:
+        material: coal
+        model_data: 7408
     fixed: true
     towable: true
     skins:

@@ -1,6 +1,9 @@
 bomber:
     name: "§l§eBomber"
     model: bomber
+    icon:
+        material: coal
+        model_data: 7404
     skins:
         bomber:
             name: "Bomber"

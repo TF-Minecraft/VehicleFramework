@@ -1,6 +1,9 @@
 ironclad:
     name: "§l§eIronclad"
     model: ironclad
+    icon:
+        material: coal
+        model_data: 7414
     skins:
         ironclad:
             name: "Ironclad"

@@ -1,6 +1,9 @@
 coal_car:
     name: "§l§eCoal Car"
     model: coal_car
+    icon:
+        material: coal
+        model_data: 7406
     fixed: true
     skins:
         coal_car:

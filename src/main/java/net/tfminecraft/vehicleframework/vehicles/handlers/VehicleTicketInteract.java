@@ -53,14 +53,15 @@ public final class VehicleTicketInteract {
 	private static void mintOne(Player player, ItemStack hand, ActiveVehicle source) {
 		String ticketId = source.getOwnerData().getTicketId();
 		String name = source.getName();
+		VehicleIcon icon = source.getIcon();
 		if (hand.getAmount() <= 1) {
-			VehicleTicketItems.write(hand, ticketId, name);
+			VehicleTicketItems.write(hand, ticketId, name, icon);
 			return;
 		}
 		hand.setAmount(hand.getAmount() - 1);
 		ItemStack ticket = hand.clone();
 		ticket.setAmount(1);
-		VehicleTicketItems.write(ticket, ticketId, name);
+		VehicleTicketItems.write(ticket, ticketId, name, icon);
 		PlayerInventory inv = player.getInventory();
 		java.util.HashMap<Integer, ItemStack> leftover = inv.addItem(ticket);
 		if (!leftover.isEmpty() && player.getWorld() != null) {

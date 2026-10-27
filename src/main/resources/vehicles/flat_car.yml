@@ -1,6 +1,9 @@
 flat_car:
     name: "§l§eFlat Car"
     model: flat_car
+    icon:
+        material: coal
+        model_data: 7410
     fixed: true
     skins:
         flat_car:

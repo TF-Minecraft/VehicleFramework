@@ -1,6 +1,9 @@
 biplane:
     name: "§l§eBiplane"
     model: biplane
+    icon:
+        material: coal
+        model_data: 7403
     skins:
         biplane:
             name: "Biplane"
