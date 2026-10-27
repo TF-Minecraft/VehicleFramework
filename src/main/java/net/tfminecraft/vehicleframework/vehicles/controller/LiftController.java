@@ -81,7 +81,7 @@ public class LiftController {
 
 	            // Apply an upper bound to lift
 	            if (lift > 0.52) lift = 0.52;
-	            // Jammed against a block on the ground it has no airspeed, so it cannot lift off.
+	            // A block within reach on the ground may be holding it still, so it gets no lift there.
 	            if (groundBlocked) lift = 0;
 
 	            // Calculate lift vector relative to plane's orientation
