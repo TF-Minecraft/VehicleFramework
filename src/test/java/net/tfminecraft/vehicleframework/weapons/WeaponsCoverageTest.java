@@ -265,6 +265,19 @@ class WeaponsCoverageTest {
   }
 
   @Test
+  void meleeHitsWeaponsLikeTheHullUnlessConfigured() throws Exception {
+    Weapon stored = new Weapon("aa", new YamlConfiguration());
+    ActiveWeapon active = new ActiveWeapon(model, vehicle, stored, null);
+    active.damage("ENTITY_ATTACK", 40);
+    assertEquals(4, active.getHealthData().getDamage(), 1e-9);
+    active.damage("ENTITY_EXPLOSION", 10);
+    assertEquals(14, active.getHealthData().getDamage(), 1e-9);
+
+    Weapon fragile = new Weapon("fragile", Rig.yaml("damage: [entity_attack(1.0)]\n"));
+    assertEquals(1.0, fragile.getDamageData().getModifier("ENTITY_ATTACK"));
+  }
+
+  @Test
   void defaultsAndFallbacksSupportEveryProjectileType() throws Exception {
     Weapon stored = new Weapon("default", new YamlConfiguration());
     assertEquals("default", stored.getName());

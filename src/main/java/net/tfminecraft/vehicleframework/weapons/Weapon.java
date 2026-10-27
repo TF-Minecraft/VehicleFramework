@@ -53,6 +53,7 @@ public class Weapon {
 	protected Integer projectileClusterAmount;
 
 	public static final double DEFAULT_CURSOR_RANGE = 80.0;
+	public static final double MELEE_MODIFIER = 0.1;
 	
 	@SuppressWarnings("unchecked")
 	public Weapon(String key, ConfigurationSection config) {
@@ -94,6 +95,8 @@ public class Weapon {
 		damageData = new DamageData((List<String>) config.getList("damage", new ArrayList<String>()));
 		// Landing must not wreck guns; components already get FALL 0 from armour templates.
 		damageData.getModifiers().putIfAbsent("FALL", 0.0);
+		// Every weapon takes each hit on the vehicle in full, so melee gets the hull's 0.1 from the armour templates.
+		damageData.getModifiers().putIfAbsent("ENTITY_ATTACK", MELEE_MODIFIER);
 		if(config.isConfigurationSection("animations")) {
 			animationHandler = new AnimationHandler(config.getConfigurationSection("animations"));
 		} else {
