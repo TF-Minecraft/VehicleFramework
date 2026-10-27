@@ -28,6 +28,9 @@ public class LiftController {
 	/** Blocks lower than this above the hitbox floor are what the vehicle skims or lands on, not walls. */
 	static final double FLOOR_CLEARANCE = 0.5;
 
+	/** Set by {@link #checkHitWall} each tick, before {@link #calculateLift} runs. */
+	private boolean groundBlocked;
+
 	/** Healthy balloon: climb/descend delta, or hover at 0. Damaged balloon sinks with health lift. */
 	public static double balloonVerticalY(double healthLift, double delta) {
 		if (healthLift < 0) {
@@ -78,6 +81,8 @@ public class LiftController {
 
 	            // Apply an upper bound to lift
 	            if (lift > 0.52) lift = 0.52;
+	            // Jammed against a block on the ground it has no airspeed, so it cannot lift off.
+	            if (groundBlocked) lift = 0;
 
 	            // Calculate lift vector relative to plane's orientation
 	            Vector liftVector = calculateLiftVector(angles, lift);
@@ -107,16 +112,19 @@ public class LiftController {
     }
     
     public void checkHitWall(ActiveVehicle vehicle) {
+		groundBlocked = false;
     	if(vehicle.isDestroyed()) return;
     	if(!(vehicle.hasComponent(Component.WINGS) || vehicle.hasComponent(Component.BALLOON))) return;
 		if(vehicle.getAccessPanel().getSpeed() < 0.3) return;
-		// On the ground the hitbox's own block collision halts the vehicle; only a flying one wrecks.
-		VehicleState current = vehicle.getStateHandler().getCurrentState();
-		if (current != null && current.getType() == State.GROUND) return;
 		World world = vehicle.getEntity().getWorld();
-		if (touchesSolid(contactZone(vehicle.getEntity().getBoundingBox()), (x, y, z) -> solidBoxes(world, x, y, z))) {
-			vehicle.kill(VehicleDeath.EXPLODE);
+		if (!touchesSolid(contactZone(vehicle.getEntity().getBoundingBox()), (x, y, z) -> solidBoxes(world, x, y, z))) return;
+		VehicleState current = vehicle.getStateHandler().getCurrentState();
+		if (current != null && current.getType() == State.GROUND) {
+			// On the ground the hitbox's own block collision halts it; only a flying vehicle wrecks.
+			groundBlocked = true;
+			return;
 		}
+		vehicle.kill(VehicleDeath.EXPLODE);
     }
 
 	/** The hitbox widened by {@link #CONTACT_MARGIN} on each side, from {@link #FLOOR_CLEARANCE} above its floor to its top. */

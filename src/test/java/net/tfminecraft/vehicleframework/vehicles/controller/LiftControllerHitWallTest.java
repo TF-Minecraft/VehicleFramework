@@ -11,14 +11,19 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.util.BoundingBox;
+import org.bukkit.util.Vector;
 import org.bukkit.util.VoxelShape;
+import org.joml.AxisAngle4d;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import net.tfminecraft.vehicleframework.bones.BoneRotator;
 import net.tfminecraft.vehicleframework.enums.Component;
 import net.tfminecraft.vehicleframework.enums.State;
 import net.tfminecraft.vehicleframework.enums.VehicleDeath;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
+import net.tfminecraft.vehicleframework.vehicles.component.Engine;
+import net.tfminecraft.vehicleframework.vehicles.component.Wings;
 import net.tfminecraft.vehicleframework.vehicles.state.VehicleState;
 
 class LiftControllerHitWallTest {
@@ -72,7 +77,42 @@ class LiftControllerHitWallTest {
         when(state.getType()).thenReturn(State.GROUND);
         lift.checkHitWall(vehicle);
         verify(vehicle, never()).kill(any());
-        verify(world, never()).getBlockAt(anyInt(), anyInt(), anyInt());
+    }
+
+    private double liftAfterCheck() {
+        Wings wings = mock(Wings.class);
+        when(wings.getLift()).thenReturn(6.7);
+        Engine engine = mock(Engine.class, RETURNS_DEEP_STUBS);
+        when(engine.getThrottle().getCurrent()).thenReturn(100);
+        when(vehicle.hasComponent(Component.ENGINE)).thenReturn(true);
+        when(vehicle.getComponent(Component.WINGS)).thenReturn(wings);
+        when(vehicle.getComponent(Component.ENGINE)).thenReturn(engine);
+        BoneRotator rotator = mock(BoneRotator.class);
+        when(rotator.getAngles()).thenReturn(new AxisAngle4d());
+        lift.checkHitWall(vehicle);
+        return lift.calculateLift(rotator, vehicle, new Vector(.7, 0, 0)).getY();
+    }
+
+    @Test
+    void aPlaneJammedAgainstABlockOnTheGroundCannotLiftOff() {
+        placeChest();
+        when(state.getType()).thenReturn(State.GROUND);
+        assertEquals(-.49, liftAfterCheck(), 1e-9);
+    }
+
+    @Test
+    void aPlaneClearOfBlocksOnTheGroundStillLiftsOff() {
+        when(state.getType()).thenReturn(State.GROUND);
+        assertEquals(.03, liftAfterCheck(), 1e-9);
+    }
+
+    @Test
+    void theGroundBlockClearsOnTheNextCheck() {
+        placeChest();
+        when(state.getType()).thenReturn(State.GROUND);
+        liftAfterCheck();
+        when(vehicle.getAccessPanel().getSpeed()).thenReturn(.1);
+        assertEquals(.03, liftAfterCheck(), 1e-9);
     }
 
     @Test
