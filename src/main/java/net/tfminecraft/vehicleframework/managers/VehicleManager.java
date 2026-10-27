@@ -1178,12 +1178,12 @@ public class VehicleManager implements Listener{
 	    	return;
 	    }
 		
-		if(i.getType().equals(Material.YELLOW_CONCRETE)) {
+		NamespacedKey key = new NamespacedKey(VehicleFramework.plugin, "vf_skin_id");
+		String skinId = i.getItemMeta().getPersistentDataContainer().get(key, PersistentDataType.STRING);
+		if (skinId != null && skinId.equalsIgnoreCase(v.getSkinHandler().getCurrentSkin().getId())) {
 			p.sendMessage("§cAlready using this skin");
 			return;
 		}
-		NamespacedKey key = new NamespacedKey(VehicleFramework.plugin, "vf_skin_id");
-		String skinId = i.getItemMeta().getPersistentDataContainer().get(key, PersistentDataType.STRING);
 		if (skinId == null || !SkinHandler.isModelAvailable(v.getSkinHandler().getSkins().get(skinId))) {
 			p.sendMessage("§cThat skin is not available.");
 			return;

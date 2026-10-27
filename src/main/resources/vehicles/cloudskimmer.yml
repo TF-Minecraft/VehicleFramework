@@ -1,6 +1,9 @@
 cloudskimmer:
     name: "§l§eCloudskimmer"
     model: cloudskimmer
+    icon:
+        material: coal
+        model_data: 7405
     skins:
         cloudskimmer:
             name: "Cloudskimmer"

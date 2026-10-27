@@ -1,6 +1,9 @@
 simple_locomotive:
     name: "§l§eSimple Locomotive"
     model: simple_locomotive
+    icon:
+        material: coal
+        model_data: 7417
     skins:
         simple_locomotive:
             name: "Simple Locomotive"

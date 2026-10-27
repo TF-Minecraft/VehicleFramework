@@ -1,6 +1,9 @@
 small_car:
     name: "§l§eSmall Car"
     model: small_car
+    icon:
+        material: coal
+        model_data: 7419
     skins:
         small_car:
             name: "Small Car"

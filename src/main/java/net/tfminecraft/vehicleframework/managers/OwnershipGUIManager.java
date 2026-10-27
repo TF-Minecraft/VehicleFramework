@@ -35,6 +35,8 @@ public class OwnershipGUIManager {
     public static final int PICKER_TYPED_SLOT = 25;
     public static final int BACK_SLOT = 26;
     public static final int OWNER_SLOT = 22;
+    /** Shows the vehicle when it has an icon; clicking it does nothing. */
+    public static final int VEHICLE_SLOT = 18;
     /** The first group switch; the others follow every second slot in {@link AccessGroup} order. */
     public static final int FIRST_GROUP_SLOT = 10;
 
@@ -91,6 +93,9 @@ public class OwnershipGUIManager {
                             GroupAccess.describe(v, group)));
                 }
             }
+        }
+        if (v.getIcon() != null) {
+            i.setItem(VEHICLE_SLOT, createVehicleInfo(v));
         }
         if (OwnershipMode.characters()) {
             i.setItem(OWNER_SLOT, createOwnerInfo(v.getOwnerData().getOwner(), Permissions.isAdmin(p)));
@@ -325,6 +330,16 @@ public class OwnershipGUIManager {
         List<String> lore = new ArrayList<>();
         lore.add("§aClick to add to the whitelist");
         m.setLore(lore);
+        i.setItemMeta(m);
+        return i;
+    }
+
+    // Keep the existing legacy text representation, formatting, and exact-string comparisons.
+    @SuppressWarnings("deprecation")
+    private ItemStack createVehicleInfo(ActiveVehicle v) {
+        ItemStack i = v.getIcon().createItem();
+        ItemMeta m = i.getItemMeta();
+        m.setDisplayName(v.getName());
         i.setItemMeta(m);
         return i;
     }

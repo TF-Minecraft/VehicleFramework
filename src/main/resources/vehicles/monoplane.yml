@@ -1,6 +1,9 @@
 monoplane:
     name: "§l§eMonoplane"
     model: monoplane
+    icon:
+        material: coal
+        model_data: 7415
     skins:
         monoplane:
             name: "Monoplane"

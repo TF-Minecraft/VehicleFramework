@@ -329,6 +329,19 @@ class OwnershipManagerTest {
 		assertEquals(List.of("player_Bob"), named.getOwnerData().getWhiteList()); assertFalse(named.getOwnerData().isWhiteListed());
 	}
 
+	@Test
+	void clickingTheVehicleIconInTheOwnershipMenuDoesNothing() {
+		groupService();
+		ActiveVehicle v = vehicle(owner(kira));
+		InventoryClickEvent click = menu(alex, v, OwnershipGUIManager.VEHICLE_SLOT);
+		manager.ownershipClick(click);
+		verify(click).setCancelled(true);
+		verify(alex, never()).sendMessage(anyString());
+		verify(alex, never()).closeInventory();
+		verify(gui, never()).ownershipGui(any(), any(), any(), anyBoolean());
+		assertTrue(events.isEmpty());
+	}
+
 	private VehicleAccessGroups groupService() {
 		VehicleAccessGroups groups = mock(VehicleAccessGroups.class);
 		when(groups.ready()).thenReturn(true);

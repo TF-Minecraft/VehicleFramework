@@ -1,6 +1,9 @@
 fixed_artillery:
     name: "§l§eFixed Artillery"
     model: fixed_artillery
+    icon:
+        material: coal
+        model_data: 7409
     fixed: true
     skins:
         fixed_artillery:

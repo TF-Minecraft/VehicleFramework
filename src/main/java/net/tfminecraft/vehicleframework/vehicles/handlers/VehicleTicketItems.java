@@ -35,7 +35,7 @@ public final class VehicleTicketItems {
 
 	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
 	@SuppressWarnings("deprecation")
-	public static void write(ItemStack item, String ticketId, String vehicleName) {
+	public static void write(ItemStack item, String ticketId, String vehicleName, VehicleIcon icon) {
 		if (item == null || ticketId == null || ticketId.isBlank()) {
 			return;
 		}
@@ -49,6 +49,10 @@ public final class VehicleTicketItems {
 		List<String> lore = new ArrayList<>();
 		lore.add("§7Valid for this vehicle");
 		meta.setLore(lore);
+		// The ticket looks like the vehicle it admits to.
+		if (icon != null) {
+			icon.applyModel(meta);
+		}
 		item.setItemMeta(meta);
 	}
 

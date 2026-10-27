@@ -616,13 +616,30 @@ class VehicleManagerCoverageTest {
     }
 
     @Test
+    void vehicleInfoInTheSeatMenuIsNotASeat() {
+        ActiveVehicle v = vehicle("v"); Player player = player("Ryan"); register(v);
+        v.getOwnerData().setOwner("player_Ryan"); manager.seatInteract(player, v); clearInvocations(player);
+        InventoryClickEvent event = click(player, v, VFGUI.SEAT_SELECTION, 24, item(Material.COAL, null));
+        manager.seatSelect(event);
+        verify(event).setCancelled(true); verify(player, never()).sendMessage(anyString()); verify(player, never()).closeInventory();
+        verify(v, never()).addPassenger(any(), any()); verify(v, never()).dismountPassenger(any(), anyBoolean());
+        verify(ownership.constructed().getFirst(), never()).ownershipGui(any(), any(), any(), anyBoolean());
+    }
+
+    @Test
     void skinSelectionValidatesModelAndRefreshesOnSuccessfulChange() {
         ActiveVehicle v = vehicle("v"); Player player = player("Ryan"); manager.skinInteract(player, v);
-        InventoryClickEvent event = click(player, v, VFGUI.SKIN_SELECTION, 0, item(Material.YELLOW_CONCRETE, "blue"));
+        when(v.getSkinHandler().getCurrentSkin().getId()).thenReturn("red");
+        InventoryClickEvent event = click(player, v, VFGUI.SKIN_SELECTION, 0, item(Material.YELLOW_CONCRETE, "red"));
         manager.skinSelect(event); verify(player).sendMessage("§cAlready using this skin");
+        // Icon menus show every skin as the same item, so the current skin is found by its id.
+        doReturn(item(Material.COAL, "RED")).when(event).getCurrentItem();
+        manager.skinSelect(event); verify(player, times(2)).sendMessage("§cAlready using this skin");
+        doReturn(item(Material.COAL, null)).when(event).getCurrentItem();
+        manager.skinSelect(event); verify(player).sendMessage("§cThat skin is not available.");
         doReturn(item(Material.GREEN_CONCRETE, "blue")).when(event).getCurrentItem();
         try (MockedStatic<SkinHandler> skins = mockStatic(SkinHandler.class)) {
-            manager.skinSelect(event); verify(player).sendMessage("§cThat skin is not available.");
+            manager.skinSelect(event); verify(player, times(2)).sendMessage("§cThat skin is not available.");
             skins.when(() -> SkinHandler.isModelAvailable(any(net.tfminecraft.vehicleframework.vehicles.handlers.skins.VehicleSkin.class))).thenReturn(true);
             manager.skinSelect(event); verify(player).sendMessage("§cCould not change skin.");
             when(v.changeSkin("blue")).thenReturn(true); manager.skinSelect(event);

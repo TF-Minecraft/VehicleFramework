@@ -67,6 +67,7 @@ import net.tfminecraft.vehicleframework.vehicles.handlers.TowHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.TrainHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.train.ConsistRelinker;
 import net.tfminecraft.vehicleframework.vehicles.handlers.UtilityHandler;
+import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleIcon;
 import net.tfminecraft.vehicleframework.vehicles.handlers.WeaponHandler;
 import net.tfminecraft.vehicleframework.vehicles.seat.Seat;
 import net.tfminecraft.vehicleframework.vehicles.state.VehicleState;
@@ -83,6 +84,7 @@ public class ActiveVehicle {
 	protected String id;
 	protected String uuid;
 	protected String name;
+	protected VehicleIcon icon;
 	
 	protected boolean fixed;
 	
@@ -154,6 +156,7 @@ public class ActiveVehicle {
 		towable = stored.isTowable();
 		id = stored.getId();
 		name = stored.getName();
+		icon = stored.getIcon();
 		uuid = UUID.randomUUID().toString();
 		destroyed = false;
 		initialized = false;
@@ -320,6 +323,11 @@ public class ActiveVehicle {
 
 	public List<String> getEntitySeatWhitelist() {
 		return entitySeatWhitelist;
+	}
+
+	/** The vehicle's menu and ticket icon, or null when its config has none. */
+	public VehicleIcon getIcon() {
+		return icon;
 	}
 	
 	//Model

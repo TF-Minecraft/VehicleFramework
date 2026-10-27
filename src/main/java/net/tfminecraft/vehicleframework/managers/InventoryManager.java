@@ -30,6 +30,7 @@ import net.tfminecraft.vehicleframework.vehicles.component.VehicleComponent;
 import net.tfminecraft.vehicleframework.vehicles.component.Wings;
 import net.tfminecraft.vehicleframework.vehicles.handlers.container.Container;
 import net.tfminecraft.vehicleframework.vehicles.handlers.SkinHandler;
+import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleIcon;
 import net.tfminecraft.vehicleframework.vehicles.handlers.skins.VehicleSkin;
 import net.tfminecraft.vehicleframework.vehicles.seat.Seat;
 import net.tfminecraft.vehicleframework.weapons.ActiveWeapon;
@@ -41,7 +42,10 @@ public class InventoryManager {
 	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
 	@SuppressWarnings("deprecation")
 	public void seatSelection(Inventory i, Player p, ActiveVehicle v, boolean open) {
-		int size = Math.max(27, ((v.getSeatHandler().getSeats().size() + 10) / 9) * 9);
+		VehicleIcon icon = v.getIcon();
+		// Slots 25 and 26 hold the ownership and dismount controls; slot 24 shows the vehicle when it has an icon.
+		int firstControl = icon == null ? 25 : 24;
+		int size = Math.max(27, ((v.getSeatHandler().getSeats().size() + 27 - firstControl + 8) / 9) * 9);
 		if(open || i.getSize() < size) {
 			i = VehicleFramework.plugin.getServer().createInventory(new VFInventoryHolder(v.getUUID(), VFGUI.SEAT_SELECTION), size, "§7Select Seat");
 			open = true;
@@ -49,10 +53,11 @@ public class InventoryManager {
 		i.clear();
 		int x = 0;
 		for(Seat seat : v.getSeatHandler().getSeats()) {
-			if(x == 25) x += 2; // ownership and dismount controls
+			if(x == firstControl) x = 27;
 			i.setItem(x, getSeatItem(v, seat));
 			x++;
 		}
+		if(icon != null) i.setItem(24, createVehicleInfo(v, icon));
 		// Slot 25 – ownership settings button (owner, or staff on an owned vehicle)
 		if(OwnershipActions.mayOpenMenu(p, v)) {
 			i.setItem(25, ownershipGUI.createOwnershipButton());
@@ -119,6 +124,18 @@ public class InventoryManager {
 	}
 	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
 	@SuppressWarnings("deprecation")
+	private ItemStack createVehicleInfo(ActiveVehicle v, VehicleIcon icon) {
+		ItemStack i = icon.createItem();
+		ItemMeta m = i.getItemMeta();
+		m.setDisplayName(v.getName());
+		List<String> lore = new ArrayList<>();
+		lore.add("§7Type: §e"+Text.capitalize(v.getId().replace("_", " ")));
+		m.setLore(lore);
+		i.setItemMeta(m);
+		return i;
+	}
+	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
+	@SuppressWarnings("deprecation")
 	private ItemStack createDismountButton() {
 		ItemStack i = new ItemStack(Material.BARRIER, 1);
 		ItemMeta m = i.getItemMeta();
@@ -139,7 +156,7 @@ public class InventoryManager {
 			int x = 0;
 			for(VehicleComponent c : v.getComponents()) {
 				while(locked.contains(x)) x++;
-				i.setItem(x, getComponentItem(c));
+				i.setItem(x, getComponentItem(v, c));
 				x++;
 			}
 			for(ActiveWeapon weapon : v.getWeaponHandler().getWeapons()) {
@@ -216,11 +233,15 @@ public class InventoryManager {
 		return i;
 	}
 	@SuppressWarnings("deprecation")
-	private ItemStack getComponentItem(VehicleComponent c) {
+	private ItemStack getComponentItem(ActiveVehicle v, VehicleComponent c) {
 		ItemStack i = new ItemStack(Material.GREEN_CONCRETE, 1);
 		String type = "none";
 		if(c instanceof Hull) {
-			i.setType(Material.NETHERITE_BLOCK);
+			if(v.getIcon() != null) {
+				i = v.getIcon().createItem();
+			} else {
+				i.setType(Material.NETHERITE_BLOCK);
+			}
 			type = "hull";
 		} else if(c instanceof Engine) {
 			i.setType(Material.BLAST_FURNACE);
@@ -290,7 +311,7 @@ public class InventoryManager {
 			if (!SkinHandler.isModelAvailable(skin) && !skin.getId().equalsIgnoreCase(currentId)) {
 				continue;
 			}
-			i.setItem(x, getSkinItem(skin, currentId));
+			i.setItem(x, getSkinItem(skin, currentId, v.getIcon()));
 			x++;
 		}
 		//i.setItem(26, createDismountButton());
@@ -312,16 +333,26 @@ public class InventoryManager {
 		
 	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
 	@SuppressWarnings("deprecation")
-	private ItemStack getSkinItem(VehicleSkin s, String active) {
-		ItemStack i = new ItemStack(Material.GREEN_CONCRETE, 1);
-		if(s.getId().equalsIgnoreCase(active)) {
-			i = new ItemStack(Material.YELLOW_CONCRETE, 1);
+	private ItemStack getSkinItem(VehicleSkin s, String active, VehicleIcon icon) {
+		boolean current = s.getId().equalsIgnoreCase(active);
+		ItemStack i;
+		if(icon != null) {
+			i = icon.createItem();
+		} else {
+			i = new ItemStack(current ? Material.YELLOW_CONCRETE : Material.GREEN_CONCRETE, 1);
 		}
 		ItemMeta m = i.getItemMeta();
-		if(s.getId().equalsIgnoreCase(active)) {
+		if(current) {
 			m.setDisplayName("§e"+s.getName());
 		} else {
 			m.setDisplayName("§a"+s.getName());
+		}
+		if(current && icon != null) {
+			m.addEnchant(Enchantment.UNBREAKING, 1, true);
+			m.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+			List<String> lore = new ArrayList<>();
+			lore.add("§eCurrent skin");
+			m.setLore(lore);
 		}
 		NamespacedKey key = new NamespacedKey(VehicleFramework.plugin, "vf_skin_id");
 		m.getPersistentDataContainer().set(key, PersistentDataType.STRING, s.getId());

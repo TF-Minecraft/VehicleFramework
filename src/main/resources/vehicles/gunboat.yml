@@ -1,6 +1,9 @@
 gunboat:
     name: "§l§eGunboat"
     model: gunboat
+    icon:
+        material: coal
+        model_data: 7411
     skins:
         gunboat:
             name: "Guboat"

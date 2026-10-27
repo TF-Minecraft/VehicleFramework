@@ -123,7 +123,10 @@ class ActiveVehicleTest {
         when(stored.isFixed()).thenReturn(true);
         when(stored.isTowable()).thenReturn(true);
         when(stored.getEntitySeatWhitelist()).thenReturn(List.of("v.cow"));
+        VehicleIcon icon = new VehicleIcon(Material.COAL, 7403);
+        when(stored.getIcon()).thenReturn(icon);
         ActiveVehicle v = create();
+        assertSame(icon, v.getIcon());
         assertTrue(v.isInitialized());
         assertFalse(v.isDestroyed());
         assertTrue(v.isFixed());

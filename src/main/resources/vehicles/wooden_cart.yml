@@ -1,6 +1,9 @@
 wooden_cart:
     name: "§l§eWooden Cart"
     model: wooden_cart
+    icon:
+        material: coal
+        model_data: 7421
     skins:
         wooden_cart:
             name: "Wooden Cart"

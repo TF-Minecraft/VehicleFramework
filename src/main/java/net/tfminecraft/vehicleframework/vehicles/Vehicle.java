@@ -18,6 +18,7 @@ import net.tfminecraft.vehicleframework.vehicles.handlers.SkinHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.StateHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.TowHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.UtilityHandler;
+import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleIcon;
 import net.tfminecraft.vehicleframework.vehicles.handlers.container.ContainerHandler;
 import net.tfminecraft.vehicleframework.loaders.DeathTemplateLoader;
 import net.tfminecraft.vehicleframework.loaders.WeaponTemplateLoader;
@@ -31,6 +32,9 @@ public class Vehicle {
 	protected String id;
 	protected String name;
 	protected String model;
+	
+	//Menu and ticket icon, null when the config has none
+	protected VehicleIcon icon;
 	
 	protected boolean fixed;
 	
@@ -85,6 +89,7 @@ public class Vehicle {
 		towable = config.getBoolean("towable", false);
 		if(!config.contains("model")) VFLogger.log(key+" does not contain a model field");
 		model = config.getString("model");
+		if(config.contains("icon")) icon = VehicleIcon.load(key, config.getConfigurationSection("icon"));
 		skinHandler = new SkinHandler(model, config.getConfigurationSection("skins"));
 		
 		stateHandler = new StateHandler(config.getConfigurationSection("states"));
@@ -168,6 +173,10 @@ public class Vehicle {
 
 	public String getModel() {
 		return model;
+	}
+	
+	public VehicleIcon getIcon() {
+		return icon;
 	}
 	
 	public boolean isFixed() {

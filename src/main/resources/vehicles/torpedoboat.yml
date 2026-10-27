@@ -1,6 +1,9 @@
 torpedoboat:
     name: "§l§eTorpedoboat"
     model: torpedoboat
+    icon:
+        material: coal
+        model_data: 7420
     skins:
         torpedoboat:
             name: "Torpedoboat"

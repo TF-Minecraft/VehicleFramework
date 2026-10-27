@@ -61,6 +61,7 @@ class VehicleHandlersCoverageTest {
     private final BukkitScheduler scheduler = mock(BukkitScheduler.class);
     private final World world = mock(World.class);
     private MockedStatic<ModelEngineAPI> modelApi;
+    private MockedStatic<VFLogger> logger;
     private VehicleFramework previousPlugin;
     private String previousTicket;
 
@@ -68,7 +69,7 @@ class VehicleHandlersCoverageTest {
         previousPlugin = VehicleFramework.plugin; previousTicket = Cache.ticketItem;
         VehicleFramework.plugin = mock(VehicleFramework.class); when(VehicleFramework.plugin.getName()).thenReturn("VehicleFramework");
         when(VehicleFramework.plugin.namespace()).thenReturn("vehicleframework");
-        keep(mockStatic(VFLogger.class)); keep(mockStatic(PersistenceLog.class));
+        logger = keep(mockStatic(VFLogger.class)); keep(mockStatic(PersistenceLog.class));
         var bukkit = keep(mockStatic(Bukkit.class)); bukkit.when(Bukkit::getScheduler).thenReturn(scheduler);
         when(scheduler.runTaskLater(any(), any(Runnable.class), anyLong())).thenAnswer(c -> task(c.getArgument(1), later));
         when(scheduler.runTaskTimer(any(), any(Runnable.class), anyLong(), anyLong())).thenAnswer(c -> task(c.getArgument(1), timers));
@@ -117,6 +118,49 @@ class VehicleHandlersCoverageTest {
         YamlConfiguration config = vehicleConfig(); config.set("death.die.duration", 9);
         Vehicle template = new Vehicle("cart", config);
         assertTrue(template.getDeathData().stream().anyMatch(data -> data.getType() == VehicleDeath.DIE && data.getDuration() == 9));
+    }
+
+    @Test void optionalIconSectionGivesTheVehicleAnIconAndUnknownMaterialsAreReported() {
+        YamlConfiguration config = vehicleConfig();
+        assertNull(new Vehicle("biplane", config).getIcon());
+        config.set("icon.material", " COAL "); config.set("icon.model_data", 7403);
+        VehicleIcon icon = new Vehicle("biplane", config).getIcon();
+        assertEquals(Material.COAL, icon.getMaterial()); assertEquals(7403, icon.getModelData());
+        config.set("icon.model_data", null);
+        assertNull(new Vehicle("biplane", config).getIcon().getModelData());
+        config.set("icon.material", "not_a_material"); assertNull(new Vehicle("biplane", config).getIcon());
+        logger.verify(() -> VFLogger.log("biplane has an icon without a known material: not_a_material"));
+        config.set("icon", "coal"); assertNull(new Vehicle("biplane", config).getIcon());
+        logger.verify(() -> VFLogger.log("biplane has an icon without a known material: null"));
+        config.set("icon", null); config.set("icon.model_data", 7); assertNull(new Vehicle("biplane", config).getIcon());
+        logger.verify(() -> VFLogger.log("biplane has an icon without a known material: null"), times(2));
+    }
+
+    @Test void iconItemsCarryTheirModelDataAndTicketsRenderAsTheIcon() {
+        List<Material> made = new ArrayList<>();
+        try (MockedConstruction<ItemStack> items = mockConstruction(ItemStack.class, (item, context) -> {
+            made.add((Material) context.arguments().get(0)); ItemMeta meta = mock(ItemMeta.class);
+            when(meta.getCustomModelDataComponent()).thenReturn(mock(org.bukkit.inventory.meta.components.CustomModelDataComponent.class));
+            when(item.getItemMeta()).thenReturn(meta);
+        })) {
+            ItemStack plain = new VehicleIcon(Material.COAL, null).createItem();
+            verify(plain, never()).setItemMeta(any()); verify(plain.getItemMeta(), never()).setCustomModelDataComponent(any());
+            ItemStack modelled = new VehicleIcon(Material.COAL, 7403).createItem();
+            ItemMeta modelledMeta = modelled.getItemMeta();
+            verify(modelledMeta.getCustomModelDataComponent()).setFloats(List.of(7403f));
+            verify(modelled).setItemMeta(modelledMeta);
+            assertEquals(List.of(Material.COAL, Material.COAL), made);
+        }
+        ItemStack ticket = stack(1); ItemMeta meta = ticket.getItemMeta();
+        var model = mock(org.bukkit.inventory.meta.components.CustomModelDataComponent.class); when(meta.getCustomModelDataComponent()).thenReturn(model);
+        VehicleTicketItems.write(ticket, "ABC", "Biplane", new VehicleIcon(Material.COAL, 7403));
+        assertEquals("ABC", VehicleTicketItems.readId(ticket)); verify(meta).setDisplayName("§eTicket: Biplane");
+        verify(meta).setLore(List.of("§7Valid for this vehicle")); verify(meta).setItemModel(NamespacedKey.minecraft("coal"));
+        verify(model).setFloats(List.of(7403f)); verify(meta).setCustomModelDataComponent(model); verify(ticket).setItemMeta(meta);
+        ItemStack plainTicket = stack(1);
+        VehicleTicketItems.write(plainTicket, "ABC", "Cart", new VehicleIcon(Material.PAPER, null));
+        verify(plainTicket.getItemMeta()).setItemModel(NamespacedKey.minecraft("paper"));
+        verify(plainTicket.getItemMeta()).setCustomModelDataComponent(null);
     }
 
     @Test void occupiedSeatCannotAttachOrReparentASecondVehicle() {
@@ -428,12 +472,13 @@ class VehicleHandlersCoverageTest {
 
     @Test void ticketMetadataRoundTripsAndSearchIncludesOffhandAndStorageOnly() {
         ItemStack ticket = stack(1); assertNull(VehicleTicketItems.readId(null)); assertNull(VehicleTicketItems.readId(mock(ItemStack.class)));
-        assertNull(VehicleTicketItems.readId(ticket)); VehicleTicketItems.write(ticket, " ", "ignored"); assertNull(VehicleTicketItems.readId(ticket));
-        VehicleTicketItems.write(null, "id", "Cart"); VehicleTicketItems.write(mock(ItemStack.class), "id", "Cart");
-        VehicleTicketItems.write(ticket, "ABC", null); assertEquals("ABC", VehicleTicketItems.readId(ticket));
+        assertNull(VehicleTicketItems.readId(ticket)); VehicleTicketItems.write(ticket, " ", "ignored", null); assertNull(VehicleTicketItems.readId(ticket));
+        VehicleTicketItems.write(null, "id", "Cart", null); VehicleTicketItems.write(mock(ItemStack.class), "id", "Cart", null);
+        VehicleTicketItems.write(ticket, "ABC", null, null); assertEquals("ABC", VehicleTicketItems.readId(ticket));
         verify(ticket.getItemMeta()).setDisplayName("§eTicket: vehicle"); verify(ticket.getItemMeta()).setLore(List.of("§7Valid for this vehicle"));
         ticket.getItemMeta().getPersistentDataContainer().set(VehicleTicketItems.key(), PersistentDataType.STRING, " "); assertNull(VehicleTicketItems.readId(ticket));
-        VehicleTicketItems.write(ticket, "ABC", "Cart");
+        VehicleTicketItems.write(ticket, "ABC", "Cart", null);
+        verify(ticket.getItemMeta(), never()).setItemModel(any());
         Player rider = player("Rider"); assertFalse(VehicleTicketItems.inventoryHas(null, "ABC")); assertFalse(VehicleTicketItems.inventoryHas(rider, " "));
         when(rider.getInventory().getStorageContents()).thenReturn(null); assertFalse(VehicleTicketItems.inventoryHas(rider, "ABC"));
         when(rider.getInventory().getItemInOffHand()).thenReturn(ticket); assertTrue(VehicleTicketItems.inventoryHas(rider, "abc"));
@@ -470,7 +515,9 @@ class VehicleHandlersCoverageTest {
             ItemStack minted = c.getArgument(0); assertEquals(1, minted.getAmount()); assertEquals("train-pass", VehicleTicketItems.readId(minted));
             HashMap<Integer, ItemStack> leftovers = new HashMap<>(); if (full) leftovers.put(0, minted); return leftovers;
         });
+        VehicleIcon icon = mock(VehicleIcon.class); when(locomotive.getIcon()).thenReturn(icon);
         assertTrue(VehicleTicketInteract.handle(admin, vehicle)); assertEquals(3, blank.getAmount()); assertNull(VehicleTicketItems.readId(blank));
+        verify(icon).applyModel(any(ItemMeta.class)); verify(blank.getItemMeta(), never()).setItemModel(any());
         verify(admin.getInventory()).addItem(any(ItemStack.class));
         if (full) verify(world).dropItemNaturally(any(Location.class), any(ItemStack.class)); else verify(world, never()).dropItemNaturally(any(), any());
     }

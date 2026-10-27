@@ -13,6 +13,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.*;
 import net.tfminecraft.vehicleframework.VehicleFramework;
@@ -204,7 +205,67 @@ class InventoryManagerCoverageTest {
         assertEquals("§aAvailable", inventory.getItem(1).getItemMeta().getDisplayName());
         assertEquals("new", tag(inventory.getItem(1), "vf_skin_id"));
         assertEquals(Material.GRAY_STAINED_GLASS_PANE, inventory.getItem(2).getType());
+        assertEquals(List.of(), inventory.getItem(0).getItemMeta().getLore());
+        verify(inventory.getItem(0).getItemMeta(), never()).addEnchant(any(), anyInt(), anyBoolean());
         manager.skinSelection(inventory, player, vehicle, false); verify(player, times(1)).openInventory(any(Inventory.class));
+    }
+
+    @Test void iconSkinMenuShowsTheVehicleAndMarksTheCurrentSkinWithAGlint() {
+        when(vehicle.getIcon()).thenReturn(new VehicleIcon(Material.COAL, null));
+        SkinHandler skins = mock(SkinHandler.class); when(vehicle.getSkinHandler()).thenReturn(skins);
+        VehicleSkin active = skin("current", "Current"), available = skin("new", "Available");
+        when(skins.getCurrentSkin()).thenReturn(active);
+        HashMap<String, VehicleSkin> choices = new LinkedHashMap<>(); choices.put("current", active); choices.put("new", available);
+        when(skins.getSkins()).thenReturn(choices);
+        keep(mockStatic(SkinHandler.class)).when(() -> SkinHandler.isModelAvailable(any(VehicleSkin.class))).thenReturn(true);
+        manager.skinSelection(null, player, vehicle, true); Inventory inventory = created.get(0);
+        ItemStack current = inventory.getItem(0), other = inventory.getItem(1);
+        assertEquals(Material.COAL, current.getType()); assertEquals(Material.COAL, other.getType());
+        assertEquals("§eCurrent", current.getItemMeta().getDisplayName()); assertEquals("§aAvailable", other.getItemMeta().getDisplayName());
+        assertEquals(List.of("§eCurrent skin"), current.getItemMeta().getLore()); assertEquals(List.of(), other.getItemMeta().getLore());
+        verify(current.getItemMeta()).addEnchant(Enchantment.UNBREAKING, 1, true);
+        verify(current.getItemMeta()).addItemFlags(ItemFlag.HIDE_ENCHANTS);
+        verify(other.getItemMeta(), never()).addEnchant(any(), anyInt(), anyBoolean());
+        assertEquals("current", tag(current, "vf_skin_id")); assertEquals("new", tag(other, "vf_skin_id"));
+    }
+
+    @Test void iconSeatMenuShowsTheVehicleInSlot24AndSeatsSkipIt() {
+        when(vehicle.getIcon()).thenReturn(new VehicleIcon(Material.COAL, null));
+        when(vehicle.getName()).thenReturn("§l§eLocomotive"); when(vehicle.getId()).thenReturn("simple_locomotive");
+        when(seats.getSeats()).thenReturn(List.of(new Seat(SeatType.CAPTAIN, "driver"))); when(vehicle.isPassenger(player, false)).thenReturn(true);
+        manager.seatSelection(null, player, vehicle, true); Inventory inventory = created.get(0);
+        assertEquals(27, inventory.getSize());
+        ItemStack info = inventory.getItem(24);
+        assertEquals(Material.COAL, info.getType()); assertEquals("§l§eLocomotive", info.getItemMeta().getDisplayName());
+        assertEquals(List.of("§7Type: §eSimple Locomotive"), info.getItemMeta().getLore()); assertNull(tag(info, "vf_seat_id"));
+        assertEquals("driver", tag(inventory.getItem(0), "vf_seat_id"));
+        assertEquals(Material.TRIPWIRE_HOOK, inventory.getItem(25).getType()); assertEquals(Material.BARRIER, inventory.getItem(26).getType());
+    }
+
+    @ParameterizedTest @CsvSource({"24,27", "25,36", "33,36", "34,45"})
+    void iconSeatMenuGrowsSoEverySeatStaysSelectable(int count, int size) {
+        when(vehicle.getIcon()).thenReturn(new VehicleIcon(Material.COAL, null)); when(vehicle.getId()).thenReturn("cart");
+        List<Seat> many = new ArrayList<>(); for (int i = 0; i < count; i++) many.add(new Seat(SeatType.PASSENGER, "seat_" + i));
+        when(seats.getSeats()).thenReturn(many); when(vehicle.isPassenger(player, false)).thenReturn(true);
+        manager.seatSelection(null, player, vehicle, true); Inventory inventory = created.get(0);
+        assertEquals(size, inventory.getSize());
+        long represented = Arrays.stream(inventory.getContents()).filter(Objects::nonNull)
+                .filter(item -> tag(item, "vf_seat_id") != null).count();
+        assertEquals(count, represented, "Every configured seat must remain selectable");
+        assertEquals(Material.COAL, inventory.getItem(24).getType());
+        assertEquals(Material.TRIPWIRE_HOOK, inventory.getItem(25).getType()); assertEquals(Material.BARRIER, inventory.getItem(26).getType());
+    }
+
+    @Test void iconRepairMenuShowsTheHullAsTheVehicle() {
+        when(vehicle.getIcon()).thenReturn(new VehicleIcon(Material.COAL, null));
+        List<VehicleComponent> components = new ArrayList<>();
+        components.add(component(Hull.class, Component.HULL)); components.add(component(Engine.class, Component.ENGINE));
+        when(vehicle.getComponents()).thenReturn(components); Inventory inventory = inventory(27, null);
+        manager.repairWindow(inventory, player, vehicle, false, "repair");
+        ItemStack hull = inventory.getItem(0);
+        assertEquals(Material.COAL, hull.getType()); assertEquals("hull", tag(hull, "vf_component_type"));
+        assertEquals("§7Hull", hull.getItemMeta().getDisplayName()); assertFalse(hull.getItemMeta().getLore().isEmpty());
+        assertEquals(Material.BLAST_FURNACE, inventory.getItem(1).getType());
     }
 
     private VehicleComponent component(Class<? extends VehicleComponent> type, Component kind) {

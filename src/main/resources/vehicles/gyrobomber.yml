@@ -1,6 +1,9 @@
 gyrobomber:
     name: "§l§eGyrobomber"
     model: gyrobomber
+    icon:
+        material: coal
+        model_data: 7412
     skins:
         gyrobomber:
             name: "Gyrobomber"
