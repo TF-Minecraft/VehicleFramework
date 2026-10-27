@@ -1,5 +1,9 @@
 package net.tfminecraft.vehicleframework.vehicles.controller;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
@@ -15,8 +19,14 @@ import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.component.Balloon;
 import net.tfminecraft.vehicleframework.vehicles.component.Engine;
 import net.tfminecraft.vehicleframework.vehicles.component.Wings;
+import net.tfminecraft.vehicleframework.vehicles.state.VehicleState;
 
 public class LiftController {
+
+	/** How close a solid block may come to the hitbox's sides before a flying vehicle counts as hitting it. */
+	static final double CONTACT_MARGIN = 0.5;
+	/** Blocks lower than this above the hitbox floor are what the vehicle skims or lands on, not walls. */
+	static final double FLOOR_CLEARANCE = 0.5;
 
 	/** Healthy balloon: climb/descend delta, or hover at 0. Damaged balloon sinks with health lift. */
 	public static double balloonVerticalY(double healthLift, double delta) {
@@ -100,26 +110,51 @@ public class LiftController {
     	if(vehicle.isDestroyed()) return;
     	if(!(vehicle.hasComponent(Component.WINGS) || vehicle.hasComponent(Component.BALLOON))) return;
 		if(vehicle.getAccessPanel().getSpeed() < 0.3) return;
-    	BoundingBox boundingBox = vehicle.getEntity().getBoundingBox().clone().expand(0.5, -1, 0.5);
-
-        // Iterate through all blocks within the expanded bounding box
-        boolean hitSomething = false;
-        for (int x = (int) Math.floor(boundingBox.getMinX()); x <= (int) Math.ceil(boundingBox.getMaxX()); x++) {
-            for (int y = (int) Math.floor(boundingBox.getMinY()); y <= (int) Math.ceil(boundingBox.getMaxY()); y++) {
-                for (int z = (int) Math.floor(boundingBox.getMinZ()); z <= (int) Math.ceil(boundingBox.getMaxZ()); z++) {
-                    Block block = vehicle.getEntity().getWorld().getBlockAt(x, y, z);
-                    if (!block.isPassable()) {
-                        hitSomething = true;
-                        break;
-                    }
-                }
-                if (hitSomething) break;
-            }
-            if (hitSomething) break;
-        }
-        
-        if (hitSomething /*&& vehicle.getStateHandler().getCurrentState().getType().equals(State.FLYING)*/) {
-        	vehicle.kill(VehicleDeath.EXPLODE);
-        }
+		// On the ground the hitbox's own block collision halts the vehicle; only a flying one wrecks.
+		VehicleState current = vehicle.getStateHandler().getCurrentState();
+		if (current != null && current.getType() == State.GROUND) return;
+		World world = vehicle.getEntity().getWorld();
+		if (touchesSolid(contactZone(vehicle.getEntity().getBoundingBox()), (x, y, z) -> solidBoxes(world, x, y, z))) {
+			vehicle.kill(VehicleDeath.EXPLODE);
+		}
     }
+
+	/** The hitbox widened by {@link #CONTACT_MARGIN} on each side, from {@link #FLOOR_CLEARANCE} above its floor to its top. */
+	static BoundingBox contactZone(BoundingBox hitbox) {
+		double floor = Math.min(FLOOR_CLEARANCE, hitbox.getHeight() / 2);
+		return new BoundingBox(
+				hitbox.getMinX() - CONTACT_MARGIN, hitbox.getMinY() + floor, hitbox.getMinZ() - CONTACT_MARGIN,
+				hitbox.getMaxX() + CONTACT_MARGIN, hitbox.getMaxY(), hitbox.getMaxZ() + CONTACT_MARGIN);
+	}
+
+	/** World-space collision boxes of the block at a position; empty when it is passable or unloaded. */
+	interface SolidLookup {
+		List<BoundingBox> at(int x, int y, int z);
+	}
+
+	/** True when a solid block's real collision shape reaches inside the zone (touching its edge is not enough). */
+	static boolean touchesSolid(BoundingBox zone, SolidLookup solids) {
+		for (int x = (int) Math.floor(zone.getMinX()); x <= (int) Math.floor(zone.getMaxX()); x++) {
+			for (int y = (int) Math.floor(zone.getMinY()); y <= (int) Math.floor(zone.getMaxY()); y++) {
+				for (int z = (int) Math.floor(zone.getMinZ()); z <= (int) Math.floor(zone.getMaxZ()); z++) {
+					for (BoundingBox box : solids.at(x, y, z)) {
+						if (box.overlaps(zone)) return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	static List<BoundingBox> solidBoxes(World world, int x, int y, int z) {
+		// Never load a chunk just to look for walls.
+		if (!world.isChunkLoaded(x >> 4, z >> 4)) return List.of();
+		Block block = world.getBlockAt(x, y, z);
+		if (block.isPassable()) return List.of();
+		List<BoundingBox> boxes = new ArrayList<>();
+		for (BoundingBox local : block.getCollisionShape().getBoundingBoxes()) {
+			boxes.add(local.clone().shift(x, y, z));
+		}
+		return boxes;
+	}
 }

@@ -10,6 +10,7 @@ import org.bukkit.block.Block;
 import org.bukkit.entity.*;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
+import org.bukkit.util.VoxelShape;
 import org.joml.AxisAngle4d;
 import org.joml.Quaternionf;
 import org.junit.jupiter.api.*;
@@ -529,6 +530,11 @@ class VehicleMovementControllerCoverageTest {
     @Test
     void flyingChassisCollisionDestroysVehicleOnlyWhenMovingIntoSolidBlock() {
         component(Component.WINGS, Wings.class);
+        when(state.getType()).thenReturn(State.FLYING);
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+        VoxelShape shape = mock(VoxelShape.class);
+        when(shape.getBoundingBoxes()).thenReturn(List.of(new BoundingBox(0, 0, 0, 1, 1, 1)));
+        when(ground.getCollisionShape()).thenReturn(shape);
         when(vehicle.isDestroyed()).thenReturn(true);
         controller.getLiftController().checkHitWall(vehicle);
         when(vehicle.isDestroyed()).thenReturn(false);
