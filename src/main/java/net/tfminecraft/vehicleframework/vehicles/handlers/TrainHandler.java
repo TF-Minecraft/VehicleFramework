@@ -14,6 +14,7 @@ import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.BoundingBox;
@@ -107,6 +108,11 @@ public class TrainHandler {
 	// A roof or other surface players can walk on, and the boxes that make it solid.
 	private Deck deck;
 	private DeckBody deckBody;
+	// Closer than this (a millionth of a block) to its pose, a car is already there.
+	private static final double POSE_EPS_SQ = 1e-12;
+	// The entity applyPose last placed. A new entity, or the first pose after loading or
+	// binding, is always placed in full.
+	private Entity posedEntity;
 	
 	public TrainHandler(ConfigurationSection config) {
 		locomotive = config.getBoolean("locomotive", false);
@@ -314,6 +320,7 @@ public class TrainHandler {
 		}
 		s = consist.getS() == null ? 0 : consist.getS();
 		checkLoadedPosition = splineId != null;
+		posedEntity = null;
 		travelSign = consist.getTravelSign();
 		orientation = consist.getOrientation();
 		junctionRoutes.clear();
@@ -612,6 +619,7 @@ public class TrainHandler {
 		s = 0;
 		travelSign = 1;
 		orientation = 1;
+		posedEntity = null;
 		junctionRoutes.clear();
 		clearArm();
 		routeJunctionId = null;
@@ -623,6 +631,7 @@ public class TrainHandler {
 			car.getTrainHandler().s = 0;
 			car.getTrainHandler().travelSign = 1;
 			car.getTrainHandler().orientation = 1;
+			car.getTrainHandler().posedEntity = null;
 			car.getTrainHandler().junctionRoutes.clear();
 		}
 	}
@@ -1429,10 +1438,18 @@ public class TrainHandler {
 		boolean idle = xz.lengthSquared() <= TrackSplineMotion.MOVE_EPS_SQ;
 		ConvertedAngle world = TrackSplineMotion.worldHeading(move, pose, 1);
 		Entity entity = vehicle.getEntity();
+		TrainHandler car = vehicle.getTrainHandler();
 		entity.setGravity(false);
-		entity.teleport(next);
-		entity.setVelocity(new Vector(0, 0, 0));
-		DeckBody deckAt = vehicle.getTrainHandler().getDeckBody();
+		// A standing train is posed every tick. Teleporting and stopping a car that is
+		// already still at its pose changes nothing, so skip that. Anything that moved or
+		// pushed the car since (an explosion, knockback, a piston) fails the check and the
+		// car snaps back as before.
+		if (car.posedEntity != entity || !stillAt(entity, move)) {
+			entity.teleport(next);
+			entity.setVelocity(new Vector(0, 0, 0));
+			car.posedEntity = entity;
+		}
+		DeckBody deckAt = car.getDeckBody();
 		if (deckAt != null) {
 			deckAt.place(new Deck.Frame(next.getX(), next.getY(), next.getZ(), pose.yaw, pose.pitch));
 		}
@@ -1455,6 +1472,16 @@ public class TrainHandler {
 		if (!idle && vehicle.getEntity() != null && vehicle.getEntity().getWorld() != null) {
 			TrackFx.crumbs(vehicle.getEntity().getWorld(), pose);
 		}
+	}
+
+	// Whether the car stands still where applyPose would put it. Mobs are excluded: they
+	// turn their heads, and the teleport also lines the body back up with the head.
+	private static boolean stillAt(Entity entity, Vector move) {
+		if (move.lengthSquared() > POSE_EPS_SQ || entity instanceof Mob) {
+			return false;
+		}
+		Vector velocity = entity.getVelocity();
+		return velocity != null && velocity.lengthSquared() == 0;
 	}
 
 	private static int facingSign(Location loc, TrackPose pose) {

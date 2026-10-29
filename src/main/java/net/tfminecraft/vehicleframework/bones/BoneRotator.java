@@ -24,7 +24,19 @@ public class BoneRotator {
 	private float driveYaw = 0f;
 
 	private RotationLimits limits;
-	
+
+	// The last rotateToTarget call that left the bone exactly as it was. The turn depends
+	// only on its arguments and the bone's rotation, so repeating it from that same
+	// rotation changes nothing either. A train standing on its track repeats it every tick.
+	private boolean settled;
+	private final Quaternionf settledRotation = new Quaternionf();
+	private int settledYaw;
+	private int settledPitch;
+	private int settledRoll;
+	private int settledSlerp;
+	private int settledAxes;
+	private boolean settledResult;
+
 	public BoneRotator(ActiveVehicle v, Entity e, ModelBone bone, RotationLimits limits) {
 		this.e = e;
 		id = bone.getBoneId();
@@ -123,8 +135,50 @@ public class BoneRotator {
 	public void setRotation(double yaw, double pitch, double roll, boolean shouldYaw, boolean shouldPitch, boolean shouldRoll) {
 		rotateToTarget((float) yaw, (float) pitch, (float) roll, 1f, shouldYaw, shouldPitch, shouldRoll);
 	}
-	//Voodoo
 	public boolean rotateToTarget(
+		    float targetYawDeg,
+		    float targetPitchDeg,
+		    float targetRollDeg,
+		    float slerpFactor,
+		    boolean shouldYaw,
+		    boolean shouldPitch,
+		    boolean shouldRoll
+		) {
+		int axes = (shouldYaw ? 1 : 0) | (shouldPitch ? 2 : 0) | (shouldRoll ? 4 : 0);
+		if (repeatsSettled(targetYawDeg, targetPitchDeg, targetRollDeg, slerpFactor, axes)) {
+			return settledResult;
+		}
+		Quaternionf before = new Quaternionf(animator.getRotation());
+		boolean result = turnToTarget(targetYawDeg, targetPitchDeg, targetRollDeg, slerpFactor,
+				shouldYaw, shouldPitch, shouldRoll);
+		settled = animator.getRotation().equals(before);
+		if (settled) {
+			settledRotation.set(before);
+			settledYaw = Float.floatToIntBits(targetYawDeg);
+			settledPitch = Float.floatToIntBits(targetPitchDeg);
+			settledRoll = Float.floatToIntBits(targetRollDeg);
+			settledSlerp = Float.floatToIntBits(slerpFactor);
+			settledAxes = axes;
+			settledResult = result;
+		}
+		return result;
+	}
+
+	// Whether this call is the settled one again, from the rotation it left. Turning to a
+	// yaw also sets driveYaw, so that must still hold the target too.
+	private boolean repeatsSettled(float yaw, float pitch, float roll, float slerp, int axes) {
+		return settled
+				&& settledAxes == axes
+				&& settledYaw == Float.floatToIntBits(yaw)
+				&& settledPitch == Float.floatToIntBits(pitch)
+				&& settledRoll == Float.floatToIntBits(roll)
+				&& settledSlerp == Float.floatToIntBits(slerp)
+				&& ((axes & 1) == 0 || Float.floatToIntBits(driveYaw) == settledYaw)
+				&& animator.getRotation().equals(settledRotation);
+	}
+
+	//Voodoo
+	private boolean turnToTarget(
 		    float targetYawDeg,
 		    float targetPitchDeg,
 		    float targetRollDeg,
