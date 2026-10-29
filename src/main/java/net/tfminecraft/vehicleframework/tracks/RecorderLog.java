@@ -56,6 +56,11 @@ public final class RecorderLog {
 		return enabled;
 	}
 
+	// Trains call these every tick; skip building a line that append would throw away.
+	private static boolean off() {
+		return !enabled || logFile == null;
+	}
+
 	public static void append(String message) {
 		if (!enabled || message == null || logFile == null) {
 			return;
@@ -93,7 +98,7 @@ public final class RecorderLog {
 	}
 
 	public static void pose(ActiveVehicle v, Location from, Location to, TrackPose pose, ConvertedAngle move) {
-		if (v == null) {
+		if (off() || v == null) {
 			return;
 		}
 		if (!note("pose:" + v.getUUID(), 250)) {
@@ -113,13 +118,16 @@ public final class RecorderLog {
 	}
 
 	public static void sample(ActiveVehicle v, ThrottleTape.AppendResult result, int throttle, int hold) {
-		if (result == ThrottleTape.AppendResult.HELD && hold > 1 && hold % 20 != 0) {
+		if (off() || (result == ThrottleTape.AppendResult.HELD && hold > 1 && hold % 20 != 0)) {
 			return;
 		}
 		append("SAMPLE result=" + result + " thr=" + throttle + " hold=" + hold + " " + train(v));
 	}
 
 	public static void playback(ActiveVehicle v, String reason, Integer target, ThrottleTape.DwellState dwell) {
+		if (off()) {
+			return;
+		}
 		String key = (v == null ? "none" : v.getUUID()) + ":" + reason + ":" + target
 				+ ":" + (dwell != null && dwell.left > 0);
 		if (!note(key, 750)) {
@@ -133,10 +141,16 @@ public final class RecorderLog {
 	}
 
 	public static void interact(String action, String extra) {
+		if (off()) {
+			return;
+		}
 		append("INTERACT " + action + (extra == null || extra.isBlank() ? "" : " " + extra));
 	}
 
 	public static void arm(ActiveVehicle v, String status, TrackJunction.Side hold, TrackJunction frog, double ahead) {
+		if (off()) {
+			return;
+		}
 		append("ARM status=" + status
 				+ " hold=" + (hold == null ? "-" : hold.name())
 				+ " frogSide=" + (frog == null ? "-" : frog.side.name())
@@ -151,6 +165,9 @@ public final class RecorderLog {
 	}
 
 	public static void junction(ActiveVehicle v, boolean diverge, UUID junctionId, String reason) {
+		if (off()) {
+			return;
+		}
 		append("JUNCTION take=" + (diverge ? "diverge" : "through")
 				+ " id=" + junctionId
 				+ (reason == null || reason.isBlank() ? "" : " reason=" + reason)

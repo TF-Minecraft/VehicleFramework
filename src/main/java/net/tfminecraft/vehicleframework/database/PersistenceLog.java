@@ -61,6 +61,11 @@ public final class PersistenceLog {
 		return enabled;
 	}
 
+	// Vehicles call these every tick; skip building a line that append would throw away.
+	private static boolean off() {
+		return !enabled || logFile == null;
+	}
+
 	public static int nextSpawnCycle() {
 		return ++spawnCycle;
 	}
@@ -134,23 +139,38 @@ public final class PersistenceLog {
 	}
 
 	public static void spawnManagerStart(int pending) {
-		append("SPAWN_MANAGER_START cycle=" + nextSpawnCycle() + " pending=" + pending);
+		int cycle = nextSpawnCycle();
+		if (off()) {
+			return;
+		}
+		append("SPAWN_MANAGER_START cycle=" + cycle + " pending=" + pending);
 	}
 
 	public static void spawnLoad(String file, Location loc) {
+		if (off()) {
+			return;
+		}
 		append("SPAWN_LOAD file=" + file + " loc=" + xyz(loc) + " cycle=" + spawnCycle);
 	}
 
 	public static void spawnQueued(String file, Location loc, String worldChunk) {
+		if (off()) {
+			return;
+		}
 		append("SPAWN_QUEUED file=" + file + " loc=" + xyz(loc) + " from=" + worldChunk);
 	}
 
 	public static void spawned(ActiveVehicle v, Location requested) {
+		if (off()) {
+			return;
+		}
 		append("SPAWNED requested=" + xyz(requested) + " " + vehicle(v));
 	}
 
 	public static void unload(ActiveVehicle v, String reason) {
-		append("UNLOAD reason=" + reason + " " + vehicle(v));
+		if (!off()) {
+			append("UNLOAD reason=" + reason + " " + vehicle(v));
+		}
 		if (v != null && v.getUUID() != null) {
 			poseCounts.remove(v.getUUID());
 			poseTimes.remove(v.getUUID());
@@ -160,14 +180,23 @@ public final class PersistenceLog {
 	}
 
 	public static void saveVehicle(ActiveVehicle v, Location loc) {
+		if (off()) {
+			return;
+		}
 		append("SAVE_VEHICLE " + vehicle(v) + " saveLoc=" + xyz(loc));
 	}
 
 	public static void saveSpawn(String file, Location loc) {
+		if (off()) {
+			return;
+		}
 		append("SAVE_SPAWN file=" + file + " loc=" + xyz(loc));
 	}
 
 	public static void loadJson(String file, String uuid, String id, ConsistData consist) {
+		if (off()) {
+			return;
+		}
 		append("LOAD_JSON file=" + file
 				+ " uuid=" + uuid
 				+ " id=" + id
@@ -175,11 +204,14 @@ public final class PersistenceLog {
 	}
 
 	public static void tryLink(String phase, ActiveVehicle v) {
+		if (off()) {
+			return;
+		}
 		append("TRY_LINK " + phase + " " + vehicle(v));
 	}
 
 	public static void placeCars(ActiveVehicle loco) {
-		if (loco == null) {
+		if (off() || loco == null) {
 			return;
 		}
 		String uuid = loco.getUUID();
@@ -192,7 +224,7 @@ public final class PersistenceLog {
 	}
 
 	public static void applyPose(ActiveVehicle vehicle, String reason, Location before, Location target) {
-		if (vehicle == null) {
+		if (off() || vehicle == null) {
 			return;
 		}
 		String uuid = vehicle.getUUID();
@@ -217,6 +249,9 @@ public final class PersistenceLog {
 	}
 
 	public static void mount(Player p, ActiveVehicle v, Seat seat, boolean managerOk, boolean onSeatMap) {
+		if (off()) {
+			return;
+		}
 		append("MOUNT seat=" + (seat == null ? "null" : seat.getBone())
 				+ " type=" + (seat == null ? "null" : seat.getType())
 				+ " manager=" + managerOk
@@ -226,6 +261,9 @@ public final class PersistenceLog {
 	}
 
 	public static void remount(Entity e, ActiveVehicle v, String bone) {
+		if (off()) {
+			return;
+		}
 		append("REMOUNT bone=" + bone
 				+ " entity=" + (e instanceof Player p ? p.getName() : String.valueOf(e.getUniqueId()))
 				+ " " + (e instanceof Player p ? player(p) : "eloc=" + xyz(e.getLocation()))
@@ -233,13 +271,16 @@ public final class PersistenceLog {
 	}
 
 	public static void dismount(Entity e, ActiveVehicle v, boolean change) {
+		if (off()) {
+			return;
+		}
 		append("DISMOUNT change=" + change
 				+ " " + (e instanceof Player p ? player(p) : "entity=" + e)
 				+ " " + vehicle(v));
 	}
 
 	public static void particleOffset(ActiveVehicle v, Location bone, Location entity) {
-		if (v == null || v.getUUID() == null) {
+		if (off() || v == null || v.getUUID() == null) {
 			return;
 		}
 		double gap = dist(bone, entity);
