@@ -1,6 +1,7 @@
 package net.tfminecraft.vehicleframework.vehicles.controller;
 
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 
@@ -21,6 +22,7 @@ import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.component.Balloon;
 import net.tfminecraft.vehicleframework.vehicles.component.Harness;
 import net.tfminecraft.vehicleframework.vehicles.component.Wings;
+import net.tfminecraft.vehicleframework.vehicles.component.propulsion.Throttle;
 import net.tfminecraft.vehicleframework.vehicles.handlers.TowHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.state.TerrainFollowConfig;
 import net.tfminecraft.vehicleframework.vehicles.seat.Seat;
@@ -231,6 +233,10 @@ public class VehicleMovementController implements MovementInterface{
 			zeroBreakVelocity();
 			return;
 		}
+		if (isParked()) {
+			moveParked();
+			return;
+		}
 		if (applyTerrainFollow(baseController.getDirection(v))) {
 			return;
 		}
@@ -242,6 +248,65 @@ public class VehicleMovementController implements MovementInterface{
 		if (!v.isTrain()) {
 			rotator.rotateSmoothed(0, 0, 0);
 		}
+	}
+
+	/**
+	 * An engine vehicle standing on the ground with nobody aboard, no throttle and nothing in tow.
+	 * The result of its MOVE step then depends on neither the heading bone nor the blocks around
+	 * it, so {@link #moveParked} can apply that result directly. Checked every tick: a driver,
+	 * throttle, a state change (water, open air) or a tow brings back the full step that tick.
+	 */
+	boolean isParked() {
+		// The full step reads the vehicle's current state, which is this controller's.
+		if (v.getCurrentState() != state || state.getType() != State.GROUND) {
+			return false;
+		}
+		if (v.isTrain() || v.isDestroyed() || v.shouldFloat()) {
+			return false;
+		}
+		if (!state.isDefault()) {
+			TerrainFollowConfig follow = state.getTerrainFollow();
+			if (follow != null && follow.isEnabled()) {
+				return false;
+			}
+		}
+		if (v.hasComponent(Component.HARNESS)
+				|| !(v.hasComponent(Component.ENGINE) || v.hasComponent(Component.GEARED_ENGINE))) {
+			return false;
+		}
+		Throttle throttle = v.getThrottle();
+		if (throttle == null || throttle.getCurrent() != 0 || v.getAccessPanel().getSpeed() != 0) {
+			return false;
+		}
+		if (v.getSeatHandler().hasPassengers() || v.isOnFire()) {
+			return false;
+		}
+		if (v.hasTowHandler() && v.getTowHandler().isOccupied()) {
+			return false;
+		}
+		Entity entity = v.getEntity();
+		return entity != null && entity.isValid() && entity instanceof LivingEntity;
+	}
+
+	/**
+	 * The full MOVE step for a {@link #isParked} vehicle, without its lookups. With zero speed the
+	 * engine pushes nowhere, so only the vertical part is left: the ground push for plain vehicles,
+	 * nothing for planes (lift needs throttle or flight), and a balloon's own climb or sink. That
+	 * part, the stop of the drive animations and the rotation settling all happen as before.
+	 */
+	private void moveParked() {
+		double y;
+		if (v.hasComponent(Component.BALLOON)) {
+			Balloon balloon = (Balloon) v.getComponent(Component.BALLOON);
+			// Reading the delta decays it, exactly as the lift step does every tick.
+			y = LiftController.balloonVerticalY(balloon.getLift(), balloon.getDelta());
+		} else if (v.hasComponent(Component.WINGS)) {
+			y = 0;
+		} else {
+			y = BaseController.GROUND_PUSH_Y;
+		}
+		apply(new Vector(0, y, 0), Direction.STILL);
+		rotator.rotateSmoothed(0, 0, 0);
 	}
 
 	private void up(Player p) {

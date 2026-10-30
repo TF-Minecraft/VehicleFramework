@@ -12,6 +12,9 @@ import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.component.Harness;
 
 public class BaseController {
+
+	/** Vertical speed that keeps a grounded vehicle without wings or a balloon pressed down. */
+	static final double GROUND_PUSH_Y = -0.49;
 	
 	public Vector climbVector(ActiveVehicle v, Vector velocity) {
 		return velocity;
@@ -41,7 +44,7 @@ public class BaseController {
 		if(v.getCurrentState().getType().equals(State.GROUND)
 				&& !v.hasComponent(Component.WINGS)
 				&& !v.hasComponent(Component.BALLOON)) {
-			velocity.setY(-0.49);
+			velocity.setY(GROUND_PUSH_Y);
 		}
 		if(v.shouldFloat()) {
 			velocity.setY(y);

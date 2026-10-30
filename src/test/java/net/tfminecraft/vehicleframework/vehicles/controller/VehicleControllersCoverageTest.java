@@ -226,6 +226,26 @@ class VehicleControllersCoverageTest {
         handler.tick(); assertEquals(State.GROUND, handler.getCurrentState().getType());
     }
 
+    @Test void stateTicksOnlyReadTheBlocksTheirConfiguredStatesNeed() {
+        Water f = new Water();
+        f.grid.fill = p -> p.y <= 66 ? Material.WATER : Material.AIR;
+        StateHandler groundOnly = new StateHandler(f.vehicle, new StateHandler(yaml()));
+        groundOnly.tick(); assertEquals(State.GROUND, groundOnly.getCurrentState().getType());
+        verify(f.grid.world, never()).getBlockAt(anyInt(), anyInt(), anyInt());
+        YamlConfiguration boat = yaml(); boat.createSection("floating");
+        StateHandler moored = new StateHandler(f.vehicle, new StateHandler(boat));
+        // Deep water at the centre settles it: neither the feet ring nor the air below is sampled.
+        moored.tick(); assertEquals(State.FLOATING, moored.getCurrentState().getType());
+        verify(f.grid.world, times(1)).getBlockAt(anyInt(), anyInt(), anyInt());
+        YamlConfiguration plane = yaml(); plane.createSection("flying");
+        StateHandler parked = new StateHandler(f.vehicle, new StateHandler(plane));
+        f.grid.fill = p -> p.y < 64 ? Material.STONE : Material.AIR; clearInvocations(f.grid.world);
+        parked.tick(); assertEquals(State.GROUND, parked.getCurrentState().getType());
+        verify(f.grid.world, times(9)).getBlockAt(anyInt(), anyInt(), anyInt());
+        f.grid.fill = p -> Material.AIR;
+        parked.tick(); assertEquals(State.FLYING, parked.getCurrentState().getType());
+    }
+
     @Test void shallowWideWaterMayFloatWhenTheSampledWaterHasDepthAwayFromTheCentre() {
         Water f = new Water(); YamlConfiguration config = yaml(); config.createSection("floating");
         StateHandler handler = new StateHandler(f.vehicle, new StateHandler(config));

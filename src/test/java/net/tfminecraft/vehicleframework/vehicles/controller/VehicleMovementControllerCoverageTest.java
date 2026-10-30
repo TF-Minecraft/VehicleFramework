@@ -368,6 +368,140 @@ class VehicleMovementControllerCoverageTest {
         verify(rotator).rotateSmoothed(0, 0, 0);
     }
 
+    private void park() {
+        when(vehicle.getAccessPanel().getSpeed()).thenReturn(0d);
+        when(vehicle.getThrottle().getCurrent()).thenReturn(0);
+    }
+
+    /** The full MOVE step's velocity, forced by a fire the step itself never reads. */
+    private Vector fullStep() {
+        when(vehicle.isOnFire()).thenReturn(true);
+        assertFalse(controller.isParked());
+        velocity = new Vector(.4, .3, .2);
+        controller.input(player, Input.MOVE);
+        when(vehicle.isOnFire()).thenReturn(false);
+        return velocity.clone();
+    }
+
+    /** The parked step from a pushed start; the full step overwrites that push too. */
+    private Vector parkedStep() {
+        assertTrue(controller.isParked());
+        clearInvocations(vector, rotator, vehicle, entity, ground);
+        velocity = new Vector(-.7, .5, .9);
+        controller.input(player, Input.MOVE);
+        verify(vector, never()).getVector();
+        verify(rotator).rotateSmoothed(0, 0, 0);
+        return velocity.clone();
+    }
+
+    @Test
+    void parkedEngineVehicleGetsTheFullStepsGroundPushWithoutReadingItsHeading() {
+        component(Component.ENGINE, Engine.class);
+        park();
+        Vector full = fullStep();
+        assertEquals(new Vector(0, -.49, 0), full);
+        assertEquals(full, parkedStep());
+        verify(entity).setVelocity(any(Vector.class));
+        verify(vehicle).stopAnimation(Animation.FORWARD);
+        verify(vehicle).stopAnimation(Animation.BACKWARD);
+        terrain.verifyNoInteractions();
+    }
+
+    @Test
+    void parkedPlaneStaysStillOnGroundOrOverAHoleExactlyAsTheFullStepLeavesIt() {
+        component(Component.WINGS, Wings.class);
+        component(Component.ENGINE, Engine.class);
+        park();
+        for (boolean solid : new boolean[] {true, false}) {
+            when(ground.isPassable()).thenReturn(!solid);
+            Vector full = fullStep();
+            assertEquals(new Vector(), full);
+            assertEquals(full, parkedStep());
+            verify(ground, never()).isPassable();
+        }
+    }
+
+    @Test
+    void parkedBalloonKeepsItsOwnClimbAndDecaysTheDeltaOncePerTick() {
+        Balloon balloon = component(Component.BALLOON, Balloon.class);
+        component(Component.WINGS, Wings.class);
+        component(Component.GEARED_ENGINE, GearedEngine.class);
+        when(balloon.getLift()).thenReturn(.25);
+        when(balloon.getDelta()).thenReturn(.12);
+        park();
+        Vector full = fullStep();
+        assertEquals(new Vector(0, .12, 0), full);
+        verify(balloon, times(1)).getDelta();
+        assertEquals(full, parkedStep());
+        verify(balloon, times(2)).getDelta();
+        when(balloon.getLift()).thenReturn(-.3);
+        assertEquals(fullStep(), parkedStep());
+        assertEquals(-.3, velocity.getY());
+    }
+
+    @Test
+    void parkedVehicleInAnUnconfiguredGroundStateOnlySettlesItsRotation() {
+        component(Component.ENGINE, Engine.class);
+        when(state.isDefault()).thenReturn(true);
+        // A default state never follows terrain, whatever the template says.
+        follow();
+        park();
+        fullStep();
+        verify(entity, never()).setVelocity(any());
+        parkedStep();
+        verify(entity, never()).setVelocity(any());
+        verify(vehicle, never()).stopAnimation(any());
+    }
+
+    @Test
+    void anythingTheMoveStepWouldReadOrAnyoneAboardBringsBackTheFullStep() {
+        component(Component.ENGINE, Engine.class);
+        park();
+        assertTrue(controller.isParked());
+        for (State other : new State[] {State.FLOATING, State.FLYING}) {
+            when(state.getType()).thenReturn(other);
+            assertFalse(controller.isParked());
+        }
+        when(state.getType()).thenReturn(State.GROUND);
+        wakes(() -> when(vehicle.getCurrentState()).thenReturn(mock(VehicleState.class)),
+                () -> when(vehicle.getCurrentState()).thenReturn(state));
+        wakes(() -> when(vehicle.isTrain()).thenReturn(true), () -> when(vehicle.isTrain()).thenReturn(false));
+        wakes(() -> when(vehicle.isDestroyed()).thenReturn(true), () -> when(vehicle.isDestroyed()).thenReturn(false));
+        wakes(() -> when(vehicle.shouldFloat()).thenReturn(true), () -> when(vehicle.shouldFloat()).thenReturn(false));
+        wakes(this::follow, () -> when(state.getTerrainFollow()).thenReturn(null));
+        wakes(() -> when(vehicle.hasComponent(Component.HARNESS)).thenReturn(true),
+                () -> when(vehicle.hasComponent(Component.HARNESS)).thenReturn(false));
+        wakes(() -> when(vehicle.hasComponent(Component.ENGINE)).thenReturn(false),
+                () -> when(vehicle.hasComponent(Component.ENGINE)).thenReturn(true));
+        var throttle = vehicle.getThrottle();
+        wakes(() -> when(vehicle.getThrottle()).thenReturn(null), () -> when(vehicle.getThrottle()).thenReturn(throttle));
+        wakes(() -> when(throttle.getCurrent()).thenReturn(-2), () -> when(throttle.getCurrent()).thenReturn(0));
+        wakes(() -> when(vehicle.getAccessPanel().getSpeed()).thenReturn(.05),
+                () -> when(vehicle.getAccessPanel().getSpeed()).thenReturn(0d));
+        wakes(() -> when(vehicle.getSeatHandler().hasPassengers()).thenReturn(true),
+                () -> when(vehicle.getSeatHandler().hasPassengers()).thenReturn(false));
+        wakes(() -> when(vehicle.isOnFire()).thenReturn(true), () -> when(vehicle.isOnFire()).thenReturn(false));
+        when(vehicle.hasTowHandler()).thenReturn(true);
+        assertTrue(controller.isParked(), "An empty tow hitch changes nothing");
+        wakes(() -> when(vehicle.getTowHandler().isOccupied()).thenReturn(true),
+                () -> when(vehicle.getTowHandler().isOccupied()).thenReturn(false));
+        wakes(() -> when(entity.isValid()).thenReturn(false), () -> when(entity.isValid()).thenReturn(true));
+        Entity stand = mock(Entity.class);
+        when(stand.isValid()).thenReturn(true);
+        wakes(() -> when(vehicle.getEntity()).thenReturn(stand), () -> when(vehicle.getEntity()).thenReturn(entity));
+        wakes(() -> when(vehicle.getEntity()).thenReturn(null), () -> when(vehicle.getEntity()).thenReturn(entity));
+        component(Component.GEARED_ENGINE, GearedEngine.class);
+        when(vehicle.hasComponent(Component.ENGINE)).thenReturn(false);
+        assertTrue(controller.isParked());
+    }
+
+    private void wakes(Runnable change, Runnable undo) {
+        change.run();
+        assertFalse(controller.isParked());
+        undo.run();
+        assertTrue(controller.isParked());
+    }
+
     @Test
     void matureTrainUsesSplineTickWhileFreshTrainUsesSpawnVelocity() {
         when(vehicle.isTrain()).thenReturn(true);

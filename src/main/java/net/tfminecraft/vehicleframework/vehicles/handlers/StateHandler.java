@@ -102,25 +102,27 @@ public class StateHandler {
 	    Entity e = vehicle.getEntity();
 	    BoundingBox box = e.getBoundingBox();
 
-	    Set<Block> blocks = getBlocksBoundingBox(box, e.getWorld(), 0.0);
-	    Set<Block> blocksBelow = getBlocksBoundingBox(box, e.getWorld(), -0.3);
-
 	    VehicleState floating = states.get(State.FLOATING);
 	    VehicleState flying = states.get(State.FLYING);
 	    boolean floatingConfigured = floating != null && !floating.isDefault();
-	    boolean deepCentre = LocationChecker.hasDeepWaterAtCentre(e.getWorld().getBlockAt(
+	    boolean flyingConfigured = flying != null && !flying.isDefault();
+	    // Each block read below only feeds the swap rule it is written for, so a vehicle without
+	    // that state, or one whose answer is already settled, skips it. The rules see the same values.
+	    boolean deepCentre = floatingConfigured && LocationChecker.hasDeepWaterAtCentre(e.getWorld().getBlockAt(
 			(int) Math.floor(box.getCenterX()), (int) Math.floor(box.getMinY()),
 			(int) Math.floor(box.getCenterZ())));
-	    boolean waterAtFeet = deepCentre || isMostlyWater(blocks, 0.75);
-	    boolean shallowWadable = LocationChecker.isMostlyShallowWadableWater(blocks, 0.75);
+	    Set<Block> blocks = floatingConfigured && !deepCentre ? getBlocksBoundingBox(box, e.getWorld(), 0.0) : null;
+	    boolean waterAtFeet = deepCentre || (blocks != null && isMostlyWater(blocks, 0.75));
+	    boolean shallowWadable = waterAtFeet && !deepCentre
+	    		&& LocationChecker.isMostlyShallowWadableWater(blocks, 0.75);
 	    if (VehicleStateRules.shouldSwapToFloating(
 	    		floatingConfigured,
 	    		waterAtFeet,
-			shallowWadable && !deepCentre)) {
+			shallowWadable)) {
 			swapState(State.FLOATING, "water");
 		} else if (VehicleStateRules.shouldSwapToFlying(
-				flying != null && !flying.isDefault(),
-				allBlocksInAir(blocksBelow))) {
+				flyingConfigured,
+				flyingConfigured && allBlocksInAir(getBlocksBoundingBox(box, e.getWorld(), -0.3)))) {
 	        swapState(State.FLYING, "air");
 	    } else {
 	        swapState(State.GROUND, "ground");
