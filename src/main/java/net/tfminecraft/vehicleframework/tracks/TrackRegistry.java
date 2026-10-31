@@ -1176,6 +1176,11 @@ public final class TrackRegistry {
 		return Optional.ofNullable(junctions.get(id));
 	}
 
+	/** Every junction, in the order {@link #junctionsOn} visits them. */
+	public List<TrackJunction> junctions() {
+		return List.copyOf(junctions.values());
+	}
+
 	public List<TrackJunction> junctionsOn(UUID stemId) {
 		List<TrackJunction> out = new ArrayList<>();
 		for (TrackJunction junction : junctions.values()) {

@@ -2,9 +2,40 @@ package net.tfminecraft.vehicleframework.tracks;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
 import org.junit.jupiter.api.Test;
 
 class TrackChunksTest {
+
+	private static TrackVisual piece(int edge, double x, double z) {
+		return new TrackVisual(TrackVisual.Type.SMALL, edge, 1, edge, 1, x, 64, z, 0, 0);
+	}
+
+	@Test
+	void byChunk_holdsTheSamePiecesInChunkAsTheInChunkFilterInOrder() {
+		List<TrackVisual> visuals = List.of(
+				piece(0, 1, 1), piece(1, 17, 1), piece(2, 15.9, -0.1), piece(3, 2, 3), piece(4, -0.1, -16.1));
+		Map<Long, List<TrackVisual>> byChunk = TrackChunks.byChunk(visuals);
+		int total = 0;
+		for (int cx = -1; cx <= 1; cx++) {
+			for (int cz = -2; cz <= 1; cz++) {
+				List<TrackVisual> filtered = new ArrayList<>();
+				for (TrackVisual visual : visuals) {
+					if (TrackChunks.inChunk(visual.x, visual.z, cx, cz)) {
+						filtered.add(visual);
+					}
+				}
+				List<TrackVisual> grouped = byChunk.getOrDefault(TrackChunks.key(cx, cz), List.of());
+				assertEquals(filtered, grouped);
+				total += grouped.size();
+			}
+		}
+		assertEquals(visuals.size(), total);
+		assertEquals(List.of(visuals.get(0), visuals.get(3)), byChunk.get(TrackChunks.key(0, 0)));
+	}
 
 	@Test
 	void chunkCoord_floorsNegatives() {
