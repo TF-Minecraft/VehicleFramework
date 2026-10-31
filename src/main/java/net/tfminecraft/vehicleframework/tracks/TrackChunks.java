@@ -1,7 +1,21 @@
 package net.tfminecraft.vehicleframework.tracks;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 public final class TrackChunks {
 	private TrackChunks() {
+	}
+
+	/** Groups pieces by the {@link #key} of their chunk, keeping their order within each chunk. */
+	public static Map<Long, List<TrackVisual>> byChunk(List<TrackVisual> visuals) {
+		Map<Long, List<TrackVisual>> out = new HashMap<>();
+		for (TrackVisual visual : visuals) {
+			out.computeIfAbsent(keyAt(visual.x, visual.z), k -> new ArrayList<>()).add(visual);
+		}
+		return out;
 	}
 
 	public static int chunkCoord(double block) {

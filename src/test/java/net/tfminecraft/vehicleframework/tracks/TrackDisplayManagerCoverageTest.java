@@ -104,6 +104,7 @@ class TrackDisplayManagerCoverageTest {
                 .filter(s -> s.getWorld().equals(call.getArgument(0))).toList());
         when(registry.junctionsOn(any(UUID.class))).thenAnswer(call -> junctions.values().stream()
                 .filter(j -> j.stemSplineId.equals(call.getArgument(0))).toList());
+        when(registry.junctions()).thenAnswer(call -> List.copyOf(junctions.values()));
         when(registry.getJunction(any(UUID.class))).thenAnswer(call -> Optional.ofNullable(junctions.get(call.getArgument(0))));
         doAnswer(call -> { TrackSpline s = call.getArgument(0); tracks.put(s.getId(), s); return null; }).when(registry).replace(any());
         load(0, 0);
@@ -408,6 +409,38 @@ class TrackDisplayManagerCoverageTest {
         animation.when(() -> TrackBuildAnimator.isBuilding(spline.getId())).thenReturn(true);
         manager.spawnChunk(chunk(0, 0));
         animation.verify(() -> TrackBuildAnimator.spawnIntoChunk(spline, chunk(0, 0)));
+    }
+
+    @Test
+    void chunkReloadsRespawnEachPieceOnceAndOnlyTouchTheirOwnChunk() {
+        load(1, 0);
+        TrackSpline spline = spline(visual(0, 8), visual(1, 9), visual(2, 24));
+        TrackSpline unloaded = spline(visual(0, 40));
+        junction(rail());
+        manager.spawnLoadedChunks();
+        List<Double> xs = spawned.stream().map(d -> d.location.getX()).toList();
+        assertEquals(1, xs.stream().filter(x -> x == 24).count());
+        DisplayState far = spawned.stream().filter(d -> d.location.getX() == 24).findFirst().orElseThrow();
+        int before = spawned.size();
+        manager.onChunkUnload(new ChunkUnloadEvent(chunk(0, 0)));
+        assertFalse(far.removed);
+        assertTrue(spawned.subList(0, before).stream().filter(d -> d != far).allMatch(d -> d.removed));
+        manager.onChunkLoad(new ChunkLoadEvent(chunk(0, 0), false));
+        List<DisplayState> respawned = spawned.subList(before, spawned.size());
+        assertEquals(List.of(8.0, 9.0), respawned.stream().filter(d -> spline.getId().toString().equals(d.data.get(manager.idKey())))
+                .map(d -> d.location.getX()).toList());
+        assertEquals(1, respawned.stream().filter(d -> d.data.containsKey(manager.switchKey())).count());
+        // An edit bakes a new piece list, which the next chunk load picks up.
+        when(spline.visuals()).thenReturn(List.of(visual(0, 10), visual(2, 24)));
+        manager.onChunkUnload(new ChunkUnloadEvent(chunk(0, 0)));
+        int reloaded = spawned.size();
+        manager.onChunkLoad(new ChunkLoadEvent(chunk(0, 0), false));
+        assertEquals(List.of(10.0), spawned.subList(reloaded, spawned.size()).stream()
+                .filter(d -> spline.getId().toString().equals(d.data.get(manager.idKey()))).map(d -> d.location.getX()).toList());
+        manager.despawnSpline(spline.getId());
+        assertTrue(far.removed);
+        assertTrue(spawned.stream().filter(d -> spline.getId().toString().equals(d.data.get(manager.idKey()))).allMatch(d -> d.removed));
+        assertTrue(spawned.stream().noneMatch(d -> unloaded.getId().toString().equals(d.data.get(manager.idKey()))));
     }
 
     @Test

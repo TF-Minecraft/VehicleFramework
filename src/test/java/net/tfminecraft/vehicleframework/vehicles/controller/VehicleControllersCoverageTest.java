@@ -111,6 +111,32 @@ class VehicleControllersCoverageTest {
         when(hull.isSinking()).thenReturn(false); assertEquals(.006, c.calculateFloat(f.vehicle, new Vector()).getY());
     }
 
+    @Test void lilyPadScanRunsOnTheFirstTickThenOnlyAfterTheBoatEntersAnotherBlock() {
+        Water f = new Water(); FloatController c = new FloatController();
+        f.grid.fill = p -> p.equals(new Cell(1, 65, 0)) ? Material.LILY_PAD : p.y <= 64 ? Material.WATER : Material.AIR;
+        c.calculateFloat(f.vehicle, new Vector()); verify(f.grid.block(1, 65, 0), times(1)).breakNaturally();
+        f.location.setX(.9); f.location.setY(64.4); c.calculateFloat(f.vehicle, new Vector());
+        verify(f.grid.block(1, 65, 0), times(1)).breakNaturally();
+        f.location.setX(1.1); c.calculateFloat(f.vehicle, new Vector()); verify(f.grid.block(1, 65, 0), times(2)).breakNaturally();
+        f.location.setY(63.5); c.calculateFloat(f.vehicle, new Vector()); verify(f.grid.block(1, 65, 0), times(3)).breakNaturally();
+        World other = mock(World.class); when(other.getBlockAt(anyInt(), anyInt(), anyInt())).thenReturn(f.grid.block(1, 65, 0));
+        when(f.entity.getWorld()).thenReturn(other); c.calculateFloat(f.vehicle, new Vector());
+        verify(f.grid.block(1, 65, 0), atLeast(4)).breakNaturally();
+    }
+
+    @Test void lilyPadScanClimbsEachColumnToTheSurfaceAndStopsAtTheFirstAir() {
+        Water f = new Water(); when(f.entity.getBoundingBox()).thenReturn(new BoundingBox(.2, 60, .2, .8, 70, .8));
+        // A sinking hull deep under the surface, with a riverbank step where the water stands higher.
+        f.grid.fill = p -> p.x == -1 ? (p.y <= 66 ? Material.DIRT : p.y == 67 ? Material.WATER : p.y == 68 ? Material.LILY_PAD : Material.AIR)
+                : p.equals(new Cell(0, 67, 0)) ? Material.LILY_PAD : p.y <= 66 ? Material.WATER : Material.CAVE_AIR;
+        new FloatController().calculateFloat(f.vehicle, new Vector());
+        verify(f.grid.block(0, 67, 0)).breakNaturally(); verify(f.grid.block(-1, 68, 0)).breakNaturally();
+        verify(f.grid.block(0, 69, 0), never()).getType(); verify(f.grid.block(1, 68, 0), never()).getType();
+        verify(f.grid.block(-1, 70, 0), never()).getType();
+        assertTrue(FloatController.isAir(Material.AIR)); assertTrue(FloatController.isAir(Material.VOID_AIR));
+        assertFalse(FloatController.isAir(Material.WATER));
+    }
+
     @Test void noGravityArmorStandUsesCollisionMovementAndBreaksNearbyLilyPads() {
         Water f = new Water(); ArmorStand stand = mock(ArmorStand.class); f.bind(stand);
         f.grid.fill = p -> p.equals(new Cell(1, 64, 0)) ? Material.LILY_PAD : p.y <= 64 ? Material.WATER : Material.AIR;

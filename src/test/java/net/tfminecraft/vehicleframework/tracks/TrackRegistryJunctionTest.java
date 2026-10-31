@@ -24,6 +24,7 @@ class TrackRegistryJunctionTest {
 		TrackJunction first = registry.putJunction(completed(stem, 4));
 		TrackJunction second = registry.putJunction(completed(stem, 4 + 16));
 		assertEquals(2, registry.junctionsOn(stem.getId()).size());
+		assertEquals(registry.junctionsOn(stem.getId()), registry.junctions());
 		assertEquals(first.id, registry.getJunction(first.id).orElseThrow().id);
 		assertEquals(20, second.s, 1e-6);
 	}

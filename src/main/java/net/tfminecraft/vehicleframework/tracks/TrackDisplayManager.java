@@ -49,10 +49,14 @@ public final class TrackDisplayManager implements Listener {
 	public static final String KEY_SPAN = "track_span";
 	public static final String KEY_SWITCH = "junction_switch";
 
-	private final List<ItemDisplay> live = new ArrayList<>();
+	// Grouped by chunk, so a chunk event only checks the displays standing in it.
+	private final TrackDisplayIndex<ItemDisplay> live = new TrackDisplayIndex<>();
 	// The switch displays in live, with their junction, so the per-tick animation
 	// does not read the tags of every rail display.
 	private final List<SwitchDisplay> switches = new ArrayList<>();
+	// The pieces of each track by chunk. A chunk load used to test every piece of
+	// every track in the world. Rebuilt when the track's baked pieces change.
+	private final Map<UUID, SplineChunks> splineChunks = new HashMap<>();
 	private final Set<TrackVisual.Type> missingLogged = new HashSet<>();
 	private final Deque<ChunkRef> resyncQueue = new ArrayDeque<>();
 	private CommandSender resyncNotify;
@@ -128,6 +132,7 @@ public final class TrackDisplayManager implements Listener {
 		Cache.applyTrackDisplayStyle();
 		missingLogged.clear();
 		items.clear();
+		splineChunks.clear();
 		TrackRegistry registry = VehicleFramework.getTrackRegistry();
 		if (registry != null) {
 			registry.invalidateAllVisuals();
@@ -287,6 +292,7 @@ public final class TrackDisplayManager implements Listener {
 				it.remove();
 			}
 		}
+		splineChunks.remove(id);
 		TrackRegistry registry = VehicleFramework.getTrackRegistry();
 		if (registry == null) {
 			return;
@@ -306,6 +312,7 @@ public final class TrackDisplayManager implements Listener {
 		}
 		live.clear();
 		switches.clear();
+		splineChunks.clear();
 	}
 
 	public void spawnChunk(Chunk chunk) {
@@ -484,15 +491,22 @@ public final class TrackDisplayManager implements Listener {
 	}
 
 	private void spawnSplineInChunk(TrackSpline spline, Chunk chunk) {
-		int cx = chunk.getX();
-		int cz = chunk.getZ();
 		World world = chunk.getWorld();
-		for (TrackVisual visual : spline.visuals()) {
-			if (!TrackChunks.inChunk(visual.x, visual.z, cx, cz)) {
-				continue;
-			}
+		for (TrackVisual visual : visualsInChunk(spline, chunk.getX(), chunk.getZ())) {
 			spawnDisplay(world, spline.getId(), visual);
 		}
+	}
+
+	/** The pieces of {@code spline} in one chunk, in the order {@code visuals()} lists them. */
+	private List<TrackVisual> visualsInChunk(TrackSpline spline, int cx, int cz) {
+		List<TrackVisual> visuals = spline.visuals();
+		SplineChunks cached = splineChunks.get(spline.getId());
+		// Any edit, replace or resync bakes a new list, so the same list means the same pieces.
+		if (cached == null || cached.visuals() != visuals) {
+			cached = new SplineChunks(visuals, TrackChunks.byChunk(visuals));
+			splineChunks.put(spline.getId(), cached);
+		}
+		return cached.byChunk().getOrDefault(TrackChunks.key(cx, cz), List.of());
 	}
 
 	private void spawnSwitchesInChunk(Chunk chunk) {
@@ -500,8 +514,21 @@ public final class TrackDisplayManager implements Listener {
 		if (registry == null) {
 			return;
 		}
+		List<TrackJunction> junctions = registry.junctions();
+		if (junctions.isEmpty()) {
+			return;
+		}
+		// One pass over the junctions instead of one per track in the world.
+		Map<UUID, List<TrackJunction>> byStem = new HashMap<>();
+		for (TrackJunction junction : junctions) {
+			byStem.computeIfAbsent(junction.stemSplineId, k -> new ArrayList<>()).add(junction);
+		}
 		for (TrackSpline spline : registry.inWorld(chunk.getWorld().getName())) {
-			for (TrackJunction junction : registry.junctionsOn(spline.getId())) {
+			List<TrackJunction> on = byStem.get(spline.getId());
+			if (on == null) {
+				continue;
+			}
+			for (TrackJunction junction : on) {
 				spawnSwitchInChunk(junction, spline, chunk);
 			}
 		}
@@ -609,7 +636,7 @@ public final class TrackDisplayManager implements Listener {
 			spawned.getPersistentDataContainer().set(
 					switchKey(), PersistentDataType.STRING, junction.id.toString());
 		});
-		live.add(display);
+		live.add(display, TrackDisplayIndex.at(world.getName(), loc.getX(), loc.getZ()));
 		switches.add(new SwitchDisplay(display, junction.id));
 	}
 
@@ -681,7 +708,7 @@ public final class TrackDisplayManager implements Listener {
 			spawned.getPersistentDataContainer().set(edgeKey(), PersistentDataType.INTEGER, visual.fromEdge);
 			spawned.getPersistentDataContainer().set(spanKey(), PersistentDataType.INTEGER, visual.span);
 		});
-		live.add(display);
+		live.add(display, TrackDisplayIndex.at(world.getName(), loc.getX(), loc.getZ()));
 	}
 
 	private ItemStack trackItem(TrackVisual.Type type) {
@@ -845,7 +872,7 @@ public final class TrackDisplayManager implements Listener {
 				display.remove();
 			}
 		}
-		live.removeIf(display -> display == null || display.isDead() || !display.isValid());
+		pruneDeadInChunk(chunk);
 	}
 
 	private void removeTaggedInChunk(Chunk chunk) {
@@ -857,8 +884,21 @@ public final class TrackDisplayManager implements Listener {
 				display.remove();
 			}
 		}
-		live.removeIf(display -> display == null || display.isDead() || !display.isValid());
-		switches.removeIf(entry -> entry.display().isDead() || !entry.display().isValid());
+		List<ItemDisplay> pruned = pruneDeadInChunk(chunk);
+		if (!pruned.isEmpty() && !switches.isEmpty()) {
+			Set<ItemDisplay> gone = new HashSet<>(pruned);
+			switches.removeIf(entry -> gone.contains(entry.display()));
+		}
+	}
+
+	/**
+	 * Forgets the dead displays standing in this chunk. Only this chunk can have
+	 * changed: a switch removed elsewhere is caught by {@link #tickSwitches()}.
+	 */
+	private List<ItemDisplay> pruneDeadInChunk(Chunk chunk) {
+		return live.pruneChunk(
+				TrackDisplayIndex.chunk(chunk.getWorld().getName(), chunk.getX(), chunk.getZ()),
+				display -> display.isDead() || !display.isValid());
 	}
 
 	private boolean isTrackDisplay(ItemDisplay display) {
@@ -926,5 +966,8 @@ public final class TrackDisplayManager implements Listener {
 	}
 
 	private record SwitchDisplay(ItemDisplay display, UUID junctionId) {
+	}
+
+	private record SplineChunks(List<TrackVisual> visuals, Map<Long, List<TrackVisual>> byChunk) {
 	}
 }
