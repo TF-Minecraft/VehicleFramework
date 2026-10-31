@@ -3,6 +3,7 @@ package net.tfminecraft.vehicleframework.vehicles.controller;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
@@ -25,6 +26,11 @@ public class FloatController {
 	private static final double MAX_UPRIVER_LIFT = 0.3;
 
 	private boolean goingDown;
+	// Block the last lily pad scan ran from.
+	private World padScanWorld;
+	private int padScanX;
+	private int padScanY;
+	private int padScanZ;
 
 	public Vector calculateFloat(ActiveVehicle v, Vector velocity) {
 		if (!checkFloat(v)) {
@@ -144,19 +150,44 @@ public class FloatController {
 		Entity entity = v.getEntity();
 		if (entity == null || !entity.isValid()) return;
 
+		World world = entity.getWorld();
+		Location loc = entity.getLocation();
+		// Nothing but a player placing one puts a pad beside a parked boat, so scan on
+		// the first tick and then only after the boat enters another block.
+		if (world == padScanWorld && loc.getBlockX() == padScanX
+				&& loc.getBlockY() == padScanY && loc.getBlockZ() == padScanZ) {
+			return;
+		}
+		padScanWorld = world;
+		padScanX = loc.getBlockX();
+		padScanY = loc.getBlockY();
+		padScanZ = loc.getBlockZ();
+
 		BoundingBox box = entity.getBoundingBox().clone().expand(1, 0, 1);
+		int minY = (int) Math.floor(box.getMinY());
+		int maxY = (int) Math.floor(box.getMaxY());
 
 		for (int x = (int) Math.floor(box.getMinX()); x <= (int) Math.floor(box.getMaxX()); x++) {
-			for (int y = (int) Math.floor(box.getMinY()); y <= (int) Math.floor(box.getMaxY()); y++) {
-				for (int z = (int) Math.floor(box.getMinZ()); z <= (int) Math.floor(box.getMaxZ()); z++) {
-					Block block = entity.getWorld().getBlockAt(x, y, z);
-					if (block.getType() == Material.LILY_PAD) {
+			for (int z = (int) Math.floor(box.getMinZ()); z <= (int) Math.floor(box.getMaxZ()); z++) {
+				// Climb each column from the bottom of the box and stop at the first air.
+				// A pad needs water or ice right under it, and water falls through air,
+				// so above the first air over the surface there is only sky.
+				for (int y = minY; y <= maxY; y++) {
+					Block block = world.getBlockAt(x, y, z);
+					Material type = block.getType();
+					if (type == Material.LILY_PAD) {
 						block.breakNaturally();
-						entity.getWorld().playSound(block.getLocation(), Sound.BLOCK_GRASS_BREAK, 1.0f, 1.0f);
+						world.playSound(block.getLocation(), Sound.BLOCK_GRASS_BREAK, 1.0f, 1.0f);
+					} else if (isAir(type)) {
+						break;
 					}
 				}
 			}
 		}
+	}
+
+	static boolean isAir(Material type) {
+		return type == Material.AIR || type == Material.CAVE_AIR || type == Material.VOID_AIR;
 	}
 
 	private boolean checkFloat(ActiveVehicle v) {
