@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 import org.bukkit.*;
 import org.bukkit.entity.*;
 import org.bukkit.plugin.PluginManager;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import org.joml.AxisAngle4d;
 import org.junit.jupiter.api.*;
@@ -331,6 +332,69 @@ class ActiveVehicleTest {
         assertTrue(v.hasEffect(CustomAction.values()[0]));
         v.playEffect(CustomAction.values()[0]);
         verify(v.getEffectHandler()).playEffect(v.getNearbyPlayers(), v, CustomAction.values()[0]);
+    }
+
+    @Test
+    void stateWaitsBesideAnUnloadedChunkWhileTheRestOfTheTickRuns() {
+        ActiveVehicle v = create();
+        // A box over the x chunk border at 16 and below z 0: with the 2-block margin it covers chunks x 0..1, z -1..0.
+        when(entity.getBoundingBox()).thenReturn(new BoundingBox(14.5, 64, -3.5, 16.5, 66, -0.5));
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+        StateHandler states = v.getStateHandler(); clearInvocations(states);
+        v.tick(); assertFalse(v.isEdgePaused()); verify(states).tick();
+        when(world.isChunkLoaded(1, -1)).thenReturn(false); clearInvocations(states, v.getWeaponHandler(), v.getBehaviourHandler());
+        v.tick(); assertTrue(v.isEdgePaused()); verify(states, never()).tick();
+        verify(v.getWeaponHandler()).tick(); verify(v.getBehaviourHandler()).tick(v);
+        // Anyone aboard keeps it simulating.
+        when(v.getSeatHandler().hasPassengers()).thenReturn(true); clearInvocations(states);
+        v.tick(); assertFalse(v.isEdgePaused()); verify(states).tick();
+        when(v.getSeatHandler().hasPassengers()).thenReturn(false);
+        // Trains keep their own rules.
+        when(v.getBehaviourHandler().isTrain()).thenReturn(true); clearInvocations(states);
+        v.tick(); assertFalse(v.isEdgePaused()); verify(states).tick();
+        when(v.getBehaviourHandler().isTrain()).thenReturn(false);
+        // A vehicle without a state yet still reads, so it gets one.
+        when(states.getCurrentState()).thenReturn(null); clearInvocations(states);
+        v.tick(); assertFalse(v.isEdgePaused()); verify(states).tick();
+        when(states.getCurrentState()).thenReturn(mock(net.tfminecraft.vehicleframework.vehicles.state.VehicleState.class));
+        v.tick(); assertTrue(v.isEdgePaused());
+        // The chunk loading again resumes it.
+        when(world.isChunkLoaded(1, -1)).thenReturn(true); clearInvocations(states);
+        v.tick(); assertFalse(v.isEdgePaused()); verify(states).tick();
+    }
+
+    @Test
+    void terrainFollowWidensTheCheckedAreaByItsLookahead() {
+        ActiveVehicle v = create();
+        // A box well inside chunk 0,0; chunk 1,0 starts 7 blocks east of it.
+        when(entity.getBoundingBox()).thenReturn(new BoundingBox(8, 64, 8, 9, 66, 9));
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+        when(world.isChunkLoaded(1, 0)).thenReturn(false);
+        var state = mock(net.tfminecraft.vehicleframework.vehicles.state.VehicleState.class);
+        when(v.getStateHandler().getCurrentState()).thenReturn(state);
+        when(entity.getVelocity()).thenReturn(new Vector(0, 0, 0));
+        assertEquals(0, v.lookaheadMargin(), "no terrain follow, no lookahead");
+        v.tick(); assertFalse(v.isEdgePaused());
+        // Terrain follow with 4 lead ticks traces speed x (4 + 1) ahead: 1.5 blocks a tick reaches 8 more blocks.
+        when(state.getTerrainFollow()).thenReturn(
+                new net.tfminecraft.vehicleframework.vehicles.handlers.state.TerrainFollowConfig(true, 1, .25, 4, 1, .08, .98, null));
+        assertEquals(0, v.lookaheadMargin(), "standing still");
+        v.tick(); assertFalse(v.isEdgePaused());
+        when(entity.getVelocity()).thenReturn(new Vector(1.5, -0.3, 0));
+        assertEquals(8, v.lookaheadMargin());
+        v.tick(); assertTrue(v.isEdgePaused());
+        when(state.getTerrainFollow()).thenReturn(
+                new net.tfminecraft.vehicleframework.vehicles.handlers.state.TerrainFollowConfig(false, 1, .25, 4, 1, .08, .98, null));
+        assertEquals(0, v.lookaheadMargin(), "terrain follow off");
+        // However fast, the checked margin stops at 14, so a vehicle beside a sent chunk never pauses.
+        when(state.getTerrainFollow()).thenReturn(
+                new net.tfminecraft.vehicleframework.vehicles.handlers.state.TerrainFollowConfig(true, 1, .25, 4, 1, .08, .98, null));
+        when(entity.getVelocity()).thenReturn(new Vector(10, 0, 0));
+        when(entity.getBoundingBox()).thenReturn(new BoundingBox(8, 64, 8, 9, 66, 9));
+        when(world.isChunkLoaded(1, 0)).thenReturn(true);
+        when(world.isChunkLoaded(2, 0)).thenReturn(false);
+        assertEquals(50, v.lookaheadMargin());
+        v.tick(); assertFalse(v.isEdgePaused(), "chunk 2 starts 23 blocks away, past the 14-block cap");
     }
 
     @Test

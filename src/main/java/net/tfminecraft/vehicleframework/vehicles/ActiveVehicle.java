@@ -8,6 +8,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import org.joml.Quaternionf;
 
@@ -40,6 +41,7 @@ import net.tfminecraft.vehicleframework.events.VehicleRemoveEvent;
 import net.tfminecraft.vehicleframework.loaders.FuelLoader;
 import net.tfminecraft.vehicleframework.managers.VehicleManager;
 import net.tfminecraft.vehicleframework.util.ConditionChecker;
+import net.tfminecraft.vehicleframework.util.LoadedArea;
 import net.tfminecraft.vehicleframework.VFLogger;
 import net.tfminecraft.vehicleframework.util.VehicleEntityCleanup;
 import net.tfminecraft.vehicleframework.vehicles.component.Engine;
@@ -62,6 +64,7 @@ import net.tfminecraft.vehicleframework.vehicles.handlers.SeatHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.SeatHandler.MountResult;
 import net.tfminecraft.vehicleframework.vehicles.handlers.SkinHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.state.AnimationHandler;
+import net.tfminecraft.vehicleframework.vehicles.handlers.state.TerrainFollowConfig;
 import net.tfminecraft.vehicleframework.vehicles.handlers.StateHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.TowHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.TrainHandler;
@@ -96,6 +99,8 @@ public class ActiveVehicle {
 	//Booleans
 	protected boolean initialized;
 	protected boolean destroyed;
+	/** Set each tick: state and movement wait because a chunk beside the vehicle is not loaded. */
+	private boolean edgePaused;
 	protected boolean removed = false;
 	protected VehicleDeath pendingDeathCause;
 	
@@ -580,7 +585,8 @@ public class ActiveVehicle {
 	
 	public void tick() {
 		behaviourHandler.tick(this);
-		stateHandler.tick();
+		edgePaused = pausedAtLoadedEdge();
+		if (!edgePaused) stateHandler.tick();
 		if(hasTowHandler()) towHandler.tick();
 		if(hasUtilityHandler()) {
 			utilityHandler.tick(nearby);
@@ -600,6 +606,50 @@ public class ActiveVehicle {
 	}
 	
 	
+	/**
+	 * Blocks the state and movement code reads around a vehicle (state rings, float, lily pads,
+	 * terrain follow, climb and wall checks) stay within its box grown by {@link #EDGE_MARGIN}.
+	 * Reading a block in a chunk that is not loaded makes Paper load it on the main thread, and an
+	 * unmanned vehicle left at the edge of the loaded area did that every tick. Paper fully loads
+	 * one ring of chunks past each player's view distance and never sends that ring to anyone, and
+	 * a vehicle in a sent chunk has all its neighbours loaded. So only vehicles nobody can see are
+	 * paused: their state and movement wait until the chunk loads, while fire, fuel, weapons and
+	 * everything else keep ticking. Trains keep their own rules, a vehicle always gets its first
+	 * state, and a vehicle with anyone aboard is never paused.
+	 */
+	boolean pausedAtLoadedEdge() {
+		if (isTrain() || stateHandler.getCurrentState() == null || seatHandler.hasPassengers() || entity == null) return false;
+		BoundingBox box = entity.getBoundingBox();
+		// At most MAX_MARGIN: the chunks beside any chunk a player is sent are always loaded, so a
+		// margin under 16 can never pause a vehicle a player can see, whatever its speed.
+		return box != null && !LoadedArea.covers(entity.getWorld(), box, Math.min(MAX_MARGIN, EDGE_MARGIN + lookaheadMargin()));
+	}
+
+	/**
+	 * Terrain follow also traces ahead of the box: its forward and climb rays reach the drive speed
+	 * times the configured lead ticks. A moving vehicle's checked area grows by that reach.
+	 */
+	int lookaheadMargin() {
+		TerrainFollowConfig follow = stateHandler.getCurrentState().getTerrainFollow();
+		if (follow == null || !follow.isEnabled()) return 0;
+		Vector velocity = entity.getVelocity();
+		double speed = velocity == null ? 0 : Math.hypot(velocity.getX(), velocity.getZ());
+		if (panel != null) speed = Math.max(speed, Math.abs(panel.getSpeed()));
+		// Gliding wings move at 0.65 blocks a tick at full throttle, and somewhat faster at a
+		// negative one; no flying state uses terrain follow today, and the cap above bounds it.
+		if (hasComponent(Component.WINGS)) speed = Math.max(speed, 0.65);
+		return (int) Math.ceil(speed * (Math.max(1, follow.getClimbLeadTicks()) + 1));
+	}
+
+	/** Blocks around the box whose chunks must be loaded for state and movement to run. */
+	static final int EDGE_MARGIN = 2;
+	/** The widest checked margin; beyond 16 a vehicle a player can see could pause. */
+	static final int MAX_MARGIN = 14;
+
+	public boolean isEdgePaused() {
+		return edgePaused;
+	}
+
 	public void updateNearby() {
 		nearby.clear();
 		for(Player p : Bukkit.getOnlinePlayers()) {

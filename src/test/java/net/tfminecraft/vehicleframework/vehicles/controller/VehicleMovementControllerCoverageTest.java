@@ -282,6 +282,15 @@ class VehicleMovementControllerCoverageTest {
     }
 
     @Test
+    void aVehiclePausedAtTheLoadedEdgeSkipsMovementAndItsBlockReads() {
+        when(vehicle.isEdgePaused()).thenReturn(true);
+        controller.input(player, Input.MOVE);
+        verify(vehicle, never()).hasParent();
+        verify(entity, never()).setVelocity(any());
+        terrain.verifyNoInteractions();
+    }
+
+    @Test
     void stationaryOrParentedVehiclesDoNotApplyDriveMovement() {
         when(vehicle.getAccessPanel().getSpeed()).thenReturn(0d);
         controller.input(player, Input.FORWARD);
