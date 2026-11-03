@@ -386,6 +386,15 @@ class ActiveVehicleTest {
         when(state.getTerrainFollow()).thenReturn(
                 new net.tfminecraft.vehicleframework.vehicles.handlers.state.TerrainFollowConfig(false, 1, .25, 4, 1, .08, .98, null));
         assertEquals(0, v.lookaheadMargin(), "terrain follow off");
+        // However fast, the checked margin stops at 14, so a vehicle beside a sent chunk never pauses.
+        when(state.getTerrainFollow()).thenReturn(
+                new net.tfminecraft.vehicleframework.vehicles.handlers.state.TerrainFollowConfig(true, 1, .25, 4, 1, .08, .98, null));
+        when(entity.getVelocity()).thenReturn(new Vector(10, 0, 0));
+        when(entity.getBoundingBox()).thenReturn(new BoundingBox(8, 64, 8, 9, 66, 9));
+        when(world.isChunkLoaded(1, 0)).thenReturn(true);
+        when(world.isChunkLoaded(2, 0)).thenReturn(false);
+        assertEquals(50, v.lookaheadMargin());
+        v.tick(); assertFalse(v.isEdgePaused(), "chunk 2 starts 23 blocks away, past the 14-block cap");
     }
 
     @Test

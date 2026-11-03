@@ -620,7 +620,9 @@ public class ActiveVehicle {
 	boolean pausedAtLoadedEdge() {
 		if (isTrain() || stateHandler.getCurrentState() == null || seatHandler.hasPassengers() || entity == null) return false;
 		BoundingBox box = entity.getBoundingBox();
-		return box != null && !LoadedArea.covers(entity.getWorld(), box, EDGE_MARGIN + lookaheadMargin());
+		// At most MAX_MARGIN: the chunks beside any chunk a player is sent are always loaded, so a
+		// margin under 16 can never pause a vehicle a player can see, whatever its speed.
+		return box != null && !LoadedArea.covers(entity.getWorld(), box, Math.min(MAX_MARGIN, EDGE_MARGIN + lookaheadMargin()));
 	}
 
 	/**
@@ -633,13 +635,16 @@ public class ActiveVehicle {
 		Vector velocity = entity.getVelocity();
 		double speed = velocity == null ? 0 : Math.hypot(velocity.getX(), velocity.getZ());
 		if (panel != null) speed = Math.max(speed, Math.abs(panel.getSpeed()));
-		// Gliding wings move at up to 0.65 blocks a tick whatever the panel speed.
+		// Gliding wings move at 0.65 blocks a tick at full throttle, and somewhat faster at a
+		// negative one; no flying state uses terrain follow today, and the cap above bounds it.
 		if (hasComponent(Component.WINGS)) speed = Math.max(speed, 0.65);
 		return (int) Math.ceil(speed * (Math.max(1, follow.getClimbLeadTicks()) + 1));
 	}
 
 	/** Blocks around the box whose chunks must be loaded for state and movement to run. */
 	static final int EDGE_MARGIN = 2;
+	/** The widest checked margin; beyond 16 a vehicle a player can see could pause. */
+	static final int MAX_MARGIN = 14;
 
 	public boolean isEdgePaused() {
 		return edgePaused;
