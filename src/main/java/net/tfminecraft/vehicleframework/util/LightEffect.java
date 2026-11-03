@@ -12,6 +12,10 @@ import net.tfminecraft.vehicleframework.cache.Cache;
 public class LightEffect {
 
     public void createTemporaryLight(Location loc, int lightLevel) {
+    	// Reading or lighting a block in an unloaded chunk would load it on the main thread. Headlights
+    	// stay on after the driver leaves, so a parked vehicle at the edge of the loaded area would do
+    	// that every tick; nobody can see that chunk, so it simply gets no light.
+    	if(loc.getWorld() == null || !loc.getWorld().isChunkLoaded(loc.getBlockX() >> 4, loc.getBlockZ() >> 4)) return;
     	if(!loc.getBlock().getType().equals(Material.AIR)) return;
     	if(Cache.lightLocations.contains(loc)) return;
     	Cache.lightLocations.add(loc);

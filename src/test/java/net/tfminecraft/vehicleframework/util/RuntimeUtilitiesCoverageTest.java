@@ -133,6 +133,7 @@ class RuntimeUtilitiesCoverageTest {
 
   @Test
   void temporaryLightPreservesReplacementAndReleasesItsReservation() {
+    when(r.world.isChunkLoaded(0, 0)).thenReturn(true);
     Location location = new Location(r.world, 0, 64, 0);
     new LightEffect().createTemporaryLight(location, 12);
     block(0, 64, 0).setType(Material.STONE);
@@ -539,7 +540,22 @@ class RuntimeUtilitiesCoverageTest {
   }
 
   @Test
+  void temporaryLightsNeverReadOrLightABlockInAnUnloadedChunk() {
+    LightEffect effect = new LightEffect();
+    Location location = new Location(r.world, -1, 64, 31);
+    effect.createTemporaryLight(location, 12);
+    verify(r.world).isChunkLoaded(-1, 1);
+    verify(r.world, never()).getBlockAt(anyInt(), anyInt(), anyInt());
+    verify(r.world, never()).getBlockAt(any(Location.class));
+    assertEquals(0, r.pending());
+    assertTrue(Cache.lightLocations.isEmpty());
+    effect.createTemporaryLight(new Location(null, 0, 64, 0), 12);
+    assertEquals(0, r.pending());
+  }
+
+  @Test
   void temporaryLightsRespectSolidBlocksReservationsAndExpire() {
+    when(r.world.isChunkLoaded(0, 0)).thenReturn(true);
     LightEffect effect = new LightEffect();
     Location location = new Location(r.world, 0, 64, 0);
     block(0, 64, 0, Material.STONE);
