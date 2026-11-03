@@ -364,6 +364,31 @@ class ActiveVehicleTest {
     }
 
     @Test
+    void terrainFollowWidensTheCheckedAreaByItsLookahead() {
+        ActiveVehicle v = create();
+        // A box well inside chunk 0,0; chunk 1,0 starts 7 blocks east of it.
+        when(entity.getBoundingBox()).thenReturn(new BoundingBox(8, 64, 8, 9, 66, 9));
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+        when(world.isChunkLoaded(1, 0)).thenReturn(false);
+        var state = mock(net.tfminecraft.vehicleframework.vehicles.state.VehicleState.class);
+        when(v.getStateHandler().getCurrentState()).thenReturn(state);
+        when(entity.getVelocity()).thenReturn(new Vector(0, 0, 0));
+        assertEquals(0, v.lookaheadMargin(), "no terrain follow, no lookahead");
+        v.tick(); assertFalse(v.isEdgePaused());
+        // Terrain follow with 4 lead ticks traces speed x (4 + 1) ahead: 1.5 blocks a tick reaches 8 more blocks.
+        when(state.getTerrainFollow()).thenReturn(
+                new net.tfminecraft.vehicleframework.vehicles.handlers.state.TerrainFollowConfig(true, 1, .25, 4, 1, .08, .98, null));
+        assertEquals(0, v.lookaheadMargin(), "standing still");
+        v.tick(); assertFalse(v.isEdgePaused());
+        when(entity.getVelocity()).thenReturn(new Vector(1.5, -0.3, 0));
+        assertEquals(8, v.lookaheadMargin());
+        v.tick(); assertTrue(v.isEdgePaused());
+        when(state.getTerrainFollow()).thenReturn(
+                new net.tfminecraft.vehicleframework.vehicles.handlers.state.TerrainFollowConfig(false, 1, .25, 4, 1, .08, .98, null));
+        assertEquals(0, v.lookaheadMargin(), "terrain follow off");
+    }
+
+    @Test
     void optionalUtilitiesAndTickHandlersAreInvoked() {
         when(stored.getTowHandler()).thenReturn(mock(TowHandler.class));
         when(stored.getUtilityHandler()).thenReturn(mock(UtilityHandler.class));

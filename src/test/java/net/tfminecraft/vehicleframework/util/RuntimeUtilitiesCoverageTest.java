@@ -133,7 +133,7 @@ class RuntimeUtilitiesCoverageTest {
 
   @Test
   void temporaryLightPreservesReplacementAndReleasesItsReservation() {
-    when(r.world.isChunkLoaded(0, 0)).thenReturn(true);
+    when(r.world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
     Location location = new Location(r.world, 0, 64, 0);
     new LightEffect().createTemporaryLight(location, 12);
     block(0, 64, 0).setType(Material.STONE);
@@ -554,8 +554,27 @@ class RuntimeUtilitiesCoverageTest {
   }
 
   @Test
-  void temporaryLightsRespectSolidBlocksReservationsAndExpire() {
+  void temporaryLightsNeedTheirNeighboursChunksAndDropWithoutPhysicsOnceTheyAreGone() {
+    LightEffect effect = new LightEffect();
+    // x 15 sits on the border with chunk 1, whose neighbour block a physics update would touch.
     when(r.world.isChunkLoaded(0, 0)).thenReturn(true);
+    effect.createTemporaryLight(new Location(r.world, 15, 64, 5), 12);
+    assertEquals(0, r.pending());
+    assertTrue(Cache.lightLocations.isEmpty());
+    when(r.world.isChunkLoaded(1, 0)).thenReturn(true);
+    Location location = new Location(r.world, 15, 64, 5);
+    effect.createTemporaryLight(location, 12);
+    assertEquals(Material.LIGHT, location.getBlock().getType());
+    Block placed = location.getBlock();
+    when(r.world.isChunkLoaded(1, 0)).thenReturn(false);
+    r.ticks(2);
+    verify(placed).setType(Material.AIR, false);
+    assertTrue(Cache.lightLocations.isEmpty());
+  }
+
+  @Test
+  void temporaryLightsRespectSolidBlocksReservationsAndExpire() {
+    when(r.world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
     LightEffect effect = new LightEffect();
     Location location = new Location(r.world, 0, 64, 0);
     block(0, 64, 0, Material.STONE);
@@ -1276,6 +1295,15 @@ class RuntimeUtilitiesCoverageTest {
                   })
               .when(b)
               .setType(any(Material.class));
+          doAnswer(
+                  c -> {
+                    Material m = c.getArgument(0);
+                    type.set(m);
+                    state.set(data(m));
+                    return null;
+                  })
+              .when(b)
+              .setType(any(Material.class), anyBoolean());
           doAnswer(
                   c -> {
                     state.set(c.getArgument(0));

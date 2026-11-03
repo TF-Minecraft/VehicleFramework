@@ -64,6 +64,7 @@ import net.tfminecraft.vehicleframework.vehicles.handlers.SeatHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.SeatHandler.MountResult;
 import net.tfminecraft.vehicleframework.vehicles.handlers.SkinHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.state.AnimationHandler;
+import net.tfminecraft.vehicleframework.vehicles.handlers.state.TerrainFollowConfig;
 import net.tfminecraft.vehicleframework.vehicles.handlers.StateHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.TowHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.TrainHandler;
@@ -619,7 +620,22 @@ public class ActiveVehicle {
 	boolean pausedAtLoadedEdge() {
 		if (isTrain() || stateHandler.getCurrentState() == null || seatHandler.hasPassengers() || entity == null) return false;
 		BoundingBox box = entity.getBoundingBox();
-		return box != null && !LoadedArea.covers(entity.getWorld(), box, EDGE_MARGIN);
+		return box != null && !LoadedArea.covers(entity.getWorld(), box, EDGE_MARGIN + lookaheadMargin());
+	}
+
+	/**
+	 * Terrain follow also traces ahead of the box: its forward and climb rays reach the drive speed
+	 * times the configured lead ticks. A moving vehicle's checked area grows by that reach.
+	 */
+	int lookaheadMargin() {
+		TerrainFollowConfig follow = stateHandler.getCurrentState().getTerrainFollow();
+		if (follow == null || !follow.isEnabled()) return 0;
+		Vector velocity = entity.getVelocity();
+		double speed = velocity == null ? 0 : Math.hypot(velocity.getX(), velocity.getZ());
+		if (panel != null) speed = Math.max(speed, Math.abs(panel.getSpeed()));
+		// Gliding wings move at up to 0.65 blocks a tick whatever the panel speed.
+		if (hasComponent(Component.WINGS)) speed = Math.max(speed, 0.65);
+		return (int) Math.ceil(speed * (Math.max(1, follow.getClimbLeadTicks()) + 1));
 	}
 
 	/** Blocks around the box whose chunks must be loaded for state and movement to run. */
