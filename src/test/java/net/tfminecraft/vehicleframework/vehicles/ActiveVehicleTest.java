@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 import org.bukkit.*;
 import org.bukkit.entity.*;
 import org.bukkit.plugin.PluginManager;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import org.joml.AxisAngle4d;
 import org.junit.jupiter.api.*;
@@ -331,6 +332,35 @@ class ActiveVehicleTest {
         assertTrue(v.hasEffect(CustomAction.values()[0]));
         v.playEffect(CustomAction.values()[0]);
         verify(v.getEffectHandler()).playEffect(v.getNearbyPlayers(), v, CustomAction.values()[0]);
+    }
+
+    @Test
+    void stateWaitsBesideAnUnloadedChunkWhileTheRestOfTheTickRuns() {
+        ActiveVehicle v = create();
+        // A box over the x chunk border at 16 and below z 0: with the 2-block margin it covers chunks x 0..1, z -1..0.
+        when(entity.getBoundingBox()).thenReturn(new BoundingBox(14.5, 64, -3.5, 16.5, 66, -0.5));
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+        StateHandler states = v.getStateHandler(); clearInvocations(states);
+        v.tick(); assertFalse(v.isEdgePaused()); verify(states).tick();
+        when(world.isChunkLoaded(1, -1)).thenReturn(false); clearInvocations(states, v.getWeaponHandler(), v.getBehaviourHandler());
+        v.tick(); assertTrue(v.isEdgePaused()); verify(states, never()).tick();
+        verify(v.getWeaponHandler()).tick(); verify(v.getBehaviourHandler()).tick(v);
+        // Anyone aboard keeps it simulating.
+        when(v.getSeatHandler().hasPassengers()).thenReturn(true); clearInvocations(states);
+        v.tick(); assertFalse(v.isEdgePaused()); verify(states).tick();
+        when(v.getSeatHandler().hasPassengers()).thenReturn(false);
+        // Trains keep their own rules.
+        when(v.getBehaviourHandler().isTrain()).thenReturn(true); clearInvocations(states);
+        v.tick(); assertFalse(v.isEdgePaused()); verify(states).tick();
+        when(v.getBehaviourHandler().isTrain()).thenReturn(false);
+        // A vehicle without a state yet still reads, so it gets one.
+        when(states.getCurrentState()).thenReturn(null); clearInvocations(states);
+        v.tick(); assertFalse(v.isEdgePaused()); verify(states).tick();
+        when(states.getCurrentState()).thenReturn(mock(net.tfminecraft.vehicleframework.vehicles.state.VehicleState.class));
+        v.tick(); assertTrue(v.isEdgePaused());
+        // The chunk loading again resumes it.
+        when(world.isChunkLoaded(1, -1)).thenReturn(true); clearInvocations(states);
+        v.tick(); assertFalse(v.isEdgePaused()); verify(states).tick();
     }
 
     @Test

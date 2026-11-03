@@ -86,7 +86,8 @@ public class VehicleMovementController implements MovementInterface{
 				seatSelection(p);
 				break;
 			case MOVE:
-				move();
+				// See ActiveVehicle#pausedAtLoadedEdge: movement reads blocks around the vehicle.
+				if (!v.isEdgePaused()) move();
 				break;
 			case PITCH_UP:
 				pitchUp(p);
