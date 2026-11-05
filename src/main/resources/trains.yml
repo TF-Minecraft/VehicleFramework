@@ -8,6 +8,9 @@ item-layer: m.utils.train_track_layer
 item-remover: m.utils.train_track_remover
 item-recorder: m.utils.train_track_recorder
 item-junction: m.utils.train_track_junction
+# Cargo dock tool: right-click a chest, barrel, hopper or other storage block you can open
+# to cycle it through load, unload and off.
+item-dock: m.utils.train_track_dock
 item-switch: ia.tfmc:railroad_switch
 item-track: ia.tfmc:train_track
 snap-distance: 3
@@ -113,6 +116,33 @@ build:
   width: 1
   extra: 0.08
   y-offset: 0.08
+
+# Throttle tapes (the recorder). On a circuit a recording ends after one lap; on a line with
+# ends, when the locomotive is back where it started, heading the same way, after a real run.
+routes:
+  # Back within this many blocks of the start counts as back.
+  finish-distance: 2
+  # Blocks driven before a recording on a line with ends can finish.
+  min-distance: 32
+  # A tape-driven train with fuel and nobody aboard keeps running when no player is near:
+  # its chunks unload as usual and it moves along its tape's timetable once a second
+  # without loading chunks, then spawns where it has got to when a player comes near.
+  run-unloaded: true
+  # How often, in seconds, a train running unloaded saves where it is.
+  save-seconds: 30
+
+# Cargo docks: when a tape-driven train stops at a stop on its tape (engine at zero for at
+# least min-stop-seconds while recording), each car with storage moves items with the docks
+# its owner marked within reach: a load dock fills the car, an unload dock empties it.
+docks:
+  enabled: true
+  # Blocks from a car's centre to the dock block.
+  reach: 4
+  # Items moved at most per train per stop.
+  items-per-stop: 576
+  min-stop-seconds: 2
+  # Whether the fuel car behind the locomotive trades with docks too.
+  fuel-cars: false
 
 # One switch for logs/track.log and logs/recorder.log
 debug-logging: false

@@ -35,7 +35,11 @@ import net.tfminecraft.vehicleframework.database.VehicleRepository;
 import net.tfminecraft.vehicleframework.database.VehicleSnapshot;
 import net.tfminecraft.vehicleframework.enums.Direction;
 import net.tfminecraft.vehicleframework.managers.VehicleManager;
+import net.tfminecraft.vehicleframework.tracks.CargoDocks;
+import net.tfminecraft.vehicleframework.tracks.TapePlayback;
+import net.tfminecraft.vehicleframework.tracks.TapeSwitches;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTape;
+import net.tfminecraft.vehicleframework.tracks.TrainGhosts;
 import net.tfminecraft.vehicleframework.tracks.ThrottleTapeItems;
 import net.tfminecraft.vehicleframework.tracks.TrainPath;
 import net.tfminecraft.vehicleframework.tracks.TrainRoute;
@@ -99,8 +103,29 @@ public class TrainHandler {
 	private UUID recordPrevSpline;
 	private double recordTraveled;
 	private double recordLength;
+	// Where recording started, the way the train first moved from there, and how far it has gone.
+	private double recordStartS;
+	private int recordStartSign;
+	private double recordDistance;
 	private double fxTraveled;
-	private final ThrottleTape.DwellState tapeDwell = new ThrottleTape.DwellState();
+	// Plays the installed tape in recorded order.
+	private final TapePlayback playback = new TapePlayback();
+	// The recorded stop whose docks this train has served; -1 when moving.
+	private int dockServedCursor = -1;
+	// Ticks until the tape's switches are checked again.
+	private int switchCheckIn;
+	// The last step was stopped by a chunk that is not loaded.
+	private boolean edgeBlocked;
+	private boolean switchHold;
+	private static final int SWITCH_CHECK_TICKS = 5;
+	// Spline movement starts this long after a spawn; until then the tape holds the throttle at 0.
+	static final long SETTLE_MS = 5000;
+	// How long after a spawn the tape waits for coupled cars still to load; one whose row is
+	// gone would otherwise hold the train for ever.
+	static final long MISSING_CAR_WAIT_MS = 30000;
+	// Ticks between asks to run unloaded while held at the edge of the loaded area.
+	private static final int EDGE_REQUEST_TICKS = 20;
+	private int edgeRequestIn;
 	// Blocks across the wheels. With it, the move animations turn at the train's speed.
 	private double wheelDiameter;
 	private final List<String> wheelBones = new ArrayList<>();
@@ -177,6 +202,7 @@ public class TrainHandler {
 		fuelCars.addAll(another.fuelCars);
 		if (another.installedTape != null) {
 			installedTape = ThrottleTape.fromJson(another.installedTape.toJson());
+			playback.setCursor(another.playback.getCursor(), another.playback.getTicksAt());
 		}
 	}
 	
@@ -325,7 +351,8 @@ public class TrainHandler {
 			splineId = null;
 		}
 		s = consist.getS() == null ? 0 : consist.getS();
-		checkLoadedPosition = splineId != null;
+		// A train spawned from a run on paper was just written where it is on its track.
+		checkLoadedPosition = splineId != null && !TrainGhosts.consumeTrusted(v == null ? null : v.getUUID());
 		posedEntity = null;
 		travelSign = consist.getTravelSign();
 		orientation = consist.getOrientation();
@@ -476,8 +503,8 @@ public class TrainHandler {
 
 	public void setInstalledTape(ThrottleTape tape) {
 		installedTape = tape;
-		tapeDwell.left = 0;
-		tapeDwell.atS = null;
+		playback.reset();
+		dockServedCursor = -1;
 		clearRecording();
 		RecorderLog.append("TAPE_INSTALL samples=" + (tape == null || tape.isEmpty() ? 0 : tape.getSamples().size())
 				+ " " + RecorderLog.train(v));
@@ -488,18 +515,29 @@ public class TrainHandler {
 	}
 
 	public int recordingSampleCount() {
-		return recordingTape == null ? 0 : recordingTape.getSamples().size();
+		return recordingTape == null ? 0 : recordingTape.size();
 	}
 
-	public boolean canRecordCircuit() {
-		TrackSpline spline = boundSpline();
-		return spline != null && spline.isLoop();
+	/** The tape cursor and ticks spent at it, saved so playback resumes where it was. */
+	public int[] getTapeClock() {
+		return new int[] {playback.getCursor(), playback.getTicksAt()};
+	}
+
+	public void setTapeClock(int cursor, int ticksAt) {
+		playback.setCursor(cursor, ticksAt);
+		// Saved at a stop, its docks were served when it arrived.
+		dockServedCursor = cursor;
+	}
+
+	/** Recording needs a track: a circuit, or a line the train drives out and back along. */
+	public boolean canRecordRoute() {
+		return boundSpline() != null;
 	}
 
 	public void startRecording(Player player) {
 		TrackSpline spline = boundSpline();
-		if (spline == null || !spline.isLoop()) {
-			RecorderLog.append("RECORD_START_FAIL not-circuit " + RecorderLog.train(v));
+		if (spline == null) {
+			RecorderLog.append("RECORD_START_FAIL no-track " + RecorderLog.train(v));
 			return;
 		}
 		recording = true;
@@ -508,15 +546,18 @@ public class TrainHandler {
 		recordPrevS = s;
 		recordPrevSpline = splineId;
 		recordTraveled = 0;
-		recordLength = spline.length();
+		recordLength = spline.isLoop() ? spline.length() : 0;
+		recordStartS = s;
+		recordStartSign = 0;
+		recordDistance = 0;
 		int throttle = v != null && v.getThrottle() != null ? v.getThrottle().getCurrent() : 0;
 		recordingTape.tryAppend(s, travelSign, throttle, splineId.toString(), null, orientation);
 		RecorderLog.append("RECORD_START player=" + (player == null ? "none" : player.getName())
-				+ " length=" + recordLength + " " + RecorderLog.train(v));
+				+ " length=" + spline.length() + " loop=" + spline.isLoop() + " " + RecorderLog.train(v));
 	}
 
 	public void stopRecording(ItemStack hand) {
-		RecorderLog.append("RECORD_STOP samples=" + recordingSampleCount() + " traveled=" + recordTraveled
+		RecorderLog.append("RECORD_STOP samples=" + recordingSampleCount() + " traveled=" + recordDistance
 				+ " " + RecorderLog.train(v));
 		if (recordingTape != null && hand != null) {
 			ThrottleTapeItems.write(hand, recordingTape);
@@ -531,28 +572,39 @@ public class TrainHandler {
 		TrackSpline spline = boundSpline();
 		TrackRegistry registry = VehicleFramework.getTrackRegistry();
 		if (spline == null || registry == null || !onRecordedCircuit(registry, spline)) {
-			finishRecordingCappedOrUnbound("Recording stopped: locomotive left the circuit");
+			finishRecordingCappedOrUnbound("Recording stopped: locomotive left the route");
 			return;
 		}
 		boolean onOrigin = recordingTape.matchesSpline(spline.getId());
-		if (onOrigin && recordPrevSpline != null && recordPrevSpline.equals(spline.getId())) {
-			recordTraveled += TrackLap.wrapDelta(recordPrevS, s, recordLength);
+		if (recordPrevSpline != null && recordPrevSpline.equals(spline.getId())) {
+			double moved = Math.abs(ThrottleTape.along(recordPrevS, s, spline.length(), spline.isLoop()));
+			recordDistance += moved;
+			if (onOrigin && spline.isLoop()) {
+				recordTraveled += TrackLap.wrapDelta(recordPrevS, s, recordLength);
+			}
 		}
 		recordPrevS = s;
 		recordPrevSpline = spline.getId();
+		double fromStart = onOrigin ? Math.abs(ThrottleTape.along(recordStartS, s, spline.length(), spline.isLoop()))
+				: Double.POSITIVE_INFINITY;
+		if (recordStartSign == 0 && fromStart > TapePlayback.STATIONARY) {
+			recordStartSign = travelSign;
+		}
 		// On a branch with a frog at each end, record the one this sample is nearer.
 		String junction = onOrigin ? null : registry.junctionsByBranch(splineId).stream()
 				.min(Comparator.comparingDouble(branch -> branch.fromFrog(s, spline.length())))
 				.map(branch -> branch.id.toString()).orElse(null);
 		ThrottleTape.AppendResult result = recordingTape.tryAppend(
 				s, travelSign, throttle, spline.getId().toString(), junction, orientation);
-		int hold = recordingTape.getSamples().get(recordingTape.getSamples().size() - 1).holdTicks;
+		int hold = recordingTape.last().holdTicks;
 		RecorderLog.sample(v, result, throttle, hold);
 		if (result == ThrottleTape.AppendResult.CAPPED) {
 			finishRecordingCappedOrUnbound("Recording stopped: tape is full");
 			return;
 		}
-		if (TrackLap.complete(recordTraveled, recordLength)) {
+		if (TrackLap.complete(recordTraveled, recordLength)
+				|| TrackLap.backAtStart(recordDistance, Cache.trainRouteMinDistance, fromStart,
+						Cache.trainRouteFinishDistance, travelSign, recordStartSign, throttle)) {
 			finishRecordingCappedOrUnbound("Recording complete");
 		}
 	}
@@ -577,11 +629,15 @@ public class TrainHandler {
 		recordPrevSpline = null;
 		recordTraveled = 0;
 		recordLength = 0;
+		recordStartS = 0;
+		recordStartSign = 0;
+		recordDistance = 0;
 	}
 
 	private void finishRecordingCappedOrUnbound(String message) {
 		RecorderLog.append("RECORD_FINISH " + message + " samples=" + recordingSampleCount()
-				+ " traveled=" + recordTraveled + " " + RecorderLog.train(v));
+				+ " traveled=" + recordDistance + " ticks=" + (recordingTape == null ? 0 : recordingTape.totalTicks())
+				+ " " + RecorderLog.train(v));
 		Player player = recordingPlayer == null ? null : Bukkit.getPlayer(recordingPlayer);
 		if (player != null && player.isOnline()) {
 			ItemStack hand = player.getInventory().getItemInMainHand();
@@ -601,17 +657,122 @@ public class TrainHandler {
 		if (recording || !isBound() || !hasInstalledTape()) {
 			return null;
 		}
+		int cursor = playback.getCursor();
 		if (tank != null && tank.useFuel() && tank.getCurrent() <= 0) {
-			RecorderLog.playback(v, "no-fuel", null, tapeDwell);
+			RecorderLog.playback(v, "no-fuel", null, cursor);
 			return null;
 		}
 		if (v != null && v.getSeatHandler() != null && v.getSeatHandler().hasCaptain()) {
-			RecorderLog.playback(v, "captain", null, tapeDwell);
+			RecorderLog.playback(v, "captain", null, cursor);
 			return null;
 		}
-		int target = installedTape.targetWithDwell(s, travelSign, tapeDwell, splineId, orientation);
-		RecorderLog.playback(v, "ok", target, tapeDwell);
+		TrackSpline spline = boundSpline();
+		// A train just spawned waits until it moves along its track, and for all its cars.
+		long alive = v == null ? Long.MAX_VALUE : System.currentTimeMillis() - v.getSpawnTime();
+		if (spline == null || alive < SETTLE_MS || (alive < MISSING_CAR_WAIT_MS && hasMissingCars())) {
+			RecorderLog.playback(v, "waiting", 0, cursor);
+			return 0;
+		}
+		TapePlayback.Step step = playback.step(installedTape, splineId.toString(), s, spline.length(),
+				spline.isLoop(), travelSign, orientation, Cache.trainDockMinStopTicks);
+		if (step.offRoute()) {
+			RecorderLog.playback(v, "off-route", 0, step.cursor());
+			return 0;
+		}
+		int target = step.target();
+		if (alignTapeSwitches(spline, step.cursor(), target)) {
+			RecorderLog.playback(v, "switch", 0, step.cursor());
+			return 0;
+		}
+		double speed = v == null || v.getAccessPanel() == null ? 0 : v.getAccessPanel().getSpeed();
+		if (!step.atStop()) {
+			dockServedCursor = -1;
+		} else if (dockServedCursor != step.cursor() && TrackSplineMotion.stopped(speed)) {
+			dockServedCursor = step.cursor();
+			CargoDocks.serveLive(v);
+		}
+		RecorderLog.playback(v, "ok", target, step.cursor());
 		return target;
+	}
+
+	// Throws the switches ahead the way the tape went. True holds the train short of a
+	// switch it needs but cannot throw yet, because another train is on it.
+	private boolean alignTapeSwitches(TrackSpline spline, int cursor, int target) {
+		if (switchCheckIn-- > 0) {
+			return switchHold;
+		}
+		switchCheckIn = SWITCH_CHECK_TICKS;
+		double lead = leadReach(target);
+		// The throttle comes down one step a tick: stopping takes about half its speed times its throttle.
+		double speed = v == null || v.getAccessPanel() == null ? 0 : Math.abs(v.getAccessPanel().getSpeed());
+		int throttle = v == null || v.getThrottle() == null ? 0 : Math.abs(v.getThrottle().getCurrent());
+		double hold = lead + 2 + speed * (throttle / 2.0 + SWITCH_CHECK_TICKS);
+		switchHold = TapeSwitches.align(VehicleFramework.getTrackRegistry(), installedTape, cursor, spline, s,
+				Integer.signum(target) * orientation, Math.max(Cache.trackJunctionArmDistance + lead, hold), hold,
+				junctionRoutes, v);
+		return switchHold;
+	}
+
+	// From the locomotive's centre to the end of the train leading at this throttle.
+	private double leadReach(int throttle) {
+		if (throttle >= 0) {
+			return reach(this);
+		}
+		double length = 0;
+		TrainHandler car = this;
+		while (car.child != null) {
+			TrainHandler next = car.child.getTrainHandler();
+			length += spacing(car, next);
+			car = next;
+		}
+		return length + reach(car);
+	}
+
+	/** A car saved as coupled to this train has not loaded yet; moving would leave it behind. */
+	public boolean hasMissingCars() {
+		for (TrainHandler car = this; car != null; car = car.child == null ? null : car.child.getTrainHandler()) {
+			if (car.pendingChild != null && car.child == null) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Whether the last step was stopped by a chunk that is not loaded. */
+	public boolean isEdgeBlocked() {
+		return edgeBlocked;
+	}
+
+	/**
+	 * Every car from this one back, how far behind this car's centre each one's centre is
+	 * along the track, how far each reaches to its couplers, and the switches they are on.
+	 */
+	public record Layout(List<ActiveVehicle> cars, double[] offsets, double[] reaches, Map<UUID, Boolean> routes) {
+	}
+
+	public Layout layout() {
+		List<ActiveVehicle> cars = new ArrayList<>();
+		List<Double> offsets = new ArrayList<>();
+		List<Double> reaches = new ArrayList<>();
+		double offset = 0;
+		ActiveVehicle car = v;
+		while (car != null) {
+			TrainHandler train = car.getTrainHandler();
+			cars.add(car);
+			offsets.add(offset);
+			reaches.add(reach(train));
+			if (train.child != null) {
+				offset += spacing(train, train.child.getTrainHandler());
+			}
+			car = train.child;
+		}
+		return new Layout(cars, offsets.stream().mapToDouble(Double::doubleValue).toArray(),
+				reaches.stream().mapToDouble(Double::doubleValue).toArray(), new LinkedHashMap<>(junctionRoutes));
+	}
+
+	/** How far this car reaches along the track from its centre to its couplers. */
+	public double trackReach() {
+		return reach(this);
 	}
 
 	public boolean isBound() {
@@ -1146,6 +1307,9 @@ public class TrainHandler {
 
 	/** Moves every train on {@code old} onto the track that replaced it. */
 	public static void retrackTrains(TrackSpline old, List<TrackSpline> rebuilt) {
+		if (old != null) {
+			TrainGhosts.trackEdited(old.getId());
+		}
 		VehicleManager vehicles = VehicleFramework.getVehicleManager();
 		if (vehicles == null) {
 			return;
@@ -1165,6 +1329,9 @@ public class TrainHandler {
 	public static boolean anyTrainOn(UUID splineId) {
 		if (splineId == null) {
 			return false;
+		}
+		if (TrainGhosts.onTrack(splineId)) {
+			return true;
 		}
 		VehicleManager vehicles = VehicleFramework.getVehicleManager();
 		if (vehicles != null) {
@@ -1370,6 +1537,7 @@ public class TrainHandler {
 		double moved = 0;
 		boolean blocked = false;
 		boolean trackEnd = false;
+		edgeBlocked = false;
 		for (int i = 0; i < steps; i++) {
 			StepState before = stepState();
 			Position lead = leadingPosition(accepted, direction);
@@ -1408,6 +1576,10 @@ public class TrainHandler {
 			applyPlacements(accepted);
 			maybeClack(moved);
 			afterMove.forEach(Runnable::run);
+		}
+		if (edgeBlocked && edgeRequestIn-- <= 0) {
+			edgeRequestIn = EDGE_REQUEST_TICKS;
+			TrainGhosts.request(v);
 		}
 		if (blocked) {
 			if (trackEnd) {
@@ -1449,8 +1621,14 @@ public class TrainHandler {
 		for (int i = 0; i < next.size(); i++) {
 			CarPlacement from = previous.get(i);
 			CarPlacement to = next.get(i);
-			if (TrainBlockCollision.blocked(to.vehicle.getEntity(), from.spline, from.s,
-					to.spline, to.s, reach(to.vehicle.getTrainHandler()), shapes)) {
+			TrainBlockCollision.Clearance clearance = TrainBlockCollision.check(to.vehicle.getEntity(), from.spline,
+					from.s, to.spline, to.s, reach(to.vehicle.getTrainHandler()), shapes);
+			if (clearance == TrainBlockCollision.Clearance.UNLOADED) {
+				// Never load a chunk to look ahead; a tape train carries on unloaded instead.
+				edgeBlocked = true;
+				return false;
+			}
+			if (clearance == TrainBlockCollision.Clearance.BLOCKED) {
 				showWhatStopped(from, to, shapes);
 				return false;
 			}

@@ -87,6 +87,69 @@ public class Container {
         }
     }
 
+    /**
+     * A copy of a configured container with no vehicle behind it, for reading and changing
+     * the items saved in a stored vehicle's data.
+     */
+    public static Container detached(Container template) {
+        Container copy = new Container();
+        copy.id = template.id;
+        copy.name = template.name;
+        copy.size = template.size;
+        copy.seat = template.seat;
+        copy.allowItems.addAll(template.allowItems);
+        return copy;
+    }
+
+    private Container() {
+    }
+
+    /** A copy of every slot, {@link #getSize()} long. */
+    public ItemStack[] contents() {
+        pullLive();
+        ItemStack[] out = new ItemStack[size];
+        for (int i = 0; i < size && i < items.size(); i++) {
+            ItemStack item = items.get(i);
+            out[i] = isEmpty(item) ? null : item.clone();
+        }
+        return out;
+    }
+
+    /** Replaces every slot, also in an open view of this container. */
+    public void setContents(ItemStack[] contents) {
+        items.clear();
+        for (int i = 0; i < size; i++) {
+            ItemStack item = contents != null && i < contents.length ? contents[i] : null;
+            items.add(isEmpty(item) ? null : item.clone());
+        }
+        pushLive();
+        updateBoneVisibility();
+    }
+
+    /** Whether a player has this container's window open. */
+    public boolean hasViewers() {
+        return live != null && !live.getViewers().isEmpty();
+    }
+
+    /** How many items in this container match a TLibs item path. */
+    public int countMatching(String tlibsPath) {
+        int count = 0;
+        for (ItemStack stack : contents()) {
+            if (!isEmpty(stack) && matchesPath(stack, tlibsPath)) {
+                count += stack.getAmount();
+            }
+        }
+        return count;
+    }
+
+    private static boolean matchesPath(ItemStack stack, String tlibsPath) {
+        try {
+            return tlibsPath != null && TLibs.getItemAPI().getChecker().checkItemWithPath(stack, tlibsPath);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     public String getId() {
         return id;
     }

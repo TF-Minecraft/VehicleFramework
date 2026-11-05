@@ -69,6 +69,7 @@ class VehiclePayloadCoverageTest {
                  "containers":{"box":{"id":"box","items":[]}},
                  "parent":"parent","child":"child","splineId":"track","s":4.5,"travelSign":-1,
                  "throttleTape":{"splineId":"track","samples":[{"s":0,"sign":1,"throttle":60}]},
+                 "tapeCursor":3,"tapeTicks":"4",
                  "locomotiveOverdrive":{"remaining":100}}
                 """, ID).orElseThrow();
             assertEquals(2, decoded.getComponents().size());
@@ -93,9 +94,26 @@ class VehiclePayloadCoverageTest {
             assertEquals(0.9f, restored.getRotations().getFirst().getW());
             assertEquals("box", restored.getContainers().getFirst().get("id").getAsString());
             assertEquals("parent", restored.getConsist().getParent());
-            assertEquals(60, restored.getThrottleTape().lookup(0, 1));
+            assertEquals(60, restored.getThrottleTape().sample(0).throttle);
+            assertArrayEquals(new int[] {3, 4}, restored.getTapeClock());
+            assertArrayEquals(new int[] {3, 4}, decoded.getTapeClock());
             assertNotNull(restored.getLocomotiveOverdrive());
         } finally { Locale.setDefault(previous); }
+    }
+
+    @Test void aTapeClockIsReadOnlyWithItsTapeAndWrittenOnlyWhenKnown() {
+        IncompleteVehicle legacy = VehiclePayloadCodec.decode(
+                "{\"id\":\"loco\",\"throttleTape\":{\"splineId\":\"t\",\"samples\":[{\"s\":1}]}}", ID).orElseThrow();
+        assertArrayEquals(new int[] {-1, 0}, legacy.getTapeClock());
+        assertFalse(VehiclePayloadCodec.encode(legacy).contains("tapeCursor"));
+        IncompleteVehicle stray = VehiclePayloadCodec.decode("{\"id\":\"loco\",\"tapeCursor\":2}", ID).orElseThrow();
+        assertArrayEquals(new int[] {-1, 0}, stray.getTapeClock());
+        legacy.setTapeClock(7, 1);
+        assertTrue(VehiclePayloadCodec.encode(legacy).contains("\"tapeCursor\": 7"));
+        JSONObject json = new JSONObject();
+        VehiclePayloadCodec.putTapeClock(json, null);
+        VehiclePayloadCodec.putTapeClock(json, new int[] {1});
+        assertTrue(json.isEmpty());
     }
 
     @Test void malformedAndLegacyPayloadsAreHandledWithoutInventingVehicles() {
@@ -215,6 +233,7 @@ class VehiclePayloadCoverageTest {
         when(v.getTrainHandler().toConsistData()).thenReturn(new ConsistData(null, "child", "track", 5d));
         when(v.getTrainHandler().getOverdrive().toJson()).thenReturn(object("{\"active\":true}"));
         when(v.getTrainHandler().getInstalledTape()).thenReturn(new ThrottleTape("track", List.of(new ThrottleTape.Sample(0, 1, 60))));
+        when(v.getTrainHandler().getTapeClock()).thenReturn(new int[] {5, 2});
         when(v.getOwnerData().getTicketId()).thenReturn("ticket"); when(v.getOwnerData().getWhiteList()).thenReturn(List.of("Bob"));
         VehicleSnapshot snapshot = ActiveVehicleSnapshotFactory.fromLive(v).orElseThrow();
         assertEquals(-2, snapshot.getChunkX()); assertEquals(-1, snapshot.getChunkZ());
@@ -224,6 +243,10 @@ class VehiclePayloadCoverageTest {
         assertEquals(8, payload.getAsJsonObject("components").getAsJsonObject("hull").get("sinkprogress").getAsInt());
         assertEquals(6, payload.getAsJsonObject("weapons").getAsJsonObject("gun").get("count").getAsInt());
         assertEquals("child", payload.get("child").getAsString()); assertTrue(payload.has("throttleTape"));
+        assertEquals(5, payload.get("tapeCursor").getAsInt()); assertEquals(2, payload.get("tapeTicks").getAsInt());
+        when(v.getTrainHandler().getTapeClock()).thenReturn(new int[] {-1, 0});
+        assertFalse(JsonParser.parseString(ActiveVehicleSnapshotFactory.fromLive(v).orElseThrow().getPayloadJson())
+                .getAsJsonObject().has("tapeCursor"));
         when(v.hasParent()).thenReturn(true); when(v.isLocomotive()).thenReturn(false);
         assertFalse(JsonParser.parseString(ActiveVehicleSnapshotFactory.fromLive(v).orElseThrow().getPayloadJson()).getAsJsonObject().has("throttleTape"));
     }

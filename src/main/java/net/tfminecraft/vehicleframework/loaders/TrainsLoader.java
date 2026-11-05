@@ -31,6 +31,7 @@ public class TrainsLoader {
 		Cache.trackRemoverItem = config.getString("item-remover", "v.iron_pickaxe");
 		Cache.trackRecorderItem = config.getString("item-recorder", "v.clock");
 		Cache.trackJunctionItem = config.getString("item-junction", "v.diamond_shovel");
+		Cache.trackDockItem = config.getString("item-dock", "m.utils.train_track_dock");
 		Cache.trackSwitchItem = config.getString("item-switch", "ia.tfmc:railroad_switch");
 		Cache.trackItem = config.getString("item-track", "ia.tfmc:train_track");
 		Cache.trackSwitchOffsetAlong = config.getDouble("switch.offset-along", -1.2);
@@ -70,6 +71,19 @@ public class TrainsLoader {
 		loadBuild(config);
 		Cache.trainCollisionExplodeSpeed = Math.max(0.0, config.getDouble("collision.explode-speed", 3.0));
 		loadCollisionWarning(config);
+		loadRoutes(config);
+	}
+
+	private void loadRoutes(FileConfiguration config) {
+		Cache.trainRouteFinishDistance = Math.max(0.5, config.getDouble("routes.finish-distance", 2.0));
+		Cache.trainRouteMinDistance = Math.max(1.0, config.getDouble("routes.min-distance", 32.0));
+		Cache.trainRunUnloaded = config.getBoolean("routes.run-unloaded", true);
+		Cache.trainGhostSaveSeconds = Math.max(5, config.getInt("routes.save-seconds", 30));
+		Cache.trainDocksEnabled = config.getBoolean("docks.enabled", true);
+		Cache.trainDockReach = Math.max(1.0, Math.min(16.0, config.getDouble("docks.reach", 4.0)));
+		Cache.trainDockItemsPerStop = Math.max(0, config.getInt("docks.items-per-stop", 576));
+		Cache.trainDockMinStopTicks = (int) Math.round(Math.max(0.5, config.getDouble("docks.min-stop-seconds", 2.0)) * 20);
+		Cache.trainDockFuelCars = config.getBoolean("docks.fuel-cars", false);
 	}
 
 	private void loadCollisionWarning(FileConfiguration config) {

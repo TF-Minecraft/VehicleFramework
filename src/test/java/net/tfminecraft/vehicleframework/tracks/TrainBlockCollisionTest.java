@@ -195,6 +195,7 @@ class TrainBlockCollisionTest {
     @Test
     void scanSkipsUnloadedChunks() {
         World world = world(tunnel(2));
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(false);
         TrainBlockCollision.Scan scan = TrainBlockCollision.scanLoaded(world, northTrack());
         assertTrue(scan.obstructions().isEmpty());
         assertEquals(100, scan.skipped(), 1e-6);
@@ -260,6 +261,44 @@ class TrainBlockCollisionTest {
     }
 
     @Test
+    void chunksThatAreNotLoadedAreTheEdgeAndAreNeverRead() {
+        // An open tunnel; chunks from z 32 on are not loaded.
+        World world = world(tunnel(3));
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenAnswer(call -> (int) call.getArgument(1) < 2);
+        Entity entity = mock(Entity.class);
+        when(entity.getWorld()).thenReturn(world);
+        TrackSpline track = northTrack();
+        assertEquals(TrainBlockCollision.Clearance.CLEAR,
+                TrainBlockCollision.check(entity, track, 20, track, 20.25, REACH, new java.util.HashMap<>()));
+        assertEquals(TrainBlockCollision.Clearance.UNLOADED,
+                TrainBlockCollision.check(entity, track, 26.9, track, 27.15, REACH, new java.util.HashMap<>()));
+        assertTrue(TrainBlockCollision.blocked(entity, track, 26.9, track, 27.15, REACH));
+        assertTrue(TrainBlockCollision.blockers(entity, track, 26.9, track, 27.15, REACH,
+                new java.util.HashMap<>()).isEmpty());
+        // A block in the way before the edge stops the car as a block.
+        World walled = world((x, y, z) -> tunnel(3).at(x, y, z) || z == 31);
+        when(walled.isChunkLoaded(anyInt(), anyInt())).thenAnswer(call -> (int) call.getArgument(1) < 2);
+        when(entity.getWorld()).thenReturn(walled);
+        assertEquals(TrainBlockCollision.Clearance.BLOCKED,
+                TrainBlockCollision.check(entity, track, 25.9, track, 26.15, REACH, new java.util.HashMap<>()));
+        org.mockito.Mockito.verify(world, org.mockito.Mockito.never()).getBlockAt(anyInt(), anyInt(),
+                org.mockito.ArgumentMatchers.intThat(z -> z >= 32));
+    }
+
+    @Test
+    void aStandingCarIsInsideBlocksOrReachesUnloadedChunks() {
+        TrackSpline track = northTrack();
+        World open = world(tunnel(3));
+        assertEquals(TrainBlockCollision.Clearance.CLEAR, TrainBlockCollision.occupied(open, track, 20, REACH));
+        assertEquals(TrainBlockCollision.Clearance.BLOCKED,
+                TrainBlockCollision.occupied(world(tunnel(2)), track, 20, REACH));
+        when(open.isChunkLoaded(anyInt(), anyInt())).thenAnswer(call -> (int) call.getArgument(1) < 2);
+        assertEquals(TrainBlockCollision.Clearance.UNLOADED, TrainBlockCollision.occupied(open, track, 29, REACH));
+        assertEquals(TrainBlockCollision.Clearance.CLEAR, TrainBlockCollision.occupied(null, track, 20, REACH));
+        assertEquals(TrainBlockCollision.Clearance.CLEAR, TrainBlockCollision.occupied(open, null, 20, REACH));
+    }
+
+    @Test
     void noWorldIsNeverBlocked() {
         Entity entity = mock(Entity.class);
         TrackSpline track = northTrack();
@@ -298,6 +337,7 @@ class TrainBlockCollisionTest {
 
     private static World world(Solid solid) {
         World world = mock(World.class);
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
         when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(call -> {
             int x = call.getArgument(0);
             int y = call.getArgument(1);

@@ -178,14 +178,9 @@ class TrackLoggingCoverageTest {
       log.call("sample", full, ThrottleTape.AppendResult.HELD, 35, 2);
       log.call("sample", full, ThrottleTape.AppendResult.HELD, 35, 20);
       log.call("sample", full, ThrottleTape.AppendResult.ADDED, 35, 1);
-      log.call("playback", full, "moving", 35, null);
-      log.call("playback", full, "moving", 35, null);
-      ThrottleTape.DwellState dwell = new ThrottleTape.DwellState();
-      dwell.left = 3;
-      dwell.atS = 12.5;
-      log.call("playback", null, "waiting", 0, dwell);
-      dwell.atS = null;
-      log.call("playback", null, "no-position", 0, dwell);
+      log.call("playback", full, "moving", 35, 2);
+      log.call("playback", full, "moving", 35, 2);
+      log.call("playback", null, "waiting", 0, 3);
       log.call("interact", "start", null);
       log.call("interact", "stop", " ");
       log.call("interact", "save", "samples=1");
@@ -210,7 +205,7 @@ class TrackLoggingCoverageTest {
               "SAMPLE result=HELD thr=35 hold=20",
               "SAMPLE result=ADDED",
               "PLAY reason=moving",
-              "dwellLeft=3 dwellS=12.500",
+              "PLAY reason=waiting target=0 cursor=3",
               "INTERACT save samples=1",
               "ARM status=armed hold=LEFT frogSide=LEFT",
               "JUNCTION take=through",

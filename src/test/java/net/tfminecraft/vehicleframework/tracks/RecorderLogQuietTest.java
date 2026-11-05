@@ -41,12 +41,11 @@ class RecorderLogQuietTest {
 		Location from = mock(Location.class);
 		Location to = mock(Location.class);
 		TrackPose pose = new TrackPose(0, 64, 3, 90, 5);
-		ThrottleTape.DwellState dwell = new ThrottleTape.DwellState();
 		TrackJunction frog = new TrackJunction(UUID.randomUUID(), UUID.randomUUID(), 5, 1, TrackJunction.Side.LEFT, null);
 
 		RecorderLog.pose(train, from, to, pose, new ConvertedAngle(90, 5, 0));
 		RecorderLog.sample(train, ThrottleTape.AppendResult.ADDED, 35, 1);
-		RecorderLog.playback(train, "ok", 35, dwell);
+		RecorderLog.playback(train, "ok", 35, 4);
 		RecorderLog.interact("save", "samples=1");
 		RecorderLog.arm(train, "armed", TrackJunction.Side.LEFT, frog, 5);
 		RecorderLog.junction(train, true, frog.id);
@@ -64,16 +63,13 @@ class RecorderLogQuietTest {
 		World world = mock(World.class);
 		Location from = new Location(world, 0, 64, 0);
 		Location to = new Location(world, 0, 64, 3);
-		ThrottleTape.DwellState dwell = new ThrottleTape.DwellState();
-		dwell.left = 3;
-		dwell.atS = 12.5;
 		TrackJunction frog = new TrackJunction(UUID.fromString("00000000-0000-0000-0000-00000000000f"),
 				UUID.randomUUID(), 5, 1, TrackJunction.Side.LEFT, null);
 
 		RecorderLog.pose(train, from, to, new TrackPose(0, 64, 3, 90, 5), new ConvertedAngle(90, 5, 0));
 		RecorderLog.pose(train, from, to, null, null);
 		RecorderLog.sample(train, ThrottleTape.AppendResult.HELD, 35, 20);
-		RecorderLog.playback(train, "waiting", 0, dwell);
+		RecorderLog.playback(train, "waiting", 0, 3);
 		RecorderLog.interact("save", "samples=1");
 		RecorderLog.arm(train, "armed", TrackJunction.Side.LEFT, frog, 5);
 		RecorderLog.junction(train, true, frog.id, "held left");
@@ -83,7 +79,7 @@ class RecorderLogQuietTest {
 		assertEquals(List.of(
 				"POSE gap=3.000 myaw=90.000 mpitch=5.000 pyaw=90.000 ppitch=5.000 " + state,
 				"SAMPLE result=HELD thr=35 hold=20 " + state,
-				"PLAY reason=waiting target=0 dwellLeft=3 dwellS=12.500 " + state,
+				"PLAY reason=waiting target=0 cursor=3 " + state,
 				"INTERACT save samples=1",
 				"ARM status=armed hold=LEFT frogSide=LEFT frogS=5.000 ahead=5.000 facing=1 " + state,
 				"JUNCTION take=diverge id=00000000-0000-0000-0000-00000000000f reason=held left " + state),

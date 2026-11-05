@@ -31,6 +31,7 @@ import net.tfminecraft.vehicleframework.events.VehicleRepairStartEvent;
 import net.tfminecraft.vehicleframework.loaders.VehicleLoader;
 import net.tfminecraft.vehicleframework.managers.inventory.VFInventoryHolder;
 import net.tfminecraft.vehicleframework.util.SpawnLocation;
+import net.tfminecraft.vehicleframework.tracks.TrainGhosts;
 import net.tfminecraft.vehicleframework.vehicles.*;
 import net.tfminecraft.vehicleframework.vehicles.Vehicle;
 import net.tfminecraft.vehicleframework.vehicles.component.VehicleComponent;
@@ -351,6 +352,59 @@ class SpawnAndRepairCoverageTest {
         spawns.entitiesUnload(new EntitiesUnloadEvent(affected, List.of(inside, mock(Entity.class)))); verify(manager).unload(vehicle, "on entity unload");
         assertFalse(SpawnManager.entityInChunk(null, affected)); assertFalse(SpawnManager.entityInChunk(inside, null));
         assertFalse(SpawnManager.entityInChunk(broken, affected)); verify(world, never()).getChunkAt(any(Location.class));
+    }
+
+    @Test void carsRunningOnPaperSpawnOnlyWhenTheirRunSpawnsThem() {
+        openRepository(); Vehicle template = mock(Vehicle.class); VehicleLoader.get().put("cart", template);
+        Chunk chunk = chunk(1, -1); when(world.getChunkAt(1, -1)).thenReturn(chunk);
+        repository.upsert(snapshot("paper", "world", false));
+        repository.upsert(snapshot("faraway", "unloaded", false));
+        try (MockedStatic<TrainGhosts> ghosts = mockStatic(TrainGhosts.class)) {
+            ghosts.when(() -> TrainGhosts.isGhost("paper")).thenReturn(true);
+            spawns.enqueueSnapshot(snapshot("paper", "world", false));
+            assertTrue(SpawnManager.findSpawnLocation("paper").isEmpty());
+            SpawnLocation stale = new SpawnLocation(chunk, new Location(world, 0, 64, 0), "paper"); SpawnManager.add(stale);
+            assertTrue(spawns.trySpawn(stale)); assertFalse(SpawnManager.exists(stale));
+            verify(manager, never()).spawn(any(Location.class), any(Vehicle.class), any(IncompleteVehicle.class));
+            ghosts.when(() -> TrainGhosts.isGhost("paper")).thenReturn(false);
+            SpawnManager.add(new SpawnLocation(chunk, new Location(world, 0, 64, 0), "paper.json"));
+            when(manager.spawn(any(Location.class), same(template), any(IncompleteVehicle.class))).thenReturn(vehicle);
+            assertTrue(spawns.spawnNow("paper"));
+            verify(manager).spawn(eq(new Location(world, 20, 64, -2, 45, 0)), same(template), any(IncompleteVehicle.class));
+            assertTrue(SpawnManager.findSpawnLocation("paper").isEmpty());
+            assertFalse(spawns.spawnNow("missing"));
+            assertFalse(spawns.spawnNow("faraway"));
+            repository.close(); repository = null;
+            assertFalse(spawns.spawnNow("paper"));
+        }
+    }
+
+    @Test void aCarLeftByARunOnPaperIsQueuedAgainOnlyInALoadedChunk() {
+        spawns.requeue("absent");
+        openRepository(); Chunk chunk = chunk(1, -1); when(world.getChunkAt(1, -1)).thenReturn(chunk);
+        repository.upsert(snapshot("left", "world", false));
+        repository.upsert(snapshot("elsewhere", "unloaded", false));
+        spawns.requeue("missing"); spawns.requeue("elsewhere");
+        spawns.requeue("left");
+        assertTrue(SpawnManager.findSpawnLocation("left").isEmpty());
+        when(world.isChunkLoaded(1, -1)).thenReturn(true);
+        spawns.requeue("left");
+        assertEquals(new Location(world, 20, 64, -2, 45, 0), SpawnManager.findSpawnLocation("left").orElseThrow());
+        assertTrue(SpawnManager.findSpawnLocation("elsewhere").isEmpty());
+    }
+
+    @Test void aTrainThatGoesOnPaperIsNotUnloadedAgain() {
+        Chunk affected = chunk(-1, 2); Entity inside = mock(Entity.class);
+        when(inside.getLocation()).thenReturn(new Location(world, -.5, 64, 32));
+        manager.get().put(inside, vehicle);
+        try (MockedStatic<TrainGhosts> ghosts = mockStatic(TrainGhosts.class)) {
+            ghosts.when(() -> TrainGhosts.tryConvert(vehicle, "unload")).thenAnswer(call -> manager.get().remove(inside) != null);
+            spawns.entitiesUnload(new EntitiesUnloadEvent(affected, List.of(inside)));
+            verify(manager, never()).unload(any(ActiveVehicle.class), anyString());
+            manager.get().put(inside, vehicle);
+            spawns.chunkUnload(new ChunkUnloadEvent(affected));
+            verify(manager, never()).unload(any(ActiveVehicle.class), anyString());
+        }
     }
 
     private void openRepository() { repository = VehicleRepository.open(temp.resolve("vehicles.db").toFile()); }

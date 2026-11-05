@@ -214,6 +214,7 @@ class TrackRuntimeCoverageTest {
         assertFalse(TrackSupport.isPlantName("MUSHROOM_STEM")); assertFalse(TrackSupport.isPlantName("MUSHROOM_BLOCK")); assertFalse(TrackSupport.isPlantName("STONE"));
         Block stone = block(Material.STONE, 0, 63, 0, false, mock(BlockData.class)), air = block(Material.AIR, 0, 65, 0, true, mock(BlockData.class));
         assertTrue(TrackSupport.isValidClick(stone)); assertTrue(TrackSupport.isIgnored(air)); assertFalse(TrackSupport.blocksRail(air, 64)); assertTrue(TrackSupport.blocksRail(stone, 63.5)); assertFalse(TrackSupport.blocksRail(stone, 64));
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
         when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(call -> call.<Integer>getArgument(1) == 63 ? stone : air);
         assertEquals(64, TrackSupport.snapY(world, 0, 68, 0)); assertEquals(64, TrackSupport.floorY(world, 0, 68, 0)); assertNull(TrackSupport.firstSitY(null, 0, 64, 0)); assertEquals(80, TrackSupport.snapY(world, 0, 80, 0));
     }
@@ -243,6 +244,7 @@ class TrackRuntimeCoverageTest {
 
     @Test void resettlingAndKeepoutUseRealBlockHeightsAndWorldTrackSamples() {
         Block stone = block(Material.STONE, 0, 63, 0, false, mock(BlockData.class)), air = block(Material.AIR, 0, 70, 0, true, mock(BlockData.class));
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
         when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(call -> call.<Integer>getArgument(1) == 63 ? stone : air);
         List<double[]> points = points(0, 2, 4, 6); points.getFirst()[1] = 70; points.getLast()[1] = 70;
         TrackResettle.resettle(world, points, true, true); assertEquals(64, points.getFirst()[1]); assertEquals(64, points.getLast()[1]);
@@ -269,8 +271,8 @@ class TrackRuntimeCoverageTest {
         try (var permissions = mockStatic(Permissions.class)) {
             when(vehicle.getOwnerData().getOwner()).thenReturn(null); assertTrue(TrainTapeInteract.handle(player, vehicle)); verify(player).sendMessage("§cYou do not own this vehicle");
             permissions.when(() -> Permissions.isAdmin(player)).thenReturn(true); when(train.isBound()).thenReturn(false); assertTrue(TrainTapeInteract.handle(player, vehicle)); verify(player).sendMessage("§cThis locomotive is not on a track");
-            when(train.isBound()).thenReturn(true); assertTrue(TrainTapeInteract.handle(player, vehicle)); verify(player).sendMessage("§cRecording only works on a circuit");
-            when(train.canRecordCircuit()).thenReturn(true); assertTrue(TrainTapeInteract.handle(player, vehicle)); verify(train).startRecording(player); assertNull(ThrottleTapeItems.read(hand));
+            when(train.isBound()).thenReturn(true); assertTrue(TrainTapeInteract.handle(player, vehicle)); verify(player, times(2)).sendMessage("§cThis locomotive is not on a track");
+            when(train.canRecordRoute()).thenReturn(true); assertTrue(TrainTapeInteract.handle(player, vehicle)); verify(train).startRecording(player); assertNull(ThrottleTapeItems.read(hand));
             when(train.isRecording()).thenReturn(true); assertTrue(TrainTapeInteract.handle(player, vehicle)); verify(train).stopRecording(hand); verify(player).sendMessage("§eRecording cancelled");
         }
     }
@@ -351,6 +353,7 @@ class TrackRuntimeCoverageTest {
         when(scheduler.runTaskLater(eq(VehicleFramework.plugin), any(Runnable.class), anyLong())).thenAnswer(call -> { expiry.add(call.getArgument(1)); return mock(BukkitTask.class); });
         BlockData stone = mock(BlockData.class), marker = mock(BlockData.class), changed = mock(BlockData.class); bukkit.when(() -> Bukkit.createBlockData(Material.RED_STAINED_GLASS)).thenReturn(marker);
         Map<Integer, Block> blocks = new HashMap<>(); blocks.put(0, block(Material.STONE, 0, 64, 0, false, stone)); blocks.put(1, block(Material.AIR, 1, 64, 0, true, marker)); blocks.put(2, block(Material.STONE, 2, 64, 0, false, stone));
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
         when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(call -> blocks.get(call.getArgument(0)));
         when(world.getBlockAt(any(Location.class))).thenAnswer(call -> blocks.get(call.<Location>getArgument(0).getBlockX()));
         when(world.spawn(any(Location.class), eq(BlockDisplay.class), any(Consumer.class))).thenAnswer(call -> {
