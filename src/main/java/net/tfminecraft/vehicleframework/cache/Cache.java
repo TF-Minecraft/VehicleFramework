@@ -118,6 +118,7 @@ public class Cache {
 	public static boolean terrainFollowDebug = false;
 	public static boolean debugLogging = false;
 	public static boolean persistenceLogging = false;
+	public static boolean storageLogging = true;
 	public static boolean groundEngineLogging = false;
 	public static boolean wipeLog = false;
 
