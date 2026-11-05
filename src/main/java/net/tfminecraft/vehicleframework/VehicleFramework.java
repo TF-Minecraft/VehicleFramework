@@ -13,6 +13,7 @@ import net.tfminecraft.vehicleframework.api.OwnershipIdentity;
 import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.database.LogWriter;
 import net.tfminecraft.vehicleframework.database.PersistenceLog;
+import net.tfminecraft.vehicleframework.database.StorageLog;
 import net.tfminecraft.vehicleframework.database.VehiclePersistence;
 import net.tfminecraft.vehicleframework.database.VehicleRepository;
 import net.tfminecraft.vehicleframework.database.VehicleSqliteBackup;
@@ -25,11 +26,13 @@ import net.tfminecraft.vehicleframework.loaders.WeaponTemplateLoader;
 import net.tfminecraft.vehicleframework.loaders.ArmorTemplateLoader;
 import net.tfminecraft.vehicleframework.loaders.DeathTemplateLoader;
 import net.tfminecraft.vehicleframework.managers.CommandManager;
+import net.tfminecraft.vehicleframework.managers.StorageLogListener;
 import net.tfminecraft.vehicleframework.managers.VehicleManager;
 import net.tfminecraft.vehicleframework.ownership.CharacterLookup;
 import net.tfminecraft.vehicleframework.ownership.OwnershipMode;
 import net.tfminecraft.vehicleframework.protocol.VehiclePacketListener;
 import org.bstats.bukkit.Metrics;
+import net.tfminecraft.vehicleframework.util.LogFileWriter;
 import net.tfminecraft.vehicleframework.util.MythicMobsIntegration;
 import net.tfminecraft.vehicleframework.util.TabCompletion;
 import net.tfminecraft.vehicleframework.tracks.TrackBuildAnimator;
@@ -120,6 +123,8 @@ public class VehicleFramework extends JavaPlugin{
 		closeVehicleRepository();
 		Cache.removeLights();
 		Cache.removeProjectiles();
+		// Write out the last lines of the plugin's log files.
+		LogFileWriter.shutdown();
 	}
 	public void registerListeners() {
 		getServer().getPluginManager().registerEvents(vehicleManager, this);
@@ -128,6 +133,7 @@ public class VehicleFramework extends JavaPlugin{
 		getServer().getPluginManager().registerEvents(vehicleManager.getRepairManager(), this);
 		getServer().getPluginManager().registerEvents(new TrackToolListener(), this);
 		getServer().getPluginManager().registerEvents(new DeckListener(), this);
+		getServer().getPluginManager().registerEvents(new StorageLogListener(), this);
 		trackDisplayManager = new TrackDisplayManager();
 		getServer().getPluginManager().registerEvents(trackDisplayManager, this);
 		
@@ -229,6 +235,7 @@ public class VehicleFramework extends JavaPlugin{
 		TrackLog.configure(Cache.debugLogging, Cache.debugLogging, getDataFolder());
 		PersistenceLog.configure(Cache.persistenceLogging, getDataFolder());
 		RecorderLog.configure(Cache.debugLogging, getDataFolder());
+		StorageLog.configure(Cache.storageLogging, getDataFolder());
 		if (trackRegistry != null) {
 			trackRegistry.loadFromDisk();
 		}

@@ -103,6 +103,7 @@ public class ConfigLoader {
 		Cache.terrainFollowDebug = config.getBoolean("terrain-follow-debug", false);
 		Cache.groundEngineLogging = config.getBoolean("ground-engine-logging", false);
 		Cache.persistenceLogging = config.getBoolean("persistence-logging", false);
+		Cache.storageLogging = config.getBoolean("storage-logging", true);
 		Cache.wipeLog = config.getBoolean("wipe-log", false);
 	}
 }
