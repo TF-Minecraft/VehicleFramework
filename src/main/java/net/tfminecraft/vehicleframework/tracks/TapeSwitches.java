@@ -12,7 +12,27 @@ import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
  */
 public final class TapeSwitches {
 
+	/** How close to a frog the last sample before a change of track must be. */
+	static final double FROG_REACH = 3;
+	/** Samples looked through for a turn back before a change of track. */
+	static final int LOOK_AHEAD = 512;
+
 	private TapeSwitches() {
+	}
+
+	// Every sample from the cursor up to the change travels the same way: no reversal between.
+	private static boolean straightTo(ThrottleTape tape, int cursor, int change, int direction) {
+		int steps = Math.floorMod(change - cursor, tape.size());
+		if (steps > LOOK_AHEAD) {
+			return false;
+		}
+		for (int i = 0; i < steps; i++) {
+			ThrottleTape.Sample sample = tape.sample(cursor + i);
+			if (sample.throttle != 0 && sample.sign != direction) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -27,7 +47,9 @@ public final class TapeSwitches {
 			return false;
 		}
 		int change = tape.nextSplineChange(cursor);
-		String next = change < 0 ? null : tape.sample(change).resolvedSpline(tape.getSplineId());
+		String next = change < 0 || !straightTo(tape, cursor, change, direction) ? null
+				: tape.sample(change).resolvedSpline(tape.getSplineId());
+		double leaveAt = change < 0 ? 0 : tape.sample(change - 1).s;
 		boolean hold = false;
 		for (TrackJunction junction : registry.junctionsOn(spline.getId())) {
 			if (junction.branchSplineId == null || junction.facingSign != direction || held.containsKey(junction.id)) {
@@ -37,7 +59,9 @@ public final class TapeSwitches {
 			if (ahead < -1e-9 || ahead > window) {
 				continue;
 			}
-			boolean diverge = junction.branchSplineId.toString().equalsIgnoreCase(next);
+			// The tape leaves this track here, at this frog, without turning back first.
+			boolean diverge = junction.branchSplineId.toString().equalsIgnoreCase(next)
+					&& Math.abs(ThrottleTape.along(leaveAt, junction.s, spline.length(), spline.isLoop())) <= FROG_REACH;
 			if (junction.thrown == diverge) {
 				continue;
 			}

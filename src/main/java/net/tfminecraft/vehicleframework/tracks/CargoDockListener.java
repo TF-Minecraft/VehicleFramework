@@ -14,6 +14,10 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockBurnEvent;
+import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -89,9 +93,34 @@ public final class CargoDockListener implements Listener {
 				&& at.distanceSquared(block.getLocation().add(0.5, 0.5, 0.5)) <= 2.25;
 	}
 
+	// A dock goes with its block, however the block goes; a block placed where a dock was
+	// left behind does not inherit it.
 	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
 	public void onBreak(BlockBreakEvent event) {
-		Block block = event.getBlock();
+		forget(event.getBlock());
+	}
+
+	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+	public void onPlace(BlockPlaceEvent event) {
+		forget(event.getBlockPlaced());
+	}
+
+	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+	public void onBurn(BlockBurnEvent event) {
+		forget(event.getBlock());
+	}
+
+	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+	public void onBlockExplode(BlockExplodeEvent event) {
+		event.blockList().forEach(CargoDockListener::forget);
+	}
+
+	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+	public void onEntityExplode(EntityExplodeEvent event) {
+		event.blockList().forEach(CargoDockListener::forget);
+	}
+
+	static void forget(Block block) {
 		String world = block.getWorld().getName();
 		if (DockRegistry.at(world, block.getX(), block.getY(), block.getZ()) != null) {
 			DockRegistry.set(world, block.getX(), block.getY(), block.getZ(), null, null);

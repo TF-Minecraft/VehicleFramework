@@ -282,6 +282,7 @@ class CargoDocksTest {
 	private StoredCars.Row row() {
 		VehicleSnapshot snapshot = mock(VehicleSnapshot.class);
 		when(snapshot.getUuid()).thenReturn("car");
+		when(snapshot.getOwner()).thenReturn("character:a");
 		return new StoredCars.Row(snapshot, new JSONObject());
 	}
 
@@ -344,9 +345,17 @@ class CargoDocksTest {
 		stored.when(() -> StoredCars.read(repository, "car-0")).thenReturn(Optional.empty());
 		CargoDocks.paper(ghost, 0, dock, 0, 1);
 		stored.verify(() -> StoredCars.read(any(), any()), times(1));
+		// Sold while it ran unloaded: the new owner's car does not trade with the old owner's dock.
+		VehicleSnapshot sold = mock(VehicleSnapshot.class);
+		when(sold.getOwner()).thenReturn("character:z");
+		StoredCars.Row soldRow = new StoredCars.Row(sold, new JSONObject());
+		stored.when(() -> StoredCars.read(repository, "car-0")).thenReturn(Optional.of(soldRow));
+		CargoDocks.paper(ghost, 0, dock, 0, 1);
+		stored.verify(() -> StoredCars.containers(any()), never());
+		stored.when(() -> StoredCars.read(repository, "car-0")).thenReturn(Optional.empty());
 		blocks.clear();
 		CargoDocks.paper(ghost, 0, dock, 0, 1);
-		stored.verify(() -> StoredCars.read(any(), any()), times(1));
+		stored.verify(() -> StoredCars.read(any(), any()), times(2));
 		stored.verify(() -> StoredCars.write(any(), any()), never());
 	}
 
@@ -393,34 +402,49 @@ class CargoDocksTest {
 			assertEquals(3, CargoDocks.chunks(dock).size());
 			assertEquals(1, CargoDocks.chunks(new DockRegistry.Dock("world", 5, 64, 5, Mode.LOAD, "o")).size());
 			assertEquals(3, CargoDocks.chunks(new DockRegistry.Dock("world", 15, 64, 0, Mode.LOAD, "o")).size());
-			when(world.isChunkLoaded(1, 1)).thenReturn(false);
+			boolean[] loaded = {false};
+			when(world.isChunkLoaded(1, 1)).thenAnswer(call -> loaded[0]);
+			int[] runs = {0};
+			// Loads, then trades once with the chunks held.
 			CompletableFuture<Chunk> loading = new CompletableFuture<>();
 			when(world.getChunkAtAsync(1, 1, false)).thenReturn(loading);
-			int[] runs = {0};
 			CargoDocks.whenLoaded(world, dock, () -> runs[0]++);
 			assertEquals(0, runs[0]);
+			loaded[0] = true;
 			loading.complete(mock(Chunk.class));
 			assertEquals(1, runs[0]);
 			verify(world).addPluginChunkTicket(1, 1, plugin);
 			verify(world).removePluginChunkTicket(1, 1, plugin);
 			verify(world).addPluginChunkTicket(0, 1, plugin);
-			// A failed load, or a plugin that stopped meanwhile, does nothing.
+			// Already loaded: at once.
+			CargoDocks.whenLoaded(world, dock, () -> runs[0]++);
+			assertEquals(2, runs[0]);
+			loaded[0] = false;
+			// A failed load, a chunk that never loaded (never generated), or a plugin that stopped.
 			CompletableFuture<Chunk> failing = new CompletableFuture<>();
 			when(world.getChunkAtAsync(1, 1, false)).thenReturn(failing);
 			CargoDocks.whenLoaded(world, dock, () -> runs[0]++);
 			failing.completeExceptionally(new IllegalStateException("no"));
+			CompletableFuture<Chunk> empty = new CompletableFuture<>();
+			when(world.getChunkAtAsync(1, 1, false)).thenReturn(empty);
+			CargoDocks.whenLoaded(world, dock, () -> runs[0]++);
+			empty.complete(null);
 			CompletableFuture<Chunk> late = new CompletableFuture<>();
 			when(world.getChunkAtAsync(1, 1, false)).thenReturn(late);
 			CargoDocks.whenLoaded(world, dock, () -> runs[0]++);
 			when(plugin.isEnabled()).thenReturn(false);
+			loaded[0] = true;
 			late.complete(mock(Chunk.class));
+			loaded[0] = false;
 			VehicleFramework.plugin = null;
 			CompletableFuture<Chunk> none = new CompletableFuture<>();
 			when(world.getChunkAtAsync(1, 1, false)).thenReturn(none);
 			CargoDocks.whenLoaded(world, dock, () -> runs[0]++);
+			loaded[0] = true;
 			none.complete(mock(Chunk.class));
-			assertEquals(1, runs[0]);
-			// The work may fail; the ticket is still released.
+			loaded[0] = false;
+			assertEquals(2, runs[0]);
+			// The work may fail: it is logged and the ticket is still released.
 			VehicleFramework.plugin = plugin;
 			when(plugin.isEnabled()).thenReturn(true);
 			CompletableFuture<Chunk> again = new CompletableFuture<>();
@@ -428,6 +452,7 @@ class CargoDocksTest {
 			CargoDocks.whenLoaded(world, dock, () -> {
 				throw new IllegalStateException("work failed");
 			});
+			loaded[0] = true;
 			again.complete(mock(Chunk.class));
 			verify(world, times(2)).removePluginChunkTicket(1, 1, plugin);
 		} finally {

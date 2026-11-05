@@ -268,27 +268,33 @@ class TrainGhostsTest {
 		TrainGhosts.tick();
 		verify(spawns, never()).spawnNow(anyString());
 		repository.tombstone("parked");
-		GhostTrain other = ghost(List.of("other"), 0, 50);
-		other.spots = List.of(new GhostTrain.Spot(line.getId(), 99, 1, 1, line.sampleAt(99)),
-				new GhostTrain.Spot(UUID.randomUUID(), 99, 1, 1, line.sampleAt(99)));
-		other.clock = new TapeTimetable.Clock(2, 0);
-		TrainGhosts.register(other);
 		ghost.clock = new TapeTimetable.Clock(0, 0);
-		assertTrue(TrainGhosts.blocked(world, ghost, ghost.place(registry), registry));
-		other.spots = List.of();
+		assertFalse(TrainGhosts.blocked(world, ghost, ghost.place(registry), registry));
+		// Another run on paper passes through it, and its saved rows do not count.
+		row("other", "{\"id\":\"wagon\",\"splineId\":\"" + id() + "\",\"s\":100.0,\"travelSign\":1}");
+		GhostTrain other = ghost(List.of("other"), 0, 50);
+		TrainGhosts.register(other);
 		assertFalse(TrainGhosts.blocked(world, ghost, ghost.place(registry), registry));
 		framework.when(VehicleFramework::getVehicleRepository).thenReturn(null);
 		assertFalse(TrainGhosts.blocked(world, ghost, ghost.place(registry), registry));
-		// No world, or a saved car on a track the registry has lost.
+		// No world.
 		bukkit.when(() -> Bukkit.getWorld("world")).thenReturn(null);
 		assertEquals(TrainGhosts.Spawn.NOT_READY, TrainGhosts.materialize(ghost, ghost.spots, registry));
 		assertFalse(TrainGhosts.nearPlayer(ghost, ghost.spots));
-		GhostTrain.Spot lost = new GhostTrain.Spot(UUID.randomUUID(), 5, 1, 1, line.sampleAt(5));
 		bukkit.when(() -> Bukkit.getWorld("world")).thenReturn(world);
+		// A saved car on a track the registry has lost still blocks a place on that id.
+		framework.when(VehicleFramework::getVehicleRepository).thenReturn(repository);
+		UUID gone = UUID.randomUUID();
+		GhostTrain.Spot lost = new GhostTrain.Spot(gone, 5, 1, 1, line.sampleAt(5));
 		GhostTrain lone = ghost(List.of("lone"), 0, 50);
 		assertFalse(TrainGhosts.blocked(world, lone, List.of(lost), registry));
-		other.spots = List.of(new GhostTrain.Spot(lost.splineId(), 6, 1, 1, line.sampleAt(6)));
+		row("stray", "{\"id\":\"wagon\",\"splineId\":\"" + gone + "\",\"s\":6.0,\"travelSign\":1}");
 		assertTrue(TrainGhosts.blocked(world, lone, List.of(lost), registry));
+		repository.tombstone("stray");
+		// Spawned where the track is gone: the cars check their track when they load.
+		when(spawns.spawnNow(anyString())).thenReturn(true);
+		assertEquals(TrainGhosts.Spawn.SPAWNED, TrainGhosts.materialize(ghost, List.of(lost), registry));
+		assertFalse(TrainGhosts.consumeTrusted("loco"));
 	}
 
 	@Test
@@ -596,5 +602,10 @@ class TrainGhostsTest {
 		assertFalse(TrainGhosts.tryConvert(live.loco, "unload"));
 		when(live.train.getTapeClock()).thenReturn(new int[] {99, 0});
 		assertNull(TrainGhosts.capture(live.loco, live.train.layout()));
+		// A cursor left behind when the train was driven elsewhere is not trusted.
+		when(live.train.getTapeClock()).thenReturn(new int[] {1, 4});
+		assertNull(TrainGhosts.capture(live.loco, live.train.layout()));
+		when(live.train.getS()).thenReturn(121.0);
+		assertEquals(2, TrainGhosts.capture(live.loco, live.train.layout()).clock.cursor());
 	}
 }

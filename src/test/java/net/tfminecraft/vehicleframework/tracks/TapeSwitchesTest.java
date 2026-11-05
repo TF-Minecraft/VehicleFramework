@@ -48,11 +48,15 @@ class TapeSwitchesTest {
 		return junction;
 	}
 
-	// Along the stem, then onto the branch.
+	// Along the stem, then onto the branch at a frog at s 30.
 	private ThrottleTape tape() {
+		return tape(30);
+	}
+
+	private ThrottleTape tape(double frog) {
 		return new ThrottleTape(stem.getId().toString(), List.of(
 				new ThrottleTape.Sample(20, 1, 50, 1, stem.getId().toString(), null, 1),
-				new ThrottleTape.Sample(21, 1, 50, 1, stem.getId().toString(), null, 1),
+				new ThrottleTape.Sample(frog - 0.5, 1, 50, 1, stem.getId().toString(), null, 1),
 				new ThrottleTape.Sample(1, 1, 50, 1, branch.getId().toString(), null, 1)));
 	}
 
@@ -79,16 +83,43 @@ class TapeSwitchesTest {
 	void waitsShortOfASwitchAnotherTrainHoldsTheWrongWay() {
 		TrackJunction toBranch = junction(22, 1, branch, false);
 		occupied.add(toBranch.id);
-		assertTrue(TapeSwitches.align(registry, tape(), 0, stem, 20, 1, 20, 3, Map.of(), null));
-		assertFalse(TapeSwitches.align(registry, tape(), 0, stem, 15, 1, 20, 3, Map.of(), null));
+		assertTrue(TapeSwitches.align(registry, tape(22), 0, stem, 20, 1, 20, 3, Map.of(), null));
+		assertFalse(TapeSwitches.align(registry, tape(22), 0, stem, 15, 1, 20, 3, Map.of(), null));
 		// This train is on it already: it goes the way its cars are.
-		assertFalse(TapeSwitches.align(registry, tape(), 0, stem, 20, 1, 20, 3, Map.of(toBranch.id, false), null));
+		assertFalse(TapeSwitches.align(registry, tape(22), 0, stem, 20, 1, 20, 3, Map.of(toBranch.id, false), null));
 		assertFalse(thrown(toBranch));
 		// Already set the right way: nothing to do.
 		occupied.clear();
-		TapeSwitches.align(registry, tape(), 0, stem, 20, 1, 20, 3, Map.of(), null);
+		TapeSwitches.align(registry, tape(22), 0, stem, 20, 1, 20, 3, Map.of(), null);
 		assertTrue(thrown(toBranch));
-		assertFalse(TapeSwitches.align(registry, tape(), 0, stem, 20, 1, 20, 3, Map.of(), null));
+		assertFalse(TapeSwitches.align(registry, tape(22), 0, stem, 20, 1, 20, 3, Map.of(), null));
+	}
+
+	@Test
+	void aShuttlePassingTheSwitchFirstGoesStraightAndTakesTheBranchOnALaterPass() {
+		TrackJunction turnout = junction(30, 1, branch, true);
+		String s = stem.getId().toString();
+		// Out past the frog to s 60, back to s 20, out again and onto the branch.
+		ThrottleTape shuttle = new ThrottleTape(s, List.of(
+				new ThrottleTape.Sample(20, 1, 50, 1, s, null, 1),
+				new ThrottleTape.Sample(60, 1, 0, 40, s, null, 1),
+				new ThrottleTape.Sample(59, -1, -50, 1, s, null, 1),
+				new ThrottleTape.Sample(20, 1, 0, 40, s, null, 1),
+				new ThrottleTape.Sample(21, 1, 50, 1, s, null, 1),
+				new ThrottleTape.Sample(29.5, 1, 50, 1, s, null, 1),
+				new ThrottleTape.Sample(1, 1, 50, 1, branch.getId().toString(), null, 1)));
+		assertFalse(TapeSwitches.align(registry, shuttle, 0, stem, 20, 1, 20, 3, Map.of(), null));
+		assertFalse(thrown(turnout));
+		assertFalse(TapeSwitches.align(registry, shuttle, 4, stem, 21, 1, 20, 3, Map.of(), null));
+		assertTrue(thrown(turnout));
+		// A change of track far beyond the look-ahead counts as none.
+		java.util.List<ThrottleTape.Sample> long_ = new java.util.ArrayList<>();
+		for (int i = 0; i < TapeSwitches.LOOK_AHEAD + 2; i++) {
+			long_.add(new ThrottleTape.Sample(20, 1, 50, 1, s, null, 1));
+		}
+		long_.add(new ThrottleTape.Sample(1, 1, 50, 1, branch.getId().toString(), null, 1));
+		assertFalse(TapeSwitches.align(registry, new ThrottleTape(s, long_), 0, stem, 25, 1, 20, 3, Map.of(), null));
+		assertFalse(thrown(turnout));
 	}
 
 	@Test

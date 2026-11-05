@@ -273,6 +273,8 @@ class TrainBlockCollisionTest {
         assertEquals(TrainBlockCollision.Clearance.UNLOADED,
                 TrainBlockCollision.check(entity, track, 26.9, track, 27.15, REACH, new java.util.HashMap<>()));
         assertTrue(TrainBlockCollision.blocked(entity, track, 26.9, track, 27.15, REACH));
+        assertTrue(TrainBlockCollision.blockers(entity, track, 26.9, track, 27.15, REACH,
+                new java.util.HashMap<>()).isEmpty());
         // A block in the way before the edge stops the car as a block.
         World walled = world((x, y, z) -> tunnel(3).at(x, y, z) || z == 31);
         when(walled.isChunkLoaded(anyInt(), anyInt())).thenAnswer(call -> (int) call.getArgument(1) < 2);

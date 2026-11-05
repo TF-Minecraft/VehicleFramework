@@ -131,7 +131,9 @@ public final class CargoDocks {
 			return;
 		}
 		CompletableFuture.allOf(loading.toArray(new CompletableFuture[0])).whenComplete((done, failure) -> {
-			if (failure != null || VehicleFramework.plugin == null || !VehicleFramework.plugin.isEnabled()) {
+			// A chunk never generated comes back null and stays unloaded: leave that dock for now.
+			if (failure != null || VehicleFramework.plugin == null || !VehicleFramework.plugin.isEnabled()
+					|| !loaded(world, chunks)) {
 				return;
 			}
 			for (int[] chunk : chunks) {
@@ -139,6 +141,8 @@ public final class CargoDocks {
 			}
 			try {
 				work.run();
+			} catch (RuntimeException e) {
+				VFLogger.log("A cargo dock trade failed: " + e);
 			} finally {
 				for (int[] chunk : chunks) {
 					world.removePluginChunkTicket(chunk[0], chunk[1], VehicleFramework.plugin);
@@ -192,7 +196,8 @@ public final class CargoDocks {
 			TrainGhosts.flushFuel(repository, ghost);
 		}
 		Optional<StoredCars.Row> row = StoredCars.read(repository, ghost.cars.get(car));
-		if (row.isEmpty()) {
+		// The owner may have changed while it ran unloaded.
+		if (row.isEmpty() || !owns(row.get().owner(), dock)) {
 			return;
 		}
 		List<Container> containers = StoredCars.containers(row.get());

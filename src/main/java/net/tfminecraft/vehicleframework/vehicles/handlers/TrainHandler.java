@@ -119,6 +119,12 @@ public class TrainHandler {
 	private static final int SWITCH_CHECK_TICKS = 5;
 	// Spline movement starts this long after a spawn; until then the tape holds the throttle at 0.
 	static final long SETTLE_MS = 5000;
+	// How long after a spawn the tape waits for coupled cars still to load; one whose row is
+	// gone would otherwise hold the train for ever.
+	static final long MISSING_CAR_WAIT_MS = 30000;
+	// Ticks between asks to run unloaded while held at the edge of the loaded area.
+	private static final int EDGE_REQUEST_TICKS = 20;
+	private int edgeRequestIn;
 	// Blocks across the wheels. With it, the move animations turn at the train's speed.
 	private double wheelDiameter;
 	private final List<String> wheelBones = new ArrayList<>();
@@ -513,6 +519,8 @@ public class TrainHandler {
 
 	public void setTapeClock(int cursor, int ticksAt) {
 		playback.setCursor(cursor, ticksAt);
+		// Saved at a stop, its docks were served when it arrived.
+		dockServedCursor = cursor;
 	}
 
 	/** Recording needs a track: a circuit, or a line the train drives out and back along. */
@@ -654,8 +662,8 @@ public class TrainHandler {
 		}
 		TrackSpline spline = boundSpline();
 		// A train just spawned waits until it moves along its track, and for all its cars.
-		if (spline == null || (v != null && System.currentTimeMillis() - v.getSpawnTime() < SETTLE_MS)
-				|| hasMissingCars()) {
+		long alive = v == null ? Long.MAX_VALUE : System.currentTimeMillis() - v.getSpawnTime();
+		if (spline == null || alive < SETTLE_MS || (alive < MISSING_CAR_WAIT_MS && hasMissingCars())) {
 			RecorderLog.playback(v, "waiting", 0, cursor);
 			return 0;
 		}
@@ -689,8 +697,12 @@ public class TrainHandler {
 		}
 		switchCheckIn = SWITCH_CHECK_TICKS;
 		double lead = leadReach(target);
+		// The throttle comes down one step a tick: stopping takes about half its speed times its throttle.
+		double speed = v == null || v.getAccessPanel() == null ? 0 : Math.abs(v.getAccessPanel().getSpeed());
+		int throttle = v == null || v.getThrottle() == null ? 0 : Math.abs(v.getThrottle().getCurrent());
+		double hold = lead + 2 + speed * (throttle / 2.0 + SWITCH_CHECK_TICKS);
 		switchHold = TapeSwitches.align(VehicleFramework.getTrackRegistry(), installedTape, cursor, spline, s,
-				Integer.signum(target) * orientation, Cache.trackJunctionArmDistance + lead, lead + 2,
+				Integer.signum(target) * orientation, Math.max(Cache.trackJunctionArmDistance + lead, hold), hold,
 				junctionRoutes, v);
 		return switchHold;
 	}
@@ -1446,7 +1458,8 @@ public class TrainHandler {
 			maybeClack(moved);
 			afterMove.forEach(Runnable::run);
 		}
-		if (edgeBlocked) {
+		if (edgeBlocked && edgeRequestIn-- <= 0) {
+			edgeRequestIn = EDGE_REQUEST_TICKS;
 			TrainGhosts.request(v);
 		}
 		if (blocked) {

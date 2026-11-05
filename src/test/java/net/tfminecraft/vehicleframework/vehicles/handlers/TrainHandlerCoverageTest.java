@@ -635,11 +635,15 @@ class TrainHandlerCoverageTest {
         car.train.setInstalledTape(shuttle(line, 30, 1));
         when(car.vehicle.getSpawnTime()).thenReturn(System.currentTimeMillis());
         assertEquals(0, car.train.playbackThrottle(null));
-        when(car.vehicle.getSpawnTime()).thenReturn(0L);
+        when(car.vehicle.getSpawnTime()).thenReturn(System.currentTimeMillis() - 10_000);
         car.train.setPendingChild("coming");
         assertTrue(car.train.hasMissingCars());
         assertEquals(0, car.train.playbackThrottle(null));
+        // A car that never comes holds the train only for a while.
+        when(car.vehicle.getSpawnTime()).thenReturn(0L);
+        assertEquals(30, car.train.playbackThrottle(null));
         car.train.setPendingChild(null);
+        car.train.setTapeClock(0, 0);
         assertEquals(30, car.train.playbackThrottle(null));
         assertArrayEquals(new int[] {0, 1}, car.train.getTapeClock());
         car.train.setTapeClock(2, 0);

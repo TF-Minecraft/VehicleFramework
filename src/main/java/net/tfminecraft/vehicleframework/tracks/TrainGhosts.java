@@ -163,10 +163,16 @@ public final class TrainGhosts {
 		int[] at = train.getTapeClock();
 		int cursor = at[0];
 		int ticks = at[1];
-		if (cursor < 0 || cursor >= tape.size()) {
-			TrackSpline spline = VehicleFramework.getTrackRegistry().get(train.getSplineId()).orElse(null);
-			cursor = spline == null ? -1 : tape.nearestIndex(train.getSplineId().toString(), train.getS(),
-					train.getTravelSign(), -1, TapePlayback.RESYNC_DISTANCE, spline.length(), spline.isLoop());
+		TrackRegistry registry = VehicleFramework.getTrackRegistry();
+		TrackSpline spline = registry.get(train.getSplineId()).orElse(null);
+		if (spline == null) {
+			return null;
+		}
+		// A train driven off its route by hand would otherwise jump back onto it.
+		if (cursor < 0 || cursor >= tape.size() || !near(TapeTimetable.place(tape,
+				new TapeTimetable.Clock(cursor, ticks), registry), spline, train.getS())) {
+			cursor = tape.nearestIndex(spline.getId().toString(), train.getS(), train.getTravelSign(), cursor,
+					TapePlayback.RESYNC_DISTANCE, spline.length(), spline.isLoop());
 			ticks = 0;
 		}
 		if (cursor < 0) {
@@ -195,6 +201,12 @@ public final class TrainGhosts {
 				tape, new TapeTimetable.Clock(cursor, ticks), layout.routes(), useFuel ? tank.getCurrent() : 0,
 				useFuel, useFuel ? tank.getRate() : 0, loco.isLocomotive(), useFuel ? tank.getCapacity() : 0,
 				fuelPath, perItem, reserve);
+	}
+
+	private static boolean near(TapeTimetable.Place place, TrackSpline spline, double s) {
+		return spline.getId().toString().equalsIgnoreCase(place.splineId())
+				&& Math.abs(ThrottleTape.along(place.s(), s, spline.length(), spline.isLoop()))
+						<= TapePlayback.RESYNC_DISTANCE;
 	}
 
 	/** One second for every train on paper. */
@@ -277,7 +289,9 @@ public final class TrainGhosts {
 			return Spawn.NOT_READY;
 		}
 		unregister(ghost);
-		trusted.addAll(ghost.cars);
+		if (spotsCurrent(spots, registry)) {
+			trusted.addAll(ghost.cars);
+		}
 		int spawned = 0;
 		for (String uuid : ghost.cars) {
 			if (VehicleFramework.getVehicleManager().getSpawnManager().spawnNow(uuid)) {
@@ -287,6 +301,16 @@ public final class TrainGhosts {
 		RecorderLog.append("PAPER_END loco=" + ghost.loco() + " spawned=" + spawned + "/" + ghost.cars.size()
 				+ " cursor=" + ghost.clock.cursor() + " fuel=" + ghost.fuel);
 		return Spawn.SPAWNED;
+	}
+
+	// Saved places on tracks that are gone are checked against the track when the cars load.
+	private static boolean spotsCurrent(List<GhostTrain.Spot> spots, TrackRegistry registry) {
+		for (GhostTrain.Spot spot : spots) {
+			if (registry.get(spot.splineId()).isEmpty()) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	// Every car's chunk, and two chunks all round the locomotive so it does not reach the edge at once.
@@ -331,17 +355,9 @@ public final class TrainGhosts {
 				return true;
 			}
 		}
+		// Trains on paper pass through each other; their saved rows are not where they are.
 		for (GhostTrain other : ghosts.values()) {
-			if (other == ghost) {
-				continue;
-			}
 			skip.addAll(other.cars);
-			for (int i = 0; i < other.spots.size(); i++) {
-				GhostTrain.Spot spot = other.spots.get(i);
-				if (overlaps(ghost, spots, registry, spot.splineId(), spot.s(), other.reaches[i])) {
-					return true;
-				}
-			}
 		}
 		VehicleRepository repository = VehicleFramework.getVehicleRepository();
 		for (TrackedCar parked : repository == null ? List.<TrackedCar>of() : repository.trackedCars()) {
@@ -490,6 +506,8 @@ public final class TrainGhosts {
 						: null;
 				GhostTrain ghost = GhostTrain.fromJson((JSONObject) json.get(KEY), tape);
 				if (ghost != null && ghost.loco().equalsIgnoreCase(row.getUuid())) {
+					// Spread the saves of resumed runs over the save interval.
+					ghost.sinceSave = Math.floorMod(ghost.loco().hashCode(), Math.max(1, Cache.trainGhostSaveSeconds));
 					register(ghost);
 				}
 			} catch (Exception e) {

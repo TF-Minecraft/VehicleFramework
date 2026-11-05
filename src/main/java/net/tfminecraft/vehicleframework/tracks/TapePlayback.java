@@ -66,6 +66,7 @@ public final class TapePlayback {
 			int found = tape.nearestIndex(spline, s, sign, cursor, RESYNC_DISTANCE / 2, length, loop);
 			if (found < 0) {
 				retryIn = RETRY_TICKS;
+				cursor = -1;
 				return new Step(0, cursor, false, true);
 			}
 			cursor = found;

@@ -173,5 +173,30 @@ class CargoDockListenerTest {
 		assertEquals(1, DockRegistry.size());
 		listener.onBreak(new BlockBreakEvent(chest, player));
 		assertEquals(0, DockRegistry.size());
+		for (Runnable gone : List.<Runnable>of(
+				() -> {
+					org.bukkit.event.block.BlockPlaceEvent event = mock(org.bukkit.event.block.BlockPlaceEvent.class);
+					when(event.getBlockPlaced()).thenReturn(chest);
+					listener.onPlace(event);
+				},
+				() -> {
+					org.bukkit.event.block.BlockBurnEvent event = mock(org.bukkit.event.block.BlockBurnEvent.class);
+					when(event.getBlock()).thenReturn(chest);
+					listener.onBurn(event);
+				},
+				() -> {
+					org.bukkit.event.block.BlockExplodeEvent event = mock(org.bukkit.event.block.BlockExplodeEvent.class);
+					when(event.blockList()).thenReturn(List.of(other, chest));
+					listener.onBlockExplode(event);
+				},
+				() -> {
+					org.bukkit.event.entity.EntityExplodeEvent event = mock(org.bukkit.event.entity.EntityExplodeEvent.class);
+					when(event.blockList()).thenReturn(List.of(chest));
+					listener.onEntityExplode(event);
+				})) {
+			DockRegistry.set("world", 4, 64, -2, DockRegistry.Mode.LOAD, "o");
+			gone.run();
+			assertEquals(0, DockRegistry.size());
+		}
 	}
 }

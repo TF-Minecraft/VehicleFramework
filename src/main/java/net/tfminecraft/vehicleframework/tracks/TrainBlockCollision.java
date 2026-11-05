@@ -91,6 +91,9 @@ public final class TrainBlockCollision {
             TrackSpline toSpline, double toS, double reach, Map<Long, List<BoundingBox>> shapes) {
         List<Obstruction> found = new ArrayList<>();
         for (long key : hits(entity, fromSpline, fromS, toSpline, toS, reach, shapes, false)) {
+            if (shapes.get(key) == UNLOADED) {
+                continue;
+            }
             found.add(new Obstruction(keyX(key), keyY(key), keyZ(key), toS));
         }
         return found;
