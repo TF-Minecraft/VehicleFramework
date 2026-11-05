@@ -99,6 +99,7 @@ public final class TapePlayback {
 			}
 			cursor = found;
 			ticksAt = 0;
+			restCursor = -1;
 		}
 		retryIn = 0;
 		for (int moved = 0; moved < MAX_ADVANCE && reached(tape, spline, s, length, loop); moved++) {
@@ -213,6 +214,11 @@ public final class TapePlayback {
 		double d = ThrottleTape.along(at.s, next.s, length, loop);
 		if (Math.abs(d) < STATIONARY || at.throttle == 0) {
 			return ticksAt >= at.holdTicks;
+		}
+		if (next.throttle == 0) {
+			// A stop is reached on coming level with it, travelling the way the train goes, even
+			// one the recording ran a little past (a loop's lap ends a tick's travel beyond it).
+			return ThrottleTape.along(next.s, s, length, loop) * at.sign >= -REACH;
 		}
 		double progress = ThrottleTape.along(at.s, s, length, loop) * Math.signum(d);
 		return progress >= Math.abs(d) - REACH;

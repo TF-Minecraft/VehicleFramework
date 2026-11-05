@@ -216,6 +216,35 @@ class TapePlaybackTest {
 	}
 
 	@Test
+	void aLoopWhoseLapEndedJustPastTheStartStopsThere() {
+		// A 100-block loop from a stop at s 10; the lap was complete a tick's travel past it.
+		List<ThrottleTape.Sample> samples = new ArrayList<>();
+		samples.add(new ThrottleTape.Sample(10, 1, 0, 60, "loop", null, 1));
+		for (int s = 11; s < 110; s++) {
+			samples.add(new ThrottleTape.Sample(s % 100, 1, 50, 2, "loop", null, 1));
+		}
+		samples.add(new ThrottleTape.Sample(10.7, 1, 50, 1, "loop", null, 1));
+		ThrottleTape tape = new ThrottleTape("loop", samples);
+		TapePlayback run = new TapePlayback();
+		double perThrottle = 0.0072;
+		double s = 90;
+		int throttle = 50;
+		for (int tick = 0; tick < 800 && run.getCursor() != 0; tick++) {
+			int target = run.step(tape, "loop", s, 100, true, 1, 1, 40, perThrottle).target();
+			throttle += Integer.signum(target - throttle);
+			s = (s + throttle * perThrottle) % 100;
+		}
+		assertEquals(0, run.getCursor());
+		for (int tick = 0; tick < 50; tick++) {
+			int target = run.step(tape, "loop", s, 100, true, 1, 1, 40, perThrottle).target();
+			throttle += Integer.signum(target - throttle);
+			s += throttle * perThrottle;
+		}
+		assertEquals(0, throttle);
+		assertEquals(10, s, 2);
+	}
+
+	@Test
 	void aRecordedGradualStopIsNeverCutShort() {
 		for (double perThrottle : new double[] {0.0072, 0.01, 0.02}) {
 			// Recorded at this speed: the throttle came down a point a tick into a stop.
