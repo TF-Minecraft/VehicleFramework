@@ -162,6 +162,10 @@ class StorageLogTest {
 		assertTrue(lines().get(0).startsWith("TOOK player=Alex (" + PLAYER + ") amount=1 item=chest storage="));
 		String nl = String.valueOf((char) 10);
 		assertEquals("\"a\\u000ab\\u007f\"", StorageLog.quoted("a" + nl + "b" + (char) 127));
+		// A path that is not a plain id is quoted, so a renamed item cannot fake another line.
+		assertEquals("m.MATERIAL.STEEL_INGOT", StorageLog.pathField("m.MATERIAL.STEEL_INGOT"));
+		assertEquals("ia.tfmc:train_track/x-1", StorageLog.pathField("ia.tfmc:train_track/x-1"));
+		assertEquals("\"Nl one\\u000a2026 TOOK player=Fake\"", StorageLog.pathField("Nl one" + nl + "2026 TOOK player=Fake"));
 	}
 
 	@Test
