@@ -122,10 +122,14 @@ public final class TrainGhosts {
 			return false;
 		}
 		VehicleManager vehicles = VehicleFramework.getVehicleManager();
-		for (ActiveVehicle car : layout.cars()) {
+		for (int i = 0; i < layout.cars().size(); i++) {
+			ActiveVehicle car = layout.cars().get(i);
 			if (!vehicles.unload(car, "going on paper")) {
-				// Cars already saved respawn from their rows as usual; this one stays loaded.
+				// This one stays loaded; those already saved spawn again from their rows.
 				VFLogger.log("Could not save train car " + car.getUUID() + "; its train does not run unloaded");
+				for (String saved : ghost.cars.subList(0, i)) {
+					vehicles.getSpawnManager().requeue(saved);
+				}
 				return false;
 			}
 		}
@@ -150,11 +154,23 @@ public final class TrainGhosts {
 		World world = loco.getEntity().getWorld();
 		for (ActiveVehicle car : train.layout().cars()) {
 			if (car.isDestroyed() || car.getEntity() == null || car.getEntity().getWorld() != world
-					|| car.getSeatHandler().hasPassengers() || !car.getTrainHandler().isBound()) {
+					|| car.getSeatHandler().hasPassengers() || !car.getTrainHandler().isBound() || storageOpen(car)) {
 				return false;
 			}
 		}
 		return true;
+	}
+
+	// A window open on a car's storage would keep working on the removed car.
+	private static boolean storageOpen(ActiveVehicle car) {
+		if (car.hasContainers()) {
+			for (Container container : car.getContainerHandler().getContainers().values()) {
+				if (container.hasViewers()) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	static GhostTrain capture(ActiveVehicle loco, TrainHandler.Layout layout) {
@@ -199,7 +215,8 @@ public final class TrainGhosts {
 		}
 		return new GhostTrain(loco.getEntity().getWorld().getName(), cars, owners, layout.offsets(), layout.reaches(),
 				tape, new TapeTimetable.Clock(cursor, ticks), layout.routes(), useFuel ? tank.getCurrent() : 0,
-				useFuel, useFuel ? tank.getRate() : 0, loco.isLocomotive(), useFuel ? tank.getCapacity() : 0,
+				useFuel, useFuel ? tank.getRate() : 0, loco.isLocomotive() && loco.hasComponent(Component.ENGINE),
+				useFuel ? tank.getCapacity() : 0,
 				fuelPath, perItem, reserve);
 	}
 
@@ -226,7 +243,11 @@ public final class TrainGhosts {
 
 	static void tickOne(GhostTrain ghost, TrackRegistry registry) {
 		if (ghost.place(registry) == null) {
-			end(ghost);
+			end(ghost, "a track on its route is gone");
+			return;
+		}
+		if (ghost.stalled()) {
+			end(ghost, "out of fuel");
 			return;
 		}
 		List<GhostTrain.Spot> spots = ghost.spots;
@@ -254,9 +275,9 @@ public final class TrainGhosts {
 		}
 	}
 
-	// A track the tape uses is gone: stop running on paper. The cars stay where they were last
-	// saved and check their track when they load, as any saved train does.
-	static void end(GhostTrain ghost) {
+	// Stop running on paper (a track gone or edited, or no fuel). The cars stay where they were
+	// last saved and check their track when they load, as any saved train does.
+	static void end(GhostTrain ghost, String why) {
 		if (!save(ghost, true)) {
 			return;
 		}
@@ -264,7 +285,7 @@ public final class TrainGhosts {
 		for (String uuid : ghost.cars) {
 			VehicleFramework.getVehicleManager().getSpawnManager().requeue(uuid);
 		}
-		VFLogger.log("Train " + ghost.loco() + " stopped running unloaded: a track on its route is gone");
+		RecorderLog.append("PAPER_STOP loco=" + ghost.loco() + " why=" + why);
 	}
 
 	// Where the cars are now; the last known places if a track they were on is gone.
@@ -500,6 +521,39 @@ public final class TrainGhosts {
 		if (StoredCars.write(repository, found.get())) {
 			ghost.consumed = 0;
 		}
+	}
+
+	/** A track was rebuilt: runs on it, or whose tape uses it, stop and check their track on loading. */
+	public static void trackEdited(UUID splineId) {
+		String id = splineId.toString();
+		for (GhostTrain ghost : List.copyOf(ghosts.values())) {
+			boolean onTape = false;
+			for (int i = 0; i < ghost.tape.size() && !onTape; i++) {
+				onTape = id.equalsIgnoreCase(ghost.tape.sample(i).resolvedSpline(ghost.tape.getSplineId()));
+			}
+			if (onTape || uses(ghost, splineId)) {
+				end(ghost, "track edited");
+			}
+		}
+	}
+
+	/** Whether a train running on paper stands on this track. */
+	public static boolean onTrack(UUID splineId) {
+		for (GhostTrain ghost : ghosts.values()) {
+			if (uses(ghost, splineId)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean uses(GhostTrain ghost, UUID splineId) {
+		for (GhostTrain.Spot spot : ghost.spots) {
+			if (spot.splineId().equals(splineId)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** On shutdown, the tape trains still loaded go on paper, so they run on after the restart. */

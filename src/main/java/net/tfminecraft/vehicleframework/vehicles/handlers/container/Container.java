@@ -124,6 +124,11 @@ public class Container {
         updateBoneVisibility();
     }
 
+    /** Whether a player has this container's window open. */
+    public boolean hasViewers() {
+        return live != null && !live.getViewers().isEmpty();
+    }
+
     /** How many items in this container match a TLibs item path. */
     public int countMatching(String tlibsPath) {
         int count = 0;

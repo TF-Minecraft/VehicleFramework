@@ -37,6 +37,7 @@ class ContainerDetachedTest {
 		assertEquals("rear", copy.getSeat());
 		assertEquals(List.of("coal"), copy.getAllowItems());
 		assertTrue(copy.getBones().isEmpty());
+		assertFalse(copy.hasViewers());
 		ItemStack[] empty = copy.contents();
 		assertEquals(3, empty.length);
 		assertNull(empty[0]);

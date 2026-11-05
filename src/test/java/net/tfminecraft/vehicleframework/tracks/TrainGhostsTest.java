@@ -341,7 +341,6 @@ class TrainGhostsTest {
 		TrainGhosts.tick();
 		assertFalse(TrainGhosts.running(stray));
 		verify(spawns).requeue("loco");
-		logger.verify(() -> VFLogger.log(contains("a track on its route is gone")));
 	}
 
 	@Test
@@ -544,6 +543,53 @@ class TrainGhostsTest {
 	}
 
 	@Test
+	void aRunOutOfFuelOrOnAnEditedTrackStopsRunningOnPaper() {
+		row("loco", "{\"id\":\"wagon\"}");
+		GhostTrain dry = ghost(List.of("loco"), 0, 0);
+		TrainGhosts.register(dry);
+		TrainGhosts.tick();
+		assertFalse(TrainGhosts.running(dry));
+		verify(spawns).requeue("loco");
+		// A track edit ends the runs whose tape or cars use it; others run on.
+		row("a", "{\"id\":\"wagon\"}");
+		row("b", "{\"id\":\"wagon\"}");
+		GhostTrain onIt = ghost(List.of("a"), 0, 50);
+		GhostTrain standing = new GhostTrain("world", List.of("b"), List.of("x"), new double[] {0}, new double[] {3},
+				new ThrottleTape("other", List.of(new ThrottleTape.Sample(0, 1, 0))), new TapeTimetable.Clock(0, 0),
+				Map.of(), 0, false, 0, false, 0, null, 0, 0);
+		standing.spots = List.of(new GhostTrain.Spot(line.getId(), 5, 1, 1, line.sampleAt(5)));
+		GhostTrain elsewhere = new GhostTrain("world", List.of("c"), List.of("x"), new double[] {0}, new double[] {3},
+				new ThrottleTape("other", List.of(new ThrottleTape.Sample(0, 1, 0))), new TapeTimetable.Clock(0, 0),
+				Map.of(), 0, false, 0, false, 0, null, 0, 0);
+		TrainGhosts.register(onIt);
+		TrainGhosts.register(standing);
+		TrainGhosts.register(elsewhere);
+		assertTrue(TrainGhosts.onTrack(line.getId()));
+		assertFalse(TrainGhosts.onTrack(UUID.randomUUID()));
+		assertTrue(TrainHandler.anyTrainOn(line.getId()));
+		TrainHandler.retrackTrains(line, List.of());
+		assertFalse(TrainGhosts.running(onIt));
+		assertFalse(TrainGhosts.running(standing));
+		assertTrue(TrainGhosts.running(elsewhere));
+		TrainHandler.retrackTrains(null, List.of());
+	}
+
+	@Test
+	void aTrainWithAStorageWindowOpenStaysLoaded() {
+		Live live = live(false);
+		when(live.car.hasContainers()).thenReturn(true);
+		ContainerHandler handler = mock(ContainerHandler.class);
+		Container closed = mock(Container.class);
+		Container open = mock(Container.class);
+		when(open.hasViewers()).thenReturn(true);
+		when(handler.getContainers()).thenReturn(new HashMap<>(Map.of("a", closed)));
+		when(live.car.getContainerHandler()).thenReturn(handler);
+		assertTrue(TrainGhosts.eligible(live.loco));
+		when(handler.getContainers()).thenReturn(new HashMap<>(Map.of("a", closed, "b", open)));
+		assertFalse(TrainGhosts.eligible(live.loco));
+	}
+
+	@Test
 	void tapeTrainsStillLoadedAtShutdownGoOnPaper() {
 		row("loco", "{\"id\":\"wagon\"}");
 		row("car", "{\"id\":\"wagon\"}");
@@ -619,6 +665,8 @@ class TrainGhostsTest {
 		assertFalse(TrainGhosts.tryConvert(live.loco, "unload"));
 		assertEquals(0, TrainGhosts.count());
 		logger.verify(() -> VFLogger.log(contains("does not run unloaded")));
+		// The locomotive was already saved and removed: it spawns again from its row.
+		verify(spawns).requeue("loco");
 		// Its track is gone and its cursor unknown: no place on the tape.
 		when(live.train.getTapeClock()).thenReturn(new int[] {-1, 0});
 		when(live.train.getSplineId()).thenReturn(UUID.randomUUID());

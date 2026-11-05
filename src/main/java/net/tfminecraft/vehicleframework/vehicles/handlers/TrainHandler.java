@@ -1194,6 +1194,9 @@ public class TrainHandler {
 
 	/** Moves every train on {@code old} onto the track that replaced it. */
 	public static void retrackTrains(TrackSpline old, List<TrackSpline> rebuilt) {
+		if (old != null) {
+			TrainGhosts.trackEdited(old.getId());
+		}
 		VehicleManager vehicles = VehicleFramework.getVehicleManager();
 		if (vehicles == null) {
 			return;
@@ -1213,6 +1216,9 @@ public class TrainHandler {
 	public static boolean anyTrainOn(UUID splineId) {
 		if (splineId == null) {
 			return false;
+		}
+		if (TrainGhosts.onTrack(splineId)) {
+			return true;
 		}
 		VehicleManager vehicles = VehicleFramework.getVehicleManager();
 		if (vehicles != null) {
