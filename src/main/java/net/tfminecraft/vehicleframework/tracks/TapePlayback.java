@@ -23,6 +23,8 @@ public final class TapePlayback {
 	static final double BRAKE_DISTANCE = 64;
 	/** Stops further along the tape than this are never braked for yet. */
 	static final double REST_LIMIT = 256;
+	/** Consecutive samples further apart than this on another track are across its loop seam. */
+	static final double SEAM_GAP = 4;
 	/** What a change of track between two samples counts towards the room to stop. */
 	static final double STEP_LIMIT = 2;
 	/** Half a block's slack, so a recorded slowing down is not cut short. */
@@ -55,6 +57,7 @@ public final class TapePlayback {
 		this.cursor = cursor;
 		this.ticksAt = Math.max(0, ticksAt);
 		retryIn = 0;
+		restCursor = -1;
 	}
 
 	public void reset() {
@@ -123,9 +126,15 @@ public final class TapePlayback {
 	 */
 	private double roomToStop(ThrottleTape tape, String spline, double s, double length, boolean loop,
 			double window) {
+		ThrottleTape.Sample at = tape.sample(cursor);
 		ThrottleTape.Sample first = tape.sample(cursor + 1);
-		double room = same(first, tape, spline)
-				? Math.max(0, ThrottleTape.along(s, first.s, length, loop) * tape.sample(cursor).sign) : 0;
+		double room = STEP_LIMIT;
+		if (same(first, tape, spline)) {
+			// The way the tape goes from here; the sample's own sign is from before a reversal.
+			double between = ThrottleTape.along(at.s, first.s, length, loop);
+			int way = between > 1e-6 ? 1 : between < -1e-6 ? -1 : at.sign;
+			room = Math.max(0, ThrottleTape.along(s, first.s, length, loop) * way);
+		}
 		if (restCursor != cursor || restTape != tape) {
 			restCursor = cursor;
 			restTape = tape;
@@ -157,20 +166,23 @@ public final class TapePlayback {
 		if (!same(to, tape, track)) {
 			return STEP_LIMIT;
 		}
-		return track.equalsIgnoreCase(spline) ? Math.abs(ThrottleTape.along(from.s, to.s, length, loop))
-				: Math.abs(to.s - from.s);
+		if (track.equalsIgnoreCase(spline)) {
+			return Math.abs(ThrottleTape.along(from.s, to.s, length, loop));
+		}
+		// Another track's length is not known here: a gap longer than a moving step is its seam.
+		double gap = Math.abs(to.s - from.s);
+		return gap > SEAM_GAP ? STEP_LIMIT : gap;
 	}
 
 	/**
 	 * The highest throttle that still stops within {@code room} blocks, coming down a point a
-	 * tick; at least 1 while the stop is further than {@link #REACH}, so the train gets there.
+	 * tick; at least 1, so a train short of a stop it cannot pass yet still gets there.
 	 */
 	static int brakingThrottle(double room, double perThrottle) {
 		if (Double.isInfinite(room)) {
 			return Integer.MAX_VALUE;
 		}
-		int most = (int) Math.floor((Math.sqrt(1 + 8 * (room + BRAKE_SLACK) / perThrottle) - 1) / 2);
-		return room > REACH ? Math.max(1, most) : most;
+		return Math.max(1, (int) Math.floor((Math.sqrt(1 + 8 * (room + BRAKE_SLACK) / perThrottle) - 1) / 2));
 	}
 
 	// Off the tape's track, or far from where the tape says the train is.

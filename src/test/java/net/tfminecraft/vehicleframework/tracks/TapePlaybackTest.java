@@ -191,9 +191,9 @@ class TapePlaybackTest {
 	}
 
 	@Test
-	void brakingLooksOnlyAtStopsAheadOnThisTrack() {
+	void brakingLooksAheadOverSwitchesButNotTooFar() {
 		assertEquals(Integer.MAX_VALUE, TapePlayback.brakingThrottle(Double.POSITIVE_INFINITY, 0.0072));
-		assertEquals(0, TapePlayback.brakingThrottle(0.1, 1));
+		assertEquals(1, TapePlayback.brakingThrottle(0, 1));
 		assertEquals(1, TapePlayback.brakingThrottle(0.4, 1));
 		assertEquals(25, TapePlayback.brakingThrottle(2, 0.0072));
 		// A stop just past a switch is braked for; a stop far ahead, or none, is not.
@@ -213,6 +213,42 @@ class TapePlaybackTest {
 		TapePlayback across = new TapePlayback();
 		across.setCursor(1, 0);
 		assertTrue(across.step(tape, "other", 80.5, 200, false, 1, 1, 40, 0.0072).target() < 40);
+	}
+
+	@Test
+	void aRecordedGradualStopIsNeverCutShort() {
+		for (double perThrottle : new double[] {0.0072, 0.01, 0.02}) {
+			// Recorded at this speed: the throttle came down a point a tick into a stop.
+			List<ThrottleTape.Sample> samples = new ArrayList<>();
+			double s = 0;
+			int throttle = 100;
+			for (int i = 0; i < 40; i++) {
+				samples.add(new ThrottleTape.Sample(s, 1, throttle, 1, "line", null, 1));
+				s += throttle * perThrottle;
+			}
+			while (throttle > 0) {
+				samples.add(new ThrottleTape.Sample(s, 1, throttle, 1, "line", null, 1));
+				throttle--;
+				s += throttle * perThrottle;
+			}
+			samples.add(new ThrottleTape.Sample(s, 1, 0, 60, "line", null, 1));
+			ThrottleTape tape = new ThrottleTape("line", samples);
+			TapePlayback playback = new TapePlayback();
+			playback.setCursor(0, 0);
+			double at = 0;
+			int current = 100;
+			for (int tick = 0; tick < 400; tick++) {
+				TapePlayback.Step step = playback.step(tape, "line", at, 1000, false, 1, 1, 40, perThrottle);
+				if (step.atStop()) {
+					break;
+				}
+				int recorded = tape.sample(step.cursor()).throttle;
+				assertTrue(step.target() >= recorded - 1, "cut to " + step.target() + " from " + recorded + " at " + at);
+				current += Integer.signum(step.target() - current);
+				at += current * perThrottle;
+			}
+			assertEquals(s, at, 0.6);
+		}
 	}
 
 	@Test
