@@ -21,6 +21,10 @@ import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.block.ShulkerBox;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.meta.BlockStateMeta;
+import org.bukkit.inventory.meta.BundleMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +33,9 @@ import org.mockito.MockedStatic;
 
 import net.kyori.adventure.text.Component;
 import net.tfminecraft.coreprotect.CoreProtectAPI;
+import net.tfminecraft.tlibs.TLibs;
+import net.tfminecraft.tlibs.objects.api.ItemAPI;
+import net.tfminecraft.tlibs.objects.api.subapi.ItemChecker;
 import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.util.LogFileWriter;
@@ -80,6 +87,67 @@ class StorageLogTest {
 				"PUT " + who + " amount=12 item=iron_ingot " + where,
 				"TOOK " + who + " amount=1 item=paper name=\"Sealed Letter\" " + where,
 				"TOOK " + who + " amount=3 item=bread " + where), lines());
+	}
+
+	@Test
+	void itemsAreNamedByPluginPathNameAndWhatTheyHold() throws Exception {
+		StorageLog.configure(true, folder.toFile());
+		Cache.coreProtect = false;
+		ItemStack steel = item(Material.IRON_INGOT, 1);
+		ItemStack plain = item(Material.STONE, 1);
+		ItemStack quoted = item(Material.NAME_TAG, 1);
+		ItemMeta quotedMeta = mock(ItemMeta.class);
+		when(quoted.hasItemMeta()).thenReturn(true);
+		when(quoted.getItemMeta()).thenReturn(quotedMeta);
+		when(quotedMeta.hasItemName()).thenReturn(true);
+		// A copy of one keeps its name, as a real item's does.
+		when(quoted.asOne()).thenReturn(quoted);
+		when(quotedMeta.itemName()).thenReturn(Component.text("The \"Boss\" \\ tag"));
+		ItemStack bundle = item(Material.BUNDLE, 1);
+		BundleMeta bundleMeta = mock(BundleMeta.class);
+		when(bundle.hasItemMeta()).thenReturn(true);
+		when(bundle.getItemMeta()).thenReturn(bundleMeta);
+		List<ItemStack> packed = List.of(item(Material.DIAMOND, 3), quoted, item(Material.DIAMOND, 2));
+		when(bundleMeta.getItems()).thenReturn(packed);
+		ItemStack box = item(Material.SHULKER_BOX, 1);
+		BlockStateMeta boxMeta = mock(BlockStateMeta.class);
+		ShulkerBox state = mock(ShulkerBox.class);
+		Inventory inside = mock(Inventory.class);
+		when(box.hasItemMeta()).thenReturn(true);
+		when(box.getItemMeta()).thenReturn(boxMeta);
+		when(boxMeta.hasBlockState()).thenReturn(true);
+		when(boxMeta.getBlockState()).thenReturn(state);
+		when(state.getInventory()).thenReturn(inside);
+		ItemStack[] boxed = { null, item(Material.EMERALD, 7) };
+		when(inside.getContents()).thenReturn(boxed);
+		ItemStack sealed = item(Material.CHEST, 1);
+		BlockStateMeta sealedMeta = mock(BlockStateMeta.class);
+		when(sealed.hasItemMeta()).thenReturn(true);
+		when(sealed.getItemMeta()).thenReturn(sealedMeta);
+		ItemAPI api = mock(ItemAPI.class);
+		ItemChecker checker = mock(ItemChecker.class);
+		when(api.getChecker()).thenReturn(checker);
+		when(checker.getAsStringPath(steel)).thenReturn("m.MATERIAL.STEEL_INGOT");
+		when(checker.getAsStringPath(plain)).thenReturn("v.stone");
+		when(checker.getAsStringPath(quoted)).thenReturn(" ");
+		Player player = player();
+		ActiveVehicle vehicle = vehicle(null);
+		Container container = container();
+		try (MockedStatic<TLibs> tlibs = mockStatic(TLibs.class)) {
+			tlibs.when(TLibs::getItemAPI).thenReturn(api);
+			for (ItemStack item : List.of(steel, plain, quoted, bundle, box, sealed)) {
+				StorageLog.changed(player, vehicle, container, item, 1);
+			}
+		}
+		String tail = " storage=cargo \"Cargo Hold\" vehicle=wagon_cargo \"Cargo Wagon\" uuid=v-uuid at ? ?";
+		String who = "PUT player=Alex (" + PLAYER + ") amount=1 ";
+		assertEquals(List.of(
+				who + "item=iron_ingot path=m.MATERIAL.STEEL_INGOT" + tail,
+				who + "item=stone" + tail,
+				who + "item=name_tag name=\"The \\\"Boss\\\" \\\\ tag\"" + tail,
+				who + "item=bundle contents=[5 diamond, 1 name_tag \"The \\\"Boss\\\" \\\\ tag\"]" + tail,
+				who + "item=shulker_box contents=[7 emerald]" + tail,
+				who + "item=chest" + tail), lines());
 	}
 
 	@Test

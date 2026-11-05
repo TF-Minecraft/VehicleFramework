@@ -163,6 +163,29 @@ class LogFileWriterTest {
 		}
 	}
 
+	@Test
+	void aFailingLogHandlerCannotStopTheWriter() throws Exception {
+		Logger broken = Logger.getLogger("LogFileWriterTest.broken");
+		Handler throwing = new Handler() {
+			@Override public void publish(LogRecord record) { throw new IllegalStateException("handler down"); }
+			@Override public void flush() { }
+			@Override public void close() { }
+		};
+		broken.addHandler(throwing);
+		try {
+			LogFileWriter.warn(broken, "lost");
+			Path blocked = folder.resolve("blocked");
+			Files.writeString(blocked, "file");
+			LogFileWriter.append(broken, "blocked", blocked.resolve("x.log"), "fails quietly");
+			Path log = folder.resolve("after.log");
+			LogFileWriter.append(logger, "after.log", log, "still written");
+			LogFileWriter.flush();
+			assertEquals(List.of("still written"), Files.readAllLines(log));
+		} finally {
+			broken.removeHandler(throwing);
+		}
+	}
+
 	private static Thread thread() throws Exception {
 		Field field = LogFileWriter.class.getDeclaredField("thread");
 		field.setAccessible(true);

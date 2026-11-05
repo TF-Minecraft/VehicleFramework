@@ -5,6 +5,8 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -13,15 +15,19 @@ import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.BlockStateMeta;
+import org.bukkit.inventory.meta.BundleMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import net.tfminecraft.coreprotect.CoreProtectAPI;
+import net.tfminecraft.tlibs.TLibs;
 import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.util.LogFileWriter;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.handlers.container.Container;
+import net.tfminecraft.vehicleframework.vehicles.handlers.container.ItemCounts;
 
 /**
  * Who put what into, or took it out of, a vehicle's storage. Vehicle storage is not a block, so
@@ -93,34 +99,79 @@ public final class StorageLog {
 	}
 
 	private static String where(ActiveVehicle vehicle, Container container) {
-		return "storage=" + container.getId() + " \"" + plain(container.getName()) + "\""
-				+ " vehicle=" + vehicle.getId() + " \"" + plain(vehicle.getName()) + "\" uuid=" + vehicle.getUUID()
+		return "storage=" + container.getId() + " " + quoted(plain(container.getName()))
+				+ " vehicle=" + vehicle.getId() + " " + quoted(plain(vehicle.getName())) + " uuid=" + vehicle.getUUID()
 				+ " at " + worldName(vehicle) + " " + blockPosition(vehicle);
 	}
 
+	// What an item is: its type, its TLibs path (MMOItems, ItemsAdder), its name, and what a
+	// bundle or shulker box holds, since taking one takes all of that.
 	private static String item(ItemStack item) {
-		String name = displayName(item);
-		return "item=" + type(item) + (name == null ? "" : " name=\"" + name + "\"");
+		String path = path(item);
+		String name = name(item);
+		String contents = contents(item);
+		return "item=" + type(item)
+				+ (path == null ? "" : " path=" + path)
+				+ (name == null ? "" : " name=" + quoted(name))
+				+ (contents == null ? "" : " contents=[" + contents + "]");
 	}
 
 	private static String itemName(ItemStack item) {
-		String name = displayName(item);
-		return type(item) + (name == null ? "" : " \"" + name + "\"");
+		String name = name(item);
+		String contents = contents(item);
+		return type(item) + (name == null ? "" : " " + quoted(name))
+				+ (contents == null ? "" : " [" + contents + "]");
 	}
 
 	private static String type(ItemStack item) {
 		return item.getType().name().toLowerCase(Locale.ROOT);
 	}
 
-	private static String displayName(ItemStack item) {
-		if (!item.hasItemMeta()) {
+	// A vanilla item's path only repeats its type.
+	private static String path(ItemStack item) {
+		try {
+			String path = TLibs.getItemAPI().getChecker().getAsStringPath(item);
+			return path == null || path.isBlank() || path.startsWith("v.") ? null : path;
+		} catch (RuntimeException unavailable) {
 			return null;
 		}
-		ItemMeta meta = item.getItemMeta();
-		if (meta == null || !meta.hasDisplayName() || meta.displayName() == null) {
+	}
+
+	private static String name(ItemStack item) {
+		ItemMeta meta = item.hasItemMeta() ? item.getItemMeta() : null;
+		if (meta == null) {
 			return null;
 		}
-		return PlainTextComponentSerializer.plainText().serialize(meta.displayName());
+		if (meta.hasDisplayName() && meta.displayName() != null) {
+			return PlainTextComponentSerializer.plainText().serialize(meta.displayName());
+		}
+		if (meta.hasItemName()) {
+			return PlainTextComponentSerializer.plainText().serialize(meta.itemName());
+		}
+		return null;
+	}
+
+	private static String contents(ItemStack item) {
+		ItemMeta meta = item.hasItemMeta() ? item.getItemMeta() : null;
+		ItemStack[] inside;
+		if (meta instanceof BundleMeta bundle) {
+			inside = bundle.getItems().toArray(new ItemStack[0]);
+		} else if (meta instanceof BlockStateMeta state && state.hasBlockState()
+				&& state.getBlockState() instanceof org.bukkit.block.Container box) {
+			inside = box.getInventory().getContents();
+		} else {
+			return null;
+		}
+		List<String> kinds = new ArrayList<>();
+		for (ItemCounts.Change kind : ItemCounts.of(inside).since(new ItemCounts())) {
+			String name = name(kind.item());
+			kinds.add(kind.amount() + " " + type(kind.item()) + (name == null ? "" : " " + quoted(name)));
+		}
+		return String.join(", ", kinds);
+	}
+
+	private static String quoted(String text) {
+		return "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
 	}
 
 	private static Location location(ActiveVehicle vehicle) {

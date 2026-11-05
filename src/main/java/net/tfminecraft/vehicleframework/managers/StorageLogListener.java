@@ -28,7 +28,8 @@ import net.tfminecraft.vehicleframework.vehicles.handlers.container.StorageAudit
  * Logs every item put into or taken out of a vehicle's storage, by whom. Storage is a shared
  * inventory any number of players may have open. Each click or drag is counted once the server
  * has applied it, so shift-clicks, drags, number keys, double-click gathering and dropping from a
- * slot all show as the items that actually moved. Other inventories cost one holder check.
+ * slot all show as the items that actually moved. Counting before other plugins see the next
+ * click keeps what they do with a click on the clicker. Other inventories cost one holder check.
  */
 public class StorageLogListener implements Listener {
 
@@ -67,26 +68,44 @@ public class StorageLogListener implements Listener {
 		StorageLog.opened(player, storage.vehicle(), storage.container());
 	}
 
+	// Before any other plugin handles the click, the previous action is applied: count it.
+	@EventHandler(priority = EventPriority.LOWEST)
+	public void beforeClick(InventoryClickEvent e) {
+		countBefore(e.getView());
+	}
+
+	@EventHandler(priority = EventPriority.LOWEST)
+	public void beforeDrag(InventoryDragEvent e) {
+		countBefore(e.getView());
+	}
+
+	// Whatever changes from here on, until the next count, is this player's doing: the click
+	// itself once the server applies it, or what another plugin did with it, even if cancelled.
 	@EventHandler(priority = EventPriority.MONITOR)
 	public void click(InventoryClickEvent e) {
-		acted(e.getView(), e.getWhoClicked(), e.isCancelled());
+		acted(e.getView(), e.getWhoClicked());
 	}
 
 	@EventHandler(priority = EventPriority.MONITOR)
 	public void drag(InventoryDragEvent e) {
-		acted(e.getView(), e.getWhoClicked(), e.isCancelled());
+		acted(e.getView(), e.getWhoClicked());
 	}
 
-	// The previous action is applied by the time the next one starts; this one is counted at
-	// the next action, at the end of the tick, or when the storage is closed.
-	private void acted(InventoryView view, HumanEntity who, boolean cancelled) {
+	private void countBefore(InventoryView view) {
+		Storage storage = storage(view);
+		if (storage != null) {
+			count(storage);
+		}
+	}
+
+	// Counted at the next action, at the end of the tick, or when the storage is closed.
+	private void acted(InventoryView view, HumanEntity who) {
 		Storage storage = storage(view);
 		if (storage == null) {
 			return;
 		}
-		count(storage);
 		StorageAudit audit = storage.audit();
-		if (cancelled || !(who instanceof Player player) || !audit.isWatching()) {
+		if (!(who instanceof Player player) || !audit.isWatching()) {
 			return;
 		}
 		audit.acted(player);
@@ -119,7 +138,7 @@ public class StorageLogListener implements Listener {
 			count(storage);
 		}
 		HumanEntity closing = e.getPlayer();
-		if (storage.inventory().getViewers().stream().allMatch(viewer -> viewer == closing)) {
+		if (storage.inventory().getViewers().stream().allMatch(closing::equals)) {
 			audit.stop();
 		}
 	}

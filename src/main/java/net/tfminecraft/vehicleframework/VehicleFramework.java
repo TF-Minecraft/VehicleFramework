@@ -104,6 +104,15 @@ public class VehicleFramework extends JavaPlugin{
 	}
 	@Override
 	public void onDisable() {
+		try {
+			disable();
+		} finally {
+			// Write out the last lines of the plugin's log files, even if disabling failed.
+			LogFileWriter.shutdown();
+		}
+	}
+
+	private void disable() {
 		PersistenceLog.append("DISABLE_BEGIN");
 		if (trackDisplayManager != null) {
 			TrackBuildAnimator.finishAll();
@@ -123,8 +132,6 @@ public class VehicleFramework extends JavaPlugin{
 		closeVehicleRepository();
 		Cache.removeLights();
 		Cache.removeProjectiles();
-		// Write out the last lines of the plugin's log files.
-		LogFileWriter.shutdown();
 	}
 	public void registerListeners() {
 		getServer().getPluginManager().registerEvents(vehicleManager, this);

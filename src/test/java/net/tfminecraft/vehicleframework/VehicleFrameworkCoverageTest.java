@@ -131,7 +131,7 @@ class VehicleFrameworkCoverageTest {
         assertTrue(Files.isRegularFile(temp.resolve("plugin/data/vehicles.db")));
         assertTrue(Files.isRegularFile(temp.resolve("plugin/templates/weapons/gun_turret.yml")));
         assertNotNull(FuelLoader.getByString("coal")); assertFalse(WeaponTemplateLoader.map.isEmpty());
-        verify(plugins, times(7)).registerEvents(any(Listener.class), same(plugin));
+        verify(plugins, times(8)).registerEvents(any(Listener.class), same(plugin));
         verify(protocol, times(2)).addPacketListener(any()); verify(plugins, never()).disablePlugin(plugin);
         plugin.onDisable(); assertNull(VehicleFramework.getVehicleRepository());
     }
@@ -270,7 +270,7 @@ class VehicleFrameworkCoverageTest {
                 () -> assertEquals(Set.of("good_shell"), AmmunitionLoader.get().keySet()),
                 () -> verify(log, atLeastOnce()).warning(contains("bad.yml")),
                 () -> assertNotNull(VehicleFramework.getVehicleRepository()),
-                () -> verify(plugins, times(7)).registerEvents(any(Listener.class), same(plugin)),
+                () -> verify(plugins, times(8)).registerEvents(any(Listener.class), same(plugin)),
                 () -> verify(plugins, never()).disablePlugin(plugin),
                 () -> verify(log).info(contains("Setup complete!")));
     }

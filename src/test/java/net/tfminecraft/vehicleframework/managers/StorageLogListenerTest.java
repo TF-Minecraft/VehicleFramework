@@ -111,17 +111,17 @@ class StorageLogListenerTest {
 		viewers.add(bea);
 		listener.open(new InventoryOpenEvent(view(bea)));
 		// Alex shift-clicks 5 iron in; the server applies it after the event.
-		listener.click(click(alex, false));
+		fire(click(alex, false));
 		contents.add(item(Material.IRON_INGOT, 5));
 		// Bea's click starts: Alex's is counted, and hers waits for the end of the tick.
-		listener.click(click(bea, false));
+		fire(click(bea, false));
 		contents.set(0, item(Material.COAL, 4));
 		assertEquals(1, tasks.size());
 		tasks.get(0).run();
 		// A cancelled click moves nothing and blames nobody.
-		listener.click(click(alex, true));
+		fire(click(alex, true));
 		// Alex drags gold in and closes; Bea still has it open.
-		listener.drag(drag(alex));
+		fire(drag(alex));
 		contents.add(item(Material.GOLD_INGOT, 2));
 		listener.closing(new InventoryCloseEvent(view(alex)));
 		// Closing hands Alex back a disallowed item.
@@ -143,18 +143,41 @@ class StorageLogListenerTest {
 	}
 
 	@Test
+	void aClickIsChargedToItsPlayerWhoeverClosesOrWhatAnotherPluginDoesWithIt() throws Exception {
+		viewers.add(alex);
+		viewers.add(bea);
+		listener.open(new InventoryOpenEvent(view(alex)));
+		// Bea takes the coal another plugin cancelled her click to hand her itself.
+		contents.add(item(Material.COAL, 3));
+		InventoryClickEvent cancelled = click(bea, true);
+		listener.beforeClick(cancelled);
+		contents.clear();
+		listener.click(cancelled);
+		// Bea puts iron in, and Alex closes before the end of the tick.
+		fire(click(bea, false));
+		contents.add(item(Material.IRON_INGOT, 1));
+		listener.closing(new InventoryCloseEvent(view(alex)));
+		listener.closed(new InventoryCloseEvent(view(alex)));
+		assertTrue(audit.isWatching());
+		assertEquals(List.of(
+				"OPEN player=Alex",
+				"TOOK player=Bea amount=3 item=coal",
+				"PUT player=Bea amount=1 item=iron_ingot"), lines());
+	}
+
+	@Test
 	void clicksWhileNobodyWatchesOrByOthersAreIgnored() throws Exception {
 		HumanEntity npc = mock(HumanEntity.class);
 		listener.open(new InventoryOpenEvent(view(npc)));
 		assertFalse(audit.isWatching());
-		listener.click(click(alex, false));
-		listener.click(click(npc, false));
+		fire(click(alex, false));
+		fire(click(npc, false));
 		listener.closed(new InventoryCloseEvent(view(npc)));
 		assertTrue(tasks.isEmpty());
 		listener.open(new InventoryOpenEvent(view(alex)));
 		contents.add(item(Material.COAL, 1));
 		// A change no click explains moves the count on without a line.
-		listener.click(click(npc, false));
+		fire(click(npc, false));
 		assertTrue(tasks.isEmpty());
 		listener.closing(new InventoryCloseEvent(view(alex)));
 		assertEquals(List.of("OPEN player=Alex"), lines());
@@ -183,11 +206,22 @@ class StorageLogListenerTest {
 		assertNull(StorageLogListener.storage(view(alex)));
 		// Nothing to do for other inventories.
 		listener.open(new InventoryOpenEvent(view(alex, chest)));
-		listener.click(click(alex, false, chest));
-		listener.drag(drag(alex, chest));
+		fire(click(alex, false, chest));
+		fire(drag(alex, chest));
 		listener.closing(new InventoryCloseEvent(view(alex, chest)));
 		listener.closed(new InventoryCloseEvent(view(alex, chest)));
 		assertFalse(audit.isWatching());
+	}
+
+	// As the server does: every listener at LOWEST, then at MONITOR.
+	private void fire(InventoryClickEvent event) {
+		listener.beforeClick(event);
+		listener.click(event);
+	}
+
+	private void fire(InventoryDragEvent event) {
+		listener.beforeDrag(event);
+		listener.drag(event);
 	}
 
 	private List<String> lines() throws Exception {
