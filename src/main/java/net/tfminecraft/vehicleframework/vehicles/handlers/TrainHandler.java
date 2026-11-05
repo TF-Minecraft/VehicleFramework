@@ -20,6 +20,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
@@ -113,6 +114,11 @@ public class TrainHandler {
 	// The entity applyPose last placed. A new entity, or the first pose after loading or
 	// binding, is always placed in full.
 	private Entity posedEntity;
+	// A standing train's last planned placements, reused while everything they were planned
+	// from is unchanged; planned in full again at least every STANDING_REPLAN_TICKS ticks.
+	private StandingPlan standingPlan;
+	private int standingAge;
+	static final int STANDING_REPLAN_TICKS = 20;
 	
 	public TrainHandler(ConfigurationSection config) {
 		locomotive = config.getBoolean("locomotive", false);
@@ -752,12 +758,13 @@ public class TrainHandler {
 		if (TrackSplineMotion.stopped(speed)) {
 			animateMove(Direction.STILL);
 			if (keepBound()) {
-				placeLoadedCars();
+				placeStandingCars();
 			} else {
 				still();
 			}
 			return;
 		}
+		standingPlan = null;
 		// Follow how the train is moving, not the throttle: slowing down with the throttle
 		// below zero still rolls forward, and coasting at zero can roll backwards.
 		animateMove(speed < 0 ? Direction.BACKWARD : Direction.FORWARD, speed);
@@ -771,6 +778,10 @@ public class TrainHandler {
 
 	public void placeLoadedCars() {
 		PersistenceLog.placeCars(v);
+		planAndPlaceCars();
+	}
+
+	private List<CarPlacement> planAndPlaceCars() {
 		if (checkLoadedPosition && !v.hasParent()) {
 			checkLoadedPosition = false;
 			followTrackUnderEntity();
@@ -779,6 +790,107 @@ public class TrainHandler {
 		List<CarPlacement> placements = planCars(used);
 		retainRoutes(placements, used);
 		applyPlacements(placements);
+		return placements;
+	}
+
+	/**
+	 * {@link #placeLoadedCars()} for a train standing on its track, every tick. Planning reads
+	 * only the inputs {@link StandingInputs} collects, so while they are unchanged it plans the
+	 * same placements and keeps the same switches. Those are applied again without planning,
+	 * which poses, turns and decks every car just as before. Planning runs in full when any
+	 * input changes, when a car's model was not fully there to plan with, and every
+	 * {@link #STANDING_REPLAN_TICKS} ticks regardless.
+	 */
+	private void placeStandingCars() {
+		PersistenceLog.placeCars(v);
+		StandingInputs inputs = standingInputs();
+		if (standingPlan != null && ++standingAge < STANDING_REPLAN_TICKS && inputs.equals(standingPlan.inputs())) {
+			applyPlacements(standingPlan.placements());
+			return;
+		}
+		standingPlan = null;
+		List<CarPlacement> placements = planAndPlaceCars();
+		// Kept only if planning changed none of its own inputs, such as the switches it keeps,
+		// so planning again from them would give these same placements.
+		if (modelsReady(placements) && inputs.equals(standingInputs())) {
+			standingPlan = new StandingPlan(inputs, placements);
+			standingAge = 0;
+		}
+	}
+
+	private record StandingPlan(StandingInputs inputs, List<CarPlacement> placements) { }
+
+	/**
+	 * Everything planning a standing train reads, besides track geometry (covered by the
+	 * registry's version) and model blueprints (fixed once a car's model is ready). Records
+	 * compare doubles bit for bit.
+	 */
+	private record StandingInputs(TrackRegistry registry, long trackVersion, UUID splineId, double s,
+			int travelSign, int orientation, List<Object> routes, String pendingParent, boolean hasParent,
+			boolean checkLoadedPosition, List<Object> cars) { }
+
+	private StandingInputs standingInputs() {
+		TrackRegistry registry = VehicleFramework.getTrackRegistry();
+		List<Object> routes = new ArrayList<>(junctionRoutes.size() * 2);
+		// In order: the first held switch sets routeJunctionId.
+		junctionRoutes.forEach((id, diverge) -> {
+			routes.add(id);
+			routes.add(diverge);
+		});
+		List<Object> cars = new ArrayList<>();
+		for (ActiveVehicle car = v; car != null; car = car.getTrainHandler().child) {
+			Entity entity = car.getEntity();
+			Location at = entity == null ? null : entity.getLocation();
+			ActiveModel model = car.getModel();
+			BoneRotator rotator = car.getBehaviourHandler() == null ? null : car.getBehaviourHandler().getRotator();
+			cars.add(car);
+			cars.add(entity);
+			// Couplers are placed by the car's yaw.
+			cars.add(at == null ? null : at.getYaw());
+			cars.add(model);
+			cars.add(model == null || model.getScale() == null ? null : new Vector3f(model.getScale()));
+			cars.add(rotator);
+			cars.add(rotator == null ? null : rotator.getBone());
+			cars.add(car.getTrainHandler().pendingChild);
+		}
+		return new StandingInputs(registry, registry == null ? 0 : registry.version(), splineId, s, travelSign,
+				orientation, routes, pendingParent, v.hasParent(), checkLoadedPosition, cars);
+	}
+
+	// Whether every car's model was fully there to plan with: a bone or blueprint that is not
+	// loaded yet plans the car another way until it is.
+	private static boolean modelsReady(List<CarPlacement> placements) {
+		for (CarPlacement placement : placements) {
+			if (!placement.vehicle().getTrainHandler().modelReady()) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private boolean modelReady() {
+		try {
+			ActiveModel model = v.getModel();
+			if (model == null || (bogies != null && !bogies.isSettled())) {
+				return false;
+			}
+			for (String name : wheelBones) {
+				model.getBone(name).orElseThrow().getBlueprintBone().getRotatedGlobalPosition().z();
+			}
+			if (isAttachable()) {
+				getFront().getTrackReach();
+			}
+			if (canHaveAttached()) {
+				getBack().getTrackReach();
+			}
+			BoneRotator rotator = v.getBehaviourHandler() == null ? null : v.getBehaviourHandler().getRotator();
+			if (rotator != null && rotator.getBone() != null) {
+				rotator.getBone().getBlueprintBone().getRotatedGlobalPosition().z();
+			}
+			return true;
+		} catch (RuntimeException notLoaded) {
+			return false;
+		}
 	}
 
 	/**

@@ -30,6 +30,7 @@ import net.tfminecraft.vehicleframework.ownership.CharacterLookup;
 import net.tfminecraft.vehicleframework.ownership.OwnershipMode;
 import net.tfminecraft.vehicleframework.protocol.VehiclePacketListener;
 import org.bstats.bukkit.Metrics;
+import net.tfminecraft.vehicleframework.util.LogFileWriter;
 import net.tfminecraft.vehicleframework.util.MythicMobsIntegration;
 import net.tfminecraft.vehicleframework.util.TabCompletion;
 import net.tfminecraft.vehicleframework.tracks.TrackBuildAnimator;
@@ -120,6 +121,8 @@ public class VehicleFramework extends JavaPlugin{
 		closeVehicleRepository();
 		Cache.removeLights();
 		Cache.removeProjectiles();
+		// Write out the debug logs' last lines.
+		LogFileWriter.shutdown();
 	}
 	public void registerListeners() {
 		getServer().getPluginManager().registerEvents(vehicleManager, this);

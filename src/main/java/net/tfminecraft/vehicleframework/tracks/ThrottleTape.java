@@ -2,7 +2,9 @@ package net.tfminecraft.vehicleframework.tracks;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.json.simple.JSONArray;
@@ -59,6 +61,9 @@ public final class ThrottleTape {
 
 	private final String splineId;
 	private final List<Sample> samples;
+	// Playback asks the tape every tick. Each spline and direction's samples, sorted along the
+	// track, are built on first use and dropped when a sample is added.
+	private final Map<String, Index[]> indexes = new HashMap<>();
 
 	public ThrottleTape(String splineId) {
 		this(splineId, List.of());
@@ -107,7 +112,7 @@ public final class ThrottleTape {
 	}
 
 	public int lookup(double s, int sign, String currentSpline) {
-		return lookup(samplesFor(currentSpline), s, sign);
+		return index(currentSpline, sign).lookup(s);
 	}
 
 	static int lookup(List<Sample> samples, double s, int sign) {
@@ -151,21 +156,9 @@ public final class ThrottleTape {
 		return holdAt(s, sign, currentSpline == null ? splineId : currentSpline.toString());
 	}
 
+	/** The hold of the recorded sample nearest {@code s}, the first recorded on a tie, if under {@link #HOLD_S} away. */
 	public int holdAt(double s, int sign, String currentSpline) {
-		int want = sign < 0 ? -1 : 1;
-		Sample best = null;
-		double bestD = HOLD_S;
-		for (Sample sample : samplesFor(currentSpline)) {
-			if (sample.sign != want) {
-				continue;
-			}
-			double d = Math.abs(sample.s - s);
-			if (d < bestD) {
-				bestD = d;
-				best = sample;
-			}
-		}
-		return best == null ? 1 : best.holdTicks;
+		return index(currentSpline, sign).holdAt(s);
 	}
 
 	public int targetWithDwell(double s, int sign, DwellState dwell) {
@@ -234,6 +227,7 @@ public final class ThrottleTape {
 			return AppendResult.CAPPED;
 		}
 		samples.add(new Sample(s, nsign, throttle, 1, spline, junction, orientation));
+		indexes.clear();
 		if (samples.size() >= MAX_SAMPLES) {
 			return AppendResult.CAPPED;
 		}
@@ -297,11 +291,124 @@ public final class ThrottleTape {
 		return new ThrottleTape(splineId, loaded);
 	}
 
-	private List<Sample> samplesFor(String currentSpline) {
-		String want = blankToNull(currentSpline);
-		if (want == null) {
-			want = splineId;
+	private Index index(String currentSpline, int sign) {
+		String want = wanted(currentSpline);
+		Index[] bySign = indexes.computeIfAbsent(want, key -> new Index[2]);
+		int slot = sign < 0 ? 0 : 1;
+		if (bySign[slot] == null) {
+			bySign[slot] = new Index(samplesFor(want), sign < 0 ? -1 : 1);
 		}
+		return bySign[slot];
+	}
+
+	private String wanted(String currentSpline) {
+		String want = blankToNull(currentSpline);
+		return want == null ? splineId : want;
+	}
+
+	/**
+	 * One spline and direction's samples, sorted along the track the way {@link #lookup(List, double, int)}
+	 * sorts them, so both give the same answers. A sample at NaN sorts last and is never between two others.
+	 */
+	static final class Index {
+		private final Sample[] sorted;
+		// Each sorted sample's place in recording order.
+		private final int[] recorded;
+		// Sorted samples before the first NaN.
+		private final int numbered;
+
+		Index(List<Sample> samples, int want) {
+			List<Sample> matched = new ArrayList<>();
+			for (Sample sample : samples) {
+				if (sample.sign == want) {
+					matched.add(sample);
+				}
+			}
+			Integer[] order = new Integer[matched.size()];
+			for (int i = 0; i < order.length; i++) {
+				order[i] = i;
+			}
+			// A stable sort, as List.sort is: equal positions keep recording order.
+			java.util.Arrays.sort(order, Comparator.comparingDouble(i -> matched.get(i).s));
+			sorted = new Sample[order.length];
+			recorded = new int[order.length];
+			int count = 0;
+			for (int i = 0; i < order.length; i++) {
+				sorted[i] = matched.get(order[i]);
+				recorded[i] = order[i];
+				if (!Double.isNaN(sorted[i].s)) {
+					count++;
+				}
+			}
+			numbered = count;
+		}
+
+		int lookup(double s) {
+			if (sorted.length == 0) {
+				return 0;
+			}
+			Sample first = sorted[0];
+			if (s <= first.s) {
+				return first.throttle * first.orientation;
+			}
+			Sample last = sorted[sorted.length - 1];
+			if (s >= last.s) {
+				return last.throttle * last.orientation;
+			}
+			// The first pair with a.s <= s <= b.s: b is the first sample from the second on at
+			// or past s, as "s <= sample.s" only turns true once along the numbered samples.
+			int lo = 1;
+			int hi = numbered;
+			while (lo < hi) {
+				int mid = (lo + hi) >>> 1;
+				if (s <= sorted[mid].s) {
+					hi = mid;
+				} else {
+					lo = mid + 1;
+				}
+			}
+			if (lo >= numbered) {
+				return 0;
+			}
+			Sample a = sorted[lo - 1];
+			Sample b = sorted[lo];
+			double t = (s - a.s) / (b.s - a.s);
+			return (int) Math.round(a.throttle * a.orientation + t * (b.throttle * b.orientation - a.throttle * a.orientation));
+		}
+
+		int holdAt(double s) {
+			if (!(Math.abs(s) < Double.POSITIVE_INFINITY)) {
+				// Nothing is a finite distance from an infinite or NaN position.
+				return 1;
+			}
+			// sample.s - s only grows along the sorted samples, so those under HOLD_S away
+			// sit together: from the first more than HOLD_S behind s up to HOLD_S ahead.
+			int lo = 0;
+			int hi = numbered;
+			while (lo < hi) {
+				int mid = (lo + hi) >>> 1;
+				if (sorted[mid].s - s > -HOLD_S) {
+					hi = mid;
+				} else {
+					lo = mid + 1;
+				}
+			}
+			Sample best = null;
+			double bestD = HOLD_S;
+			int bestRecorded = Integer.MAX_VALUE;
+			for (int i = lo; i < numbered && sorted[i].s - s < HOLD_S; i++) {
+				double d = Math.abs(sorted[i].s - s);
+				if (d < bestD || (d == bestD && recorded[i] < bestRecorded)) {
+					bestD = d;
+					best = sorted[i];
+					bestRecorded = recorded[i];
+				}
+			}
+			return best == null ? 1 : best.holdTicks;
+		}
+	}
+
+	private List<Sample> samplesFor(String want) {
 		List<Sample> out = new ArrayList<>();
 		for (Sample sample : samples) {
 			if (sameId(sample.resolvedSpline(splineId), want)) {

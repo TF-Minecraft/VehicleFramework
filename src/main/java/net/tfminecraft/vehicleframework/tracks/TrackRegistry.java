@@ -33,6 +33,9 @@ public final class TrackRegistry {
 	private final TrackStore store;
 	private final Map<UUID, TrackSpline> splines = new ConcurrentHashMap<>();
 	private final Map<UUID, TrackJunction> junctions = new ConcurrentHashMap<>();
+	// Bumped on every change to the splines or junctions, so a standing train can tell its
+	// placements still hold. Changed only on the server thread.
+	private volatile long version;
 	private BiConsumer<TrackSpline, List<TrackSpline>> rebuilt = (old, next) -> {
 	};
 	private Predicate<UUID> occupied = id -> false;
@@ -40,6 +43,11 @@ public final class TrackRegistry {
 
 	public TrackRegistry(File dataFolder) {
 		this.store = new TrackStore(dataFolder);
+	}
+
+	/** Changes whenever a spline or junction is added, replaced, thrown or removed. */
+	public long version() {
+		return version;
 	}
 
 	public void onJunctionOccupied(Predicate<UUID> occupied) {
@@ -77,10 +85,13 @@ public final class TrackRegistry {
 
 	public void loadFromDisk() {
 		splines.clear();
+		version++;
 		junctions.clear();
+		version++;
 		for (TrackSpline spline : store.loadAll()) {
 			// TrackSpline.fromJson already promotes legacy closed polylines.
 			splines.put(spline.getId(), spline);
+			version++;
 		}
 		for (TrackStore.LoadedJunction loaded : store.loadAllJunctions()) {
 			TrackJunction junction = loaded.junction;
@@ -94,6 +105,7 @@ public final class TrackRegistry {
 			TrackJunction placed = junction.withS(
 					TrackJunction.wrapS(junction.s, stem.length(), stem.isLoop()));
 			junctions.put(placed.id, placed);
+			version++;
 		}
 		pruneNestedShortTracks();
 		dumpToLog();
@@ -181,6 +193,7 @@ public final class TrackRegistry {
 			TrackClearance.check(bukkitWorld, points, this, Set.of());
 			TrackSpline spline = TrackSpline.fromPoints(UUID.randomUUID(), world, false, points);
 			splines.put(spline.getId(), spline);
+			version++;
 			store.save(spline);
 			TrackLog.layOk(spline, "new");
 			return finishLay(TrackLayResult.of(TrackLayResult.Kind.NEW, spline, points, 0));
@@ -354,12 +367,14 @@ public final class TrackRegistry {
 			TrackResettle.resettle(bukkitWorld, head, false, true);
 			start = TrackSpline.fromPoints(id, spline.getWorld(), false, head);
 			splines.put(start.getId(), start);
+			version++;
 			store.save(start);
 		}
 		if (tail.size() >= 2) {
 			TrackResettle.resettle(bukkitWorld, tail, true, false);
 			rest = TrackSpline.fromPoints(UUID.randomUUID(), spline.getWorld(), false, tail);
 			splines.put(rest.getId(), rest);
+			version++;
 			store.save(rest);
 		}
 		if (start == null && rest == null) {
@@ -712,6 +727,7 @@ public final class TrackRegistry {
 		TrackSpline next = spline.promotedLoop(Cache.trackJoinDistance);
 		next.invalidateVisuals();
 		splines.put(next.getId(), next);
+		version++;
 		store.save(next);
 		return next;
 	}
@@ -838,6 +854,7 @@ public final class TrackRegistry {
 			List<double[]> extra = branchCurve(pose, yaw, world, bukkitWorld, x, y, z, null);
 			TrackSpline branch = TrackSpline.fromPoints(UUID.randomUUID(), world, false, extra);
 			splines.put(branch.getId(), branch);
+			version++;
 			store.save(branch);
 			try {
 				TrackJunction.Side side = branchSide(yaw, extra);
@@ -868,6 +885,7 @@ public final class TrackRegistry {
 			float yaw,
 			TrackSpline branch) throws TrackLayException {
 		splines.put(branch.getId(), branch);
+		version++;
 		store.save(branch);
 		try {
 			TrackJunction placed = putJunction(new TrackJunction(
@@ -970,6 +988,7 @@ public final class TrackRegistry {
 
 	private void removeSplineRecord(UUID id) {
 		TrackSpline spline = splines.remove(id);
+		version++;
 		if (spline != null) {
 			store.delete(spline);
 		}
@@ -1016,12 +1035,14 @@ public final class TrackRegistry {
 		// Check spacing between the new places, not against where the others stood before the move.
 		for (TrackJunction next : moved) {
 			junctions.remove(next.id);
+			version++;
 		}
 		for (TrackJunction next : moved) {
 			try {
 				putJunction(next);
 			} catch (TrackLayException e) {
 				junctions.put(next.id, next);
+				version++;
 				dropJunctionAndBranch(next);
 			}
 		}
@@ -1055,6 +1076,7 @@ public final class TrackRegistry {
 				continue;
 			}
 			junctions.put(next.id, next);
+			version++;
 			store.saveJunction(from.getWorld(), next);
 			refreshSwitchDisplay(next);
 		}
@@ -1095,6 +1117,7 @@ public final class TrackRegistry {
 			}
 		}
 		junctions.put(placed.id, placed);
+		version++;
 		store.saveJunction(stem.getWorld(), placed);
 		refreshSwitchDisplay(placed);
 		return placed;
@@ -1110,6 +1133,7 @@ public final class TrackRegistry {
 		}
 		TrackJunction next = junction.withThrown(thrown);
 		junctions.put(next.id, next);
+		version++;
 		TrackSpline stem = splines.get(next.stemSplineId);
 		if (stem != null) {
 			store.saveJunction(stem.getWorld(), next);
@@ -1241,6 +1265,7 @@ public final class TrackRegistry {
 
 	public boolean deleteJunction(UUID id) {
 		TrackJunction junction = junctions.remove(id);
+		version++;
 		if (junction == null) {
 			return false;
 		}
@@ -1260,6 +1285,7 @@ public final class TrackRegistry {
 		}
 		for (UUID junctionId : drop) {
 			junctions.remove(junctionId);
+			version++;
 			store.deleteJunction(world, junctionId);
 			despawnSwitchDisplay(junctionId);
 		}

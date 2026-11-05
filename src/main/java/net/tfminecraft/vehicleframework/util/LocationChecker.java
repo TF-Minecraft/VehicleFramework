@@ -1,6 +1,8 @@
 package net.tfminecraft.vehicleframework.util;
 
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
@@ -8,6 +10,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Rail;
 import org.bukkit.block.data.Rail.Shape;
 import org.bukkit.block.data.Waterlogged;
@@ -15,9 +18,19 @@ import org.bukkit.block.data.Waterlogged;
 import net.tfminecraft.tlibs.enums.NSEW;
 
 public class LocationChecker {
-	private static List<Material> water = Arrays.asList(Material.WATER, Material.KELP, Material.KELP_PLANT, Material.SEAGRASS, Material.TALL_SEAGRASS);
+	private static final Set<Material> water = EnumSet.of(Material.WATER, Material.KELP, Material.KELP_PLANT, Material.SEAGRASS, Material.TALL_SEAGRASS);
 	private static List<Material> air = Arrays.asList(Material.AIR, Material.LIGHT);
-	
+
+	// Floating vehicles read many blocks around them every tick. Whether a block is liquid, and
+	// whether its data can be waterlogged at all, depend only on its type (Paper takes both from
+	// the block, not its state), so each is learned from the first block of a type. Building block
+	// data is the costly read; a type that can never be waterlogged then skips it.
+	private static final byte UNKNOWN = 0;
+	private static final byte NO = 1;
+	private static final byte YES = 2;
+	private static final byte[] LIQUID = new byte[Material.values().length];
+	private static final byte[] WATERLOGGABLE = new byte[Material.values().length];
+
 	public static boolean isInWater(Location loc) {
 		return isWaterBlock(loc.getBlock());
 	}
@@ -26,13 +39,43 @@ public class LocationChecker {
 		if (block == null) {
 			return false;
 		}
-		if (water.contains(block.getType())) {
-			return true;
+		Material type = block.getType();
+		return water.contains(type) || isWaterlogged(block, type);
+	}
+
+	/** Whether a block is liquid, or water as {@link #isWaterBlock} counts it. */
+	public static boolean isLiquidOrWater(Block block) {
+		Material type = block.getType();
+		return water.contains(type) || isLiquid(block, type) || isWaterlogged(block, type);
+	}
+
+	private static boolean isLiquid(Block block, Material type) {
+		if (type == null) {
+			return block.isLiquid();
 		}
-		if (block.getBlockData() instanceof Waterlogged waterlogged && waterlogged.isWaterlogged()) {
-			return true;
+		byte known = LIQUID[type.ordinal()];
+		if (known == UNKNOWN) {
+			known = block.isLiquid() ? YES : NO;
+			LIQUID[type.ordinal()] = known;
 		}
-		return false;
+		return known == YES;
+	}
+
+	private static boolean isWaterlogged(Block block, Material type) {
+		if (type != null && WATERLOGGABLE[type.ordinal()] == NO) {
+			return false;
+		}
+		BlockData data = block.getBlockData();
+		if (type != null) {
+			WATERLOGGABLE[type.ordinal()] = data instanceof Waterlogged ? YES : NO;
+		}
+		return data instanceof Waterlogged waterlogged && waterlogged.isWaterlogged();
+	}
+
+	/** Forgets what was learned about each block type, for tests that give one type other data. */
+	static void forgetBlockTypes() {
+		Arrays.fill(LIQUID, UNKNOWN);
+		Arrays.fill(WATERLOGGABLE, UNKNOWN);
 	}
 
 	/** Only sample the centre column, including two water blocks over a solid floor. */
@@ -51,7 +94,7 @@ public class LocationChecker {
 		return !isWaterBlock(below);
 	}
 
-	public static boolean isMostlyShallowWadableWater(Set<Block> feetBlocks, double requiredFraction) {
+	public static boolean isMostlyShallowWadableWater(Collection<Block> feetBlocks, double requiredFraction) {
 		if (feetBlocks == null || feetBlocks.isEmpty()) {
 			return false;
 		}
@@ -62,7 +105,8 @@ public class LocationChecker {
 				continue;
 			}
 			waterCount++;
-			if (isShallowWadableBlock(block)) {
+			// isShallowWadableBlock, without reading this water block again.
+			if (!isWaterBlock(block.getRelative(BlockFace.DOWN))) {
 				shallowCount++;
 			}
 		}

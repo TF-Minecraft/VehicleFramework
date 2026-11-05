@@ -108,6 +108,27 @@ class BogiesSkinTest {
         assertTrue(made.isEmpty());
     }
 
+    @Test
+    void readinessIsSettledOnceTheModelsBonesWereFoundOrFoundMissing() {
+        assertTrue(new Bogies(BONES).isSettled(), "a config template has no car");
+        assertTrue(new Bogies(loco, List.of("bogey"), (v, bone) -> null).isSettled(), "one bone never rests on bogies");
+        assertFalse(bogies.isSettled(), "no model yet");
+        ActiveModel loading = model(Map.of("bogey", -2f, "bogey2", 2f));
+        when(loco.getModel()).thenReturn(loading);
+        assertFalse(bogies.isSettled(), "not looked at yet");
+        when(loading.getBone("bogey")).thenThrow(new IllegalStateException("bones not loaded"));
+        assertFalse(bogies.isReady());
+        assertFalse(bogies.isSettled(), "its bones may still load");
+        ActiveModel scotsman = model(Map.of("bogey", -70f / 16, "bogey2", 45f / 16));
+        when(loco.getModel()).thenReturn(scotsman);
+        assertTrue(bogies.isReady());
+        assertTrue(bogies.isSettled());
+        ActiveModel plain = model(Map.of());
+        when(loco.getModel()).thenReturn(plain);
+        assertFalse(bogies.isReady());
+        assertTrue(bogies.isSettled());
+    }
+
     private static ActiveModel model(Map<String, Float> bogieZ) {
         ActiveModel model = mock(ActiveModel.class);
         when(model.getScale()).thenReturn(new Vector3f(1));

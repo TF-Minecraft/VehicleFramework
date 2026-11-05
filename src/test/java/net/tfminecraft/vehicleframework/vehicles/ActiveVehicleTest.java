@@ -342,7 +342,10 @@ class ActiveVehicleTest {
         when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
         StateHandler states = v.getStateHandler(); clearInvocations(states);
         v.tick(); assertFalse(v.isEdgePaused()); verify(states).tick();
-        when(world.isChunkLoaded(1, -1)).thenReturn(false); clearInvocations(states, v.getWeaponHandler(), v.getBehaviourHandler());
+        // Unloading a chunk the vehicle does not reach changes nothing; Paper fires the unload event for one it does.
+        when(world.isChunkLoaded(1, -1)).thenReturn(false); v.chunkUnloading(world, 5, -1); v.chunkUnloading(mock(World.class), 1, -1);
+        clearInvocations(world); v.tick(); assertFalse(v.isEdgePaused()); verify(world, never()).isChunkLoaded(anyInt(), anyInt());
+        v.chunkUnloading(world, 1, -1); clearInvocations(states, v.getWeaponHandler(), v.getBehaviourHandler());
         v.tick(); assertTrue(v.isEdgePaused()); verify(states, never()).tick();
         verify(v.getWeaponHandler()).tick(); verify(v.getBehaviourHandler()).tick(v);
         // Anyone aboard keeps it simulating.
@@ -361,6 +364,11 @@ class ActiveVehicleTest {
         // The chunk loading again resumes it.
         when(world.isChunkLoaded(1, -1)).thenReturn(true); clearInvocations(states);
         v.tick(); assertFalse(v.isEdgePaused()); verify(states).tick();
+        // Its world unloading forgets the answer too.
+        when(world.isChunkLoaded(1, -1)).thenReturn(false); v.worldUnloading(mock(World.class));
+        v.tick(); assertFalse(v.isEdgePaused());
+        v.worldUnloading(world);
+        v.tick(); assertTrue(v.isEdgePaused());
     }
 
     @Test

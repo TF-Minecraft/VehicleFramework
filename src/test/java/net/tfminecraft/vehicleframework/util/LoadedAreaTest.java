@@ -46,4 +46,50 @@ class LoadedAreaTest {
         assertFalse(LoadedArea.covers(world, box, 2));
         verify(world, never()).getBlockAt(anyInt(), anyInt(), anyInt());
     }
+
+    @Test
+    void theMemoAsksAgainOnlyAfterAnUnloadInsideItsArea() {
+        World world = allLoaded();
+        LoadedArea.Memo memo = new LoadedArea.Memo();
+        // x 12..18 -> chunks 0..1, z 2..6 -> chunk 0.
+        BoundingBox box = new BoundingBox(14, 64, 4, 16, 65, 4);
+        assertTrue(memo.covers(world, box, 2));
+        verify(world, times(2)).isChunkLoaded(anyInt(), anyInt());
+        // The same chunks, or fewer, are answered from memory.
+        assertTrue(memo.covers(world, box, 2));
+        assertTrue(memo.covers(world, new BoundingBox(5, 64, 5, 6, 65, 6), 2));
+        assertTrue(memo.covers(world, new BoundingBox(20, 64, 5, 21, 65, 6), 2));
+        verify(world, times(2)).isChunkLoaded(anyInt(), anyInt());
+        // Unloads elsewhere, or in another world, change nothing.
+        World other = mock(World.class);
+        memo.forget(world, 2, 0);
+        memo.forget(world, -1, 0);
+        memo.forget(world, 0, 1);
+        memo.forget(world, 0, -1);
+        memo.forget(other, 0, 0);
+        memo.forget(other);
+        when(world.isChunkLoaded(1, 0)).thenReturn(false);
+        assertTrue(memo.covers(world, box, 2));
+        verify(world, times(2)).isChunkLoaded(anyInt(), anyInt());
+        // An unload inside it asks again, and an uncovered area is asked every time.
+        memo.forget(world, 1, 0);
+        assertFalse(memo.covers(world, box, 2));
+        assertFalse(memo.covers(world, box, 2));
+        verify(world, times(6)).isChunkLoaded(anyInt(), anyInt());
+        when(world.isChunkLoaded(1, 0)).thenReturn(true);
+        assertTrue(memo.covers(world, box, 2));
+        // A wider area, another world, or the world unloading asks again too.
+        clearInvocations(world);
+        assertTrue(memo.covers(world, box, 20));
+        verify(world, times(12)).isChunkLoaded(anyInt(), anyInt());
+        when(other.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+        assertTrue(memo.covers(other, box, 2));
+        verify(other, times(2)).isChunkLoaded(anyInt(), anyInt());
+        memo.forget(other);
+        assertTrue(memo.covers(other, box, 2));
+        verify(other, times(4)).isChunkLoaded(anyInt(), anyInt());
+        memo.forget(world);
+        assertTrue(memo.covers(other, box, 2));
+        verify(other, times(4)).isChunkLoaded(anyInt(), anyInt());
+    }
 }
