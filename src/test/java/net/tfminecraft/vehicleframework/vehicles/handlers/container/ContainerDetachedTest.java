@@ -55,6 +55,33 @@ class ContainerDetachedTest {
 	}
 
 	@Test
+	void replacingContentsWhileWatchedBlamesNoOneForTheSwap() {
+		Container hold = Container.detached(template());
+		ItemStack coal = cloneable(Material.COAL, 5);
+		hold.setContents(new ItemStack[] {coal});
+		ItemStack[] opened = {cloneable(Material.COAL, 5)};
+		ItemStack[] traded = {cloneable(Material.COAL, 3)};
+		ItemStack[] shown = {cloneable(Material.COAL, 3), cloneable(Material.DIRT, 2)};
+		org.bukkit.inventory.Inventory view = mock(org.bukkit.inventory.Inventory.class);
+		when(view.getContents()).thenReturn(opened);
+		hold.getAudit().watch(view);
+		// A dock trade swaps 5 coal for 3; the view then also shows 2 dirt a player put in.
+		hold.setContents(traded);
+		when(view.getContents()).thenReturn(shown);
+		List<ItemCounts.Change> changes = hold.getAudit().count(view);
+		assertEquals(1, changes.size());
+		assertEquals(Material.DIRT, changes.get(0).item().getType());
+		assertEquals(2, changes.get(0).amount());
+	}
+
+	// A storage-test stack (one kind per material) that copies as itself.
+	private static ItemStack cloneable(Material type, int amount) {
+		ItemStack stack = StorageItems.item(type, amount);
+		when(stack.clone()).thenReturn(stack);
+		return stack;
+	}
+
+	@Test
 	void countsItemsMatchingAnItemPath() {
 		ItemAPI api = mock(ItemAPI.class, RETURNS_DEEP_STUBS);
 		try (MockedStatic<TLibs> libs = mockStatic(TLibs.class)) {
