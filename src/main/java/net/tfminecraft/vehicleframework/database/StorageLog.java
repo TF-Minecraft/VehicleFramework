@@ -118,7 +118,7 @@ public final class StorageLog {
 			String name = name(item);
 			String contents = contents(item);
 			return new Described("item=" + type
-					+ (path == null ? "" : " path=" + path)
+					+ (path == null ? "" : " path=" + pathField(path))
 					+ (name == null ? "" : " name=" + quoted(name))
 					+ (contents == null ? "" : " contents=[" + contents + "]"),
 					type + (name == null ? "" : " " + quoted(name))
@@ -174,6 +174,15 @@ public final class StorageLog {
 			kinds.add(kind.amount() + " " + type(kind.item()) + (name == null ? "" : " " + quoted(name)));
 		}
 		return String.join(", ", kinds);
+	}
+
+	// A TLibs path is normally an id such as m.MATERIAL.STEEL_INGOT and is written bare. Any other
+	// path (a renamed vanilla item's can carry its name) is quoted like a name, so it cannot add
+	// fields or break the line.
+	private static final Pattern PLAIN_PATH = Pattern.compile("[A-Za-z0-9_.:/-]+");
+
+	static String pathField(String path) {
+		return PLAIN_PATH.matcher(path).matches() ? path : quoted(path);
 	}
 
 	// One line per change: a name cannot break a line or end its quotes early.
