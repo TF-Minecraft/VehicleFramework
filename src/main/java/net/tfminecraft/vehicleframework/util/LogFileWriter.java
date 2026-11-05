@@ -68,7 +68,7 @@ public final class LogFileWriter {
 			try {
 				Files.deleteIfExists(file);
 			} catch (IOException e) {
-				logger.warning("Failed to wipe " + name + ": " + e.getMessage());
+				warn(logger, "Failed to wipe " + name + ": " + e.getMessage());
 			}
 		});
 	}
@@ -106,9 +106,9 @@ public final class LogFileWriter {
 	private static void await(Runnable action) {
 		CountDownLatch done = new CountDownLatch(1);
 		submit(() -> {
-			closeAll();
-			reportDropped();
 			try {
+				closeAll();
+				reportDropped();
 				action.run();
 			} finally {
 				done.countDown();
@@ -138,34 +138,41 @@ public final class LogFileWriter {
 
 	private static void work() {
 		while (true) {
-			Job job;
 			try {
-				job = JOBS.take();
+				Job job = JOBS.take();
+				do {
+					// A stray interrupt would close the channel of the file being written.
+					Thread.interrupted();
+					job.run();
+				} while ((job = JOBS.poll()) != null);
+				closeAll();
+				reportDropped();
+			} catch (Stop stop) {
+				// Its job closed every file. A new thread takes lines queued since.
+				startIfStopped();
+				return;
 			} catch (InterruptedException e) {
 				// Nothing should interrupt it; keep writing until the plugin stops it.
-				continue;
+			} catch (Throwable e) {
+				// Keep the thread alive: nothing else would write the lines queued behind.
+				warn(LOGGER, "Log writer failed: " + e);
 			}
-			do {
-				try {
-					job.run();
-				} catch (Stop stop) {
-					// Its job closed every file. A new thread takes lines queued since.
-					startIfStopped();
-					return;
-				} catch (Throwable e) {
-					// Keep the thread alive: nothing else would write the lines queued behind.
-					LOGGER.warning("Log writer failed: " + e);
-				}
-			} while ((job = JOBS.poll()) != null);
-			closeAll();
-			reportDropped();
+		}
+	}
+
+	// On the writer thread a failing log handler must not stop it either.
+	static void warn(Logger logger, String message) {
+		try {
+			logger.warning(message);
+		} catch (Throwable ignored) {
+			// Nowhere left to report it.
 		}
 	}
 
 	private static void reportDropped() {
 		long dropped = DROPPED.getAndSet(0);
 		if (dropped > 0) {
-			LOGGER.warning("Dropped " + dropped + " log lines: the log writer fell "
+			warn(LOGGER, "Dropped " + dropped + " log lines: the log writer fell "
 					+ MAX_WAITING + " lines behind");
 		}
 	}
@@ -183,7 +190,7 @@ public final class LogFileWriter {
 			open.writer().newLine();
 		} catch (IOException e) {
 			close(file);
-			logger.warning("Failed to write " + name + ": " + e.getMessage());
+			warn(logger, "Failed to write " + name + ": " + e.getMessage());
 		}
 	}
 
@@ -199,7 +206,7 @@ public final class LogFileWriter {
 		try {
 			open.writer().close();
 		} catch (IOException e) {
-			open.logger().warning("Failed to write " + open.name() + ": " + e.getMessage());
+			warn(open.logger(), "Failed to write " + open.name() + ": " + e.getMessage());
 		}
 	}
 
