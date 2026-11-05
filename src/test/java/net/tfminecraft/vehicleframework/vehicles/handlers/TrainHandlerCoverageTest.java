@@ -655,6 +655,19 @@ class TrainHandlerCoverageTest {
         assertEquals(0, car.train.playbackThrottle(null));
     }
 
+    @Test void aMovingTapeTrainBrakesForTheStopAhead() {
+        Car car = car(false); TrackSpline line = track(false);
+        bindAt(car, line, 50);
+        String id = line.getId().toString();
+        car.train.setInstalledTape(new ThrottleTape(id, List.of(new ThrottleTape.Sample(50, 1, 40, 3, id, null, 1),
+                new ThrottleTape.Sample(51, 1, 40, 3, id, null, 1),
+                new ThrottleTape.Sample(52, 1, 0, 60, id, null, 1))));
+        assertEquals(40, car.train.playbackThrottle(null));
+        car.throttle.setThrottle(40); car.panel.setSpeed(.288);
+        int braking = car.train.playbackThrottle(null);
+        assertTrue(braking < 40 && braking > 0, "braking throttle " + braking);
+    }
+
     @Test void aRecordedStopServesTheDocksOnceWhenTheTrainHasStopped() {
         Car car = car(false); TrackSpline line = track(false);
         bindAt(car, line, 50);

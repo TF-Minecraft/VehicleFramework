@@ -138,6 +138,75 @@ class TapePlaybackTest {
 		assertEquals(0, playback.step(tape, "stem", 40, LENGTH, false, 1, 1, 40).cursor());
 	}
 
+	// A route recorded from a stop at s 90, finished by passing s 88 under power.
+	private static ThrottleTape fromAStation() {
+		List<ThrottleTape.Sample> samples = new ArrayList<>();
+		samples.add(new ThrottleTape.Sample(90, 1, 0, 60, "line", null, 1));
+		for (int s = 91; s <= 140; s++) {
+			samples.add(new ThrottleTape.Sample(s, 1, 40, 3, "line", null, 1));
+		}
+		samples.add(new ThrottleTape.Sample(140, 1, 0, 40, "line", null, 1));
+		for (int s = 139; s >= 60; s--) {
+			samples.add(new ThrottleTape.Sample(s, -1, -40, 3, "line", null, 1));
+		}
+		samples.add(new ThrottleTape.Sample(60, 1, 0, 40, "line", null, 1));
+		for (int s = 61; s <= 88; s++) {
+			samples.add(new ThrottleTape.Sample(s, 1, 40, 3, "line", null, 1));
+		}
+		return new ThrottleTape("line", samples);
+	}
+
+	@Test
+	void runningFromTheEndOfTheTapeIntoItsStartingStopBrakesToStopThere() {
+		ThrottleTape tape = fromAStation();
+		TapePlayback playback = new TapePlayback();
+		// One throttle point is 0.0072 blocks a tick, as the locomotive at 0.72.
+		double perThrottle = 0.0072;
+		// Far from the stop: the recorded throttle.
+		assertEquals(40, playback.step(tape, "line", 75, 200, false, 1, 1, 40, perThrottle).target());
+		// Close to it: only as much as still stops there, at least 1 until it is reached.
+		int near = playback.step(tape, "line", 88.5, 200, false, 1, 1, 40, perThrottle).target();
+		assertTrue(near < 40 && near >= 1, "braking throttle " + near);
+		assertEquals(15, playback.step(tape, "line", 89.6, 200, false, 1, 1, 40, perThrottle).target());
+		// At the stop: it stands, and it is a stop docks serve.
+		TapePlayback.Step stop = playback.step(tape, "line", 89.8, 200, false, 1, 1, 40, perThrottle);
+		assertEquals(0, stop.cursor());
+		assertTrue(stop.atStop());
+		// Simulated with the throttle coming down a point a tick: it stops within half a block.
+		TapePlayback run = new TapePlayback();
+		double s = 80;
+		int throttle = 40;
+		for (int tick = 0; tick < 400 && run.getCursor() != 0; tick++) {
+			int target = run.step(tape, "line", s, 200, false, 1, 1, 40, perThrottle).target();
+			throttle += Integer.signum(target - throttle);
+			s += throttle * perThrottle;
+		}
+		assertEquals(0, run.getCursor());
+		for (int tick = 0; tick < 50; tick++) {
+			int target = run.step(tape, "line", s, 200, false, 1, 1, 40, perThrottle).target();
+			throttle += Integer.signum(target - throttle);
+			s += throttle * perThrottle;
+		}
+		assertEquals(90, s, 0.8);
+	}
+
+	@Test
+	void brakingLooksOnlyAtStopsAheadOnThisTrack() {
+		assertEquals(Integer.MAX_VALUE, TapePlayback.brakingThrottle(Double.POSITIVE_INFINITY, 0.0072));
+		assertEquals(0, TapePlayback.brakingThrottle(0.1, 1));
+		assertEquals(1, TapePlayback.brakingThrottle(0.4, 1));
+		assertEquals(25, TapePlayback.brakingThrottle(2, 0.0072));
+		// The next stop is on another track, or too far: no braking.
+		ThrottleTape tape = new ThrottleTape("line", List.of(new ThrottleTape.Sample(10, 1, 40, 3, "line", null, 1),
+				new ThrottleTape.Sample(11, 1, 40, 3, "line", null, 1),
+				new ThrottleTape.Sample(12, 1, 0, 50, "other", null, 1)));
+		assertEquals(40, new TapePlayback().step(tape, "line", 10, 200, false, 1, 1, 40, 0.0072).target());
+		ThrottleTape far = new ThrottleTape("line", List.of(new ThrottleTape.Sample(10, 1, 40, 3, "line", null, 1),
+				new ThrottleTape.Sample(11, 1, 40, 3, "line", null, 1),
+				new ThrottleTape.Sample(150, 1, 0, 50, "line", null, 1)));
+		assertEquals(40, new TapePlayback().step(far, "line", 10, 200, false, 1, 1, 40, 0.0072).target());
+	}
+
 	@Test
 	void aStopShorterThanTheDockMinimumIsNotAStop() {
 		ThrottleTape tape = new ThrottleTape("loop", List.of(

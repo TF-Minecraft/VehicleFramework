@@ -17,6 +17,12 @@ public final class TapePlayback {
 	/** Samples skipped in one tick at most; a fast train passes a few, never this many. */
 	static final int MAX_ADVANCE = 64;
 
+	/** Samples looked through for a stop to brake for. */
+	static final int BRAKE_LOOK_AHEAD = 64;
+	/** Stops further than this are too far to brake for yet. */
+	static final double BRAKE_DISTANCE = 64;
+	/** Half a block's slack, so a recorded slowing down is not cut short. */
+	static final double BRAKE_SLACK = 0.5;
 	/** Ticks between looks for the train's place when it is off the tape's tracks. */
 	static final int RETRY_TICKS = 20;
 
@@ -54,6 +60,17 @@ public final class TapePlayback {
 	 */
 	public Step step(ThrottleTape tape, String spline, double s, double length, boolean loop, int sign,
 			int orientation, int minStopTicks) {
+		return step(tape, spline, s, length, loop, sign, orientation, minStopTicks, 0);
+	}
+
+	/**
+	 * As above, braking for the next recorded stop: {@code perThrottle} is how far the train
+	 * goes in a tick per throttle point, and the throttle comes down one point a tick. Where
+	 * the tape jumps from moving to standing (where it runs from its end into its first
+	 * sample, or at a track end), the train still stops at the stop, not past it.
+	 */
+	public Step step(ThrottleTape tape, String spline, double s, double length, boolean loop, int sign,
+			int orientation, int minStopTicks, double perThrottle) {
 		if (tape == null || tape.isEmpty() || spline == null) {
 			return new Step(0, cursor, false, true);
 		}
@@ -81,7 +98,45 @@ public final class TapePlayback {
 		ticksAt++;
 		boolean stop = at.throttle == 0 && at.holdTicks >= Math.max(1, minStopTicks);
 		int target = at.throttle * at.orientation * (orientation < 0 ? -1 : 1);
+		if (target != 0 && perThrottle > 0) {
+			int most = brakingThrottle(roomToStop(tape, s, length, loop), perThrottle);
+			if (Math.abs(target) > most) {
+				target = Integer.signum(target) * most;
+			}
+		}
 		return new Step(target, cursor, stop, false);
+	}
+
+	// Blocks to the next standing sample ahead on this track; infinite with none near.
+	private double roomToStop(ThrottleTape tape, double s, double length, boolean loop) {
+		ThrottleTape.Sample at = tape.sample(cursor);
+		String track = at.resolvedSpline(tape.getSplineId());
+		for (int k = 1; k <= BRAKE_LOOK_AHEAD && k < tape.size(); k++) {
+			ThrottleTape.Sample next = tape.sample(cursor + k);
+			if (!same(next, tape, track)) {
+				break;
+			}
+			double ahead = ThrottleTape.along(s, next.s, length, loop) * at.sign;
+			if (ahead > BRAKE_DISTANCE) {
+				break;
+			}
+			if (next.throttle == 0) {
+				return Math.max(0, ahead);
+			}
+		}
+		return Double.POSITIVE_INFINITY;
+	}
+
+	/**
+	 * The highest throttle that still stops within {@code room} blocks, coming down a point a
+	 * tick; at least 1 while the stop is further than {@link #REACH}, so the train gets there.
+	 */
+	static int brakingThrottle(double room, double perThrottle) {
+		if (Double.isInfinite(room)) {
+			return Integer.MAX_VALUE;
+		}
+		int most = (int) Math.floor((Math.sqrt(1 + 8 * (room + BRAKE_SLACK) / perThrottle) - 1) / 2);
+		return room > REACH ? Math.max(1, most) : most;
 	}
 
 	// Off the tape's track, or far from where the tape says the train is.

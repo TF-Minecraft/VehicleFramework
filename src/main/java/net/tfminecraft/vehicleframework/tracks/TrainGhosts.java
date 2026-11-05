@@ -213,11 +213,18 @@ public final class TrainGhosts {
 				reserve += container.countMatching(fuelPath);
 			}
 		}
-		return new GhostTrain(loco.getEntity().getWorld().getName(), cars, owners, layout.offsets(), layout.reaches(),
+		boolean[] fuelCars = new boolean[layout.cars().size()];
+		for (int i = 0; i < fuelCars.length; i++) {
+			fuelCars[i] = train.acceptsFuelCar(layout.cars().get(i));
+		}
+		GhostTrain ghost = new GhostTrain(loco.getEntity().getWorld().getName(), cars, owners, layout.offsets(),
+				layout.reaches(),
 				tape, new TapeTimetable.Clock(cursor, ticks), layout.routes(), useFuel ? tank.getCurrent() : 0,
 				useFuel, useFuel ? tank.getRate() : 0, loco.isLocomotive() && loco.hasComponent(Component.ENGINE),
 				useFuel ? tank.getCapacity() : 0,
 				fuelPath, perItem, reserve);
+		ghost.fuelCars = fuelCars;
+		return ghost;
 	}
 
 	private static boolean near(TapeTimetable.Place place, TrackSpline spline, double s) {

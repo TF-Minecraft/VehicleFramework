@@ -380,6 +380,16 @@ class CargoDocksTest {
 		CargoDocks.servePaper(ghost, 2);
 		assertEquals(0, count(dock, Material.COAL));
 		assertEquals(10, ghost.reserve);
+		// A second car of a fuel type further back is left alone, as when loaded.
+		Cache.trainDockFuelCars = false;
+		ghost.fuelCars = new boolean[] {true, false};
+		storage(5, 64, 0, Chest.class, item(Material.COAL, 4));
+		CargoDocks.servePaper(ghost, 2);
+		assertEquals(14, count(hold, Material.COAL));
+		ghost.fuelCars = new boolean[] {false, true};
+		storage(5, 64, 0, Chest.class, item(Material.COAL, 4));
+		CargoDocks.servePaper(ghost, 2);
+		assertEquals(14, count(hold, Material.COAL));
 		Cache.trainDocksEnabled = false;
 		CargoDocks.servePaper(ghost, 2);
 		Cache.trainDocksEnabled = true;
@@ -388,7 +398,7 @@ class CargoDocksTest {
 			DockRegistry.set(each.world(), each.x(), each.y(), each.z(), null, null);
 		}
 		CargoDocks.servePaper(ghost, 2);
-		stored.verify(() -> StoredCars.write(any(), any()), times(1));
+		stored.verify(() -> StoredCars.write(any(), any()), times(2));
 	}
 
 	@Test

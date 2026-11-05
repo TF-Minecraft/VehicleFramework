@@ -667,8 +667,11 @@ public class TrainHandler {
 			RecorderLog.playback(v, "waiting", 0, cursor);
 			return 0;
 		}
+		double speed = v == null || v.getAccessPanel() == null ? 0 : v.getAccessPanel().getSpeed();
+		int throttle = v == null || v.getThrottle() == null ? 0 : v.getThrottle().getCurrent();
+		double perThrottle = throttle == 0 ? 0 : Math.abs(speed / throttle);
 		TapePlayback.Step step = playback.step(installedTape, splineId.toString(), s, spline.length(),
-				spline.isLoop(), travelSign, orientation, Cache.trainDockMinStopTicks);
+				spline.isLoop(), travelSign, orientation, Cache.trainDockMinStopTicks, perThrottle);
 		if (step.offRoute()) {
 			RecorderLog.playback(v, "off-route", 0, step.cursor());
 			return 0;
@@ -678,7 +681,6 @@ public class TrainHandler {
 			RecorderLog.playback(v, "switch", 0, step.cursor());
 			return 0;
 		}
-		double speed = v == null || v.getAccessPanel() == null ? 0 : v.getAccessPanel().getSpeed();
 		if (!step.atStop()) {
 			dockServedCursor = -1;
 		} else if (dockServedCursor != step.cursor() && TrackSplineMotion.stopped(speed)) {
