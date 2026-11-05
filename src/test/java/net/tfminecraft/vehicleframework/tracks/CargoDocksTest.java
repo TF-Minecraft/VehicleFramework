@@ -382,13 +382,13 @@ class CargoDocksTest {
 		assertEquals(10, ghost.reserve);
 		// A second car of a fuel type further back is left alone, as when loaded.
 		Cache.trainDockFuelCars = false;
-		ghost.fuelCars = new boolean[] {true, false};
+		stored.when(() -> StoredCars.read(repository, "car-2")).thenReturn(Optional.of(row));
+		GhostTrain three = ghost("character:x", "character:a", "character:a");
+		three.fuelCars = new boolean[] {false, false, true};
 		storage(5, 64, 0, Chest.class, item(Material.COAL, 4));
-		CargoDocks.servePaper(ghost, 2);
-		assertEquals(14, count(hold, Material.COAL));
-		ghost.fuelCars = new boolean[] {false, true};
-		storage(5, 64, 0, Chest.class, item(Material.COAL, 4));
-		CargoDocks.servePaper(ghost, 2);
+		CargoDocks.servePaper(three, 2);
+		stored.verify(() -> StoredCars.read(repository, "car-1"), times(2));
+		stored.verify(() -> StoredCars.read(repository, "car-2"), never());
 		assertEquals(14, count(hold, Material.COAL));
 		Cache.trainDocksEnabled = false;
 		CargoDocks.servePaper(ghost, 2);

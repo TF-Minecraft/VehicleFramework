@@ -196,15 +196,39 @@ class TapePlaybackTest {
 		assertEquals(0, TapePlayback.brakingThrottle(0.1, 1));
 		assertEquals(1, TapePlayback.brakingThrottle(0.4, 1));
 		assertEquals(25, TapePlayback.brakingThrottle(2, 0.0072));
-		// The next stop is on another track, or too far: no braking.
+		// A stop just past a switch is braked for; a stop far ahead, or none, is not.
 		ThrottleTape tape = new ThrottleTape("line", List.of(new ThrottleTape.Sample(10, 1, 40, 3, "line", null, 1),
 				new ThrottleTape.Sample(11, 1, 40, 3, "line", null, 1),
-				new ThrottleTape.Sample(12, 1, 0, 50, "other", null, 1)));
-		assertEquals(40, new TapePlayback().step(tape, "line", 10, 200, false, 1, 1, 40, 0.0072).target());
+				new ThrottleTape.Sample(80, 1, 40, 3, "other", null, 1),
+				new ThrottleTape.Sample(81, 1, 0, 50, "other", null, 1)));
+		assertTrue(new TapePlayback().step(tape, "line", 10, 200, false, 1, 1, 40, 0.0072).target() < 40);
+		ThrottleTape none = new ThrottleTape("line", List.of(new ThrottleTape.Sample(10, 1, 40, 3, "line", null, 1),
+				new ThrottleTape.Sample(11, 1, 40, 3, "line", null, 1)));
+		assertEquals(40, new TapePlayback().step(none, "line", 10, 200, false, 1, 1, 40, 0.0072).target());
 		ThrottleTape far = new ThrottleTape("line", List.of(new ThrottleTape.Sample(10, 1, 40, 3, "line", null, 1),
 				new ThrottleTape.Sample(11, 1, 40, 3, "line", null, 1),
 				new ThrottleTape.Sample(150, 1, 0, 50, "line", null, 1)));
 		assertEquals(40, new TapePlayback().step(far, "line", 10, 200, false, 1, 1, 40, 0.0072).target());
+		// The train is already on the next sample's track while its cursor is on the last one.
+		TapePlayback across = new TapePlayback();
+		across.setCursor(1, 0);
+		assertTrue(across.step(tape, "other", 80.5, 200, false, 1, 1, 40, 0.0072).target() < 40);
+	}
+
+	@Test
+	void onAShortLoopAStopMoreThanHalfALapAheadDoesNotSlowTheTrain() {
+		// A 100-block loop, samples a block apart, one stop at s 50.
+		List<ThrottleTape.Sample> samples = new ArrayList<>();
+		for (int s = 0; s < 100; s++) {
+			samples.add(new ThrottleTape.Sample(s, 1, s == 50 ? 0 : 40, s == 50 ? 60 : 3, "loop", null, 1));
+		}
+		ThrottleTape tape = new ThrottleTape("loop", samples);
+		// From s 95 the stop is 55 blocks on, round the seam: full throttle.
+		assertEquals(40, new TapePlayback().step(tape, "loop", 95, 100, true, 1, 1, 40, 0.0072).target());
+		// Close to it: braking.
+		assertTrue(new TapePlayback().step(tape, "loop", 48, 100, true, 1, 1, 40, 0.0072).target() < 40);
+		// A fast train looks further than the usual window.
+		assertTrue(new TapePlayback().step(tape, "loop", 95, 100, true, 1, 1, 40, 0.1).target() < 40);
 	}
 
 	@Test

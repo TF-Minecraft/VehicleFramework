@@ -18,9 +18,13 @@ public final class TapePlayback {
 	static final int MAX_ADVANCE = 64;
 
 	/** Samples looked through for a stop to brake for. */
-	static final int BRAKE_LOOK_AHEAD = 64;
-	/** Stops further than this are too far to brake for yet. */
+	static final int BRAKE_LOOK_AHEAD = 160;
+	/** Stops further than this (or than the stopping distance, if longer) are not braked for yet. */
 	static final double BRAKE_DISTANCE = 64;
+	/** Stops further along the tape than this are never braked for yet. */
+	static final double REST_LIMIT = 256;
+	/** What a change of track between two samples counts towards the room to stop. */
+	static final double STEP_LIMIT = 2;
 	/** Half a block's slack, so a recorded slowing down is not cut short. */
 	static final double BRAKE_SLACK = 0.5;
 	/** Ticks between looks for the train's place when it is off the tape's tracks. */
@@ -29,6 +33,10 @@ public final class TapePlayback {
 	private int cursor = -1;
 	private int ticksAt;
 	private int retryIn;
+	// The room to stop beyond the sample after the cursor, for this cursor and tape.
+	private int restCursor = -1;
+	private ThrottleTape restTape;
+	private double rest;
 
 	/** What the tape asks for this tick. */
 	public record Step(int target, int cursor, boolean atStop, boolean offRoute) {
@@ -99,7 +107,8 @@ public final class TapePlayback {
 		boolean stop = at.throttle == 0 && at.holdTicks >= Math.max(1, minStopTicks);
 		int target = at.throttle * at.orientation * (orientation < 0 ? -1 : 1);
 		if (target != 0 && perThrottle > 0) {
-			int most = brakingThrottle(roomToStop(tape, s, length, loop), perThrottle);
+			double window = Math.max(BRAKE_DISTANCE, perThrottle * Math.abs(target) * (Math.abs(target) + 1) / 2 + 4);
+			int most = brakingThrottle(roomToStop(tape, spline, s, length, loop, window), perThrottle);
 			if (Math.abs(target) > most) {
 				target = Integer.signum(target) * most;
 			}
@@ -107,24 +116,49 @@ public final class TapePlayback {
 		return new Step(target, cursor, stop, false);
 	}
 
-	// Blocks to the next standing sample ahead on this track; infinite with none near.
-	private double roomToStop(ThrottleTape tape, double s, double length, boolean loop) {
-		ThrottleTape.Sample at = tape.sample(cursor);
-		String track = at.resolvedSpline(tape.getSplineId());
-		for (int k = 1; k <= BRAKE_LOOK_AHEAD && k < tape.size(); k++) {
-			ThrottleTape.Sample next = tape.sample(cursor + k);
-			if (!same(next, tape, track)) {
-				break;
+	/**
+	 * Blocks along the tape to its next standing sample, over switches and loop seams;
+	 * infinite with none within {@code window}. The part beyond the next sample only changes
+	 * with the cursor, so it is looked up once per sample, not every tick.
+	 */
+	private double roomToStop(ThrottleTape tape, String spline, double s, double length, boolean loop,
+			double window) {
+		ThrottleTape.Sample first = tape.sample(cursor + 1);
+		double room = same(first, tape, spline)
+				? Math.max(0, ThrottleTape.along(s, first.s, length, loop) * tape.sample(cursor).sign) : 0;
+		if (restCursor != cursor || restTape != tape) {
+			restCursor = cursor;
+			restTape = tape;
+			rest = rest(tape, first, spline, length, loop);
+		}
+		return room + rest <= window ? room + rest : Double.POSITIVE_INFINITY;
+	}
+
+	// From the sample after the cursor on to the next standing sample.
+	private double rest(ThrottleTape tape, ThrottleTape.Sample first, String spline, double length, boolean loop) {
+		double room = 0;
+		ThrottleTape.Sample previous = first;
+		for (int k = 1; k <= BRAKE_LOOK_AHEAD && k < tape.size() && room <= REST_LIMIT; k++) {
+			if (previous.throttle == 0) {
+				return room;
 			}
-			double ahead = ThrottleTape.along(s, next.s, length, loop) * at.sign;
-			if (ahead > BRAKE_DISTANCE) {
-				break;
-			}
-			if (next.throttle == 0) {
-				return Math.max(0, ahead);
-			}
+			ThrottleTape.Sample next = tape.sample(cursor + k + 1);
+			room += step(tape, previous, next, spline, length, loop);
+			previous = next;
 		}
 		return Double.POSITIVE_INFINITY;
+	}
+
+	// One step along the tape. Positions on two tracks cannot be compared: a change of track
+	// counts as a short step. On the train's own track, the short way round a loop.
+	private static double step(ThrottleTape tape, ThrottleTape.Sample from, ThrottleTape.Sample to, String spline,
+			double length, boolean loop) {
+		String track = from.resolvedSpline(tape.getSplineId());
+		if (!same(to, tape, track)) {
+			return STEP_LIMIT;
+		}
+		return track.equalsIgnoreCase(spline) ? Math.abs(ThrottleTape.along(from.s, to.s, length, loop))
+				: Math.abs(to.s - from.s);
 	}
 
 	/**
