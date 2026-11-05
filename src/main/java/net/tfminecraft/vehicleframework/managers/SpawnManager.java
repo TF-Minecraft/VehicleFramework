@@ -207,6 +207,17 @@ public class SpawnManager implements Listener {
 		spawns.removeIf(queued -> stripJson(queued.getFile()).equalsIgnoreCase(uuid));
 	}
 
+	/** Queues a saved vehicle again from its row, if its chunk is loaded (else its chunk load will). */
+	public void requeue(String uuid) {
+		VehiclePersistence persistence = VehiclePersistence.current();
+		Optional<VehicleSnapshot> row = persistence == null ? Optional.empty() : persistence.findLive(uuid);
+		World world = row.map(found -> Bukkit.getWorld(found.getWorld())).orElse(null);
+		if (world != null && world.isChunkLoaded(row.get().getChunkX(), row.get().getChunkZ())) {
+			dequeue(uuid);
+			enqueueSnapshot(row.get());
+		}
+	}
+
 	/** Spawns a saved vehicle from its row now, replacing any queued spawn of it. */
 	public boolean spawnNow(String uuid) {
 		dequeue(uuid);

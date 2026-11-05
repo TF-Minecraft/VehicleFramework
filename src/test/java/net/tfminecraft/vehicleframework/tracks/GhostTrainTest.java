@@ -134,6 +134,22 @@ class GhostTrainTest {
 	}
 
 	@Test
+	void carsPushedAheadTakeTheSwitchTheTapeIsAboutToTake() {
+		String s = stem.getId().toString();
+		// Facing -s and pushing towards +s: the car is ahead, past the frog at 60.
+		ThrottleTape push = new ThrottleTape(s, List.of(
+				new ThrottleTape.Sample(55, 1, -40, 20, s, null, -1),
+				new ThrottleTape.Sample(59.5, 1, -40, 20, s, null, -1),
+				new ThrottleTape.Sample(1, -1, -40, 20, branch.getId().toString(), junction.id.toString(), 1)));
+		GhostTrain ghost = new GhostTrain("world", List.of("loco", "car"), List.of("a", "a"), new double[] {0, 8},
+				new double[] {3, 3}, push, new TapeTimetable.Clock(0, 0), Map.of(), 0, false, 0, false, 0, null, 0, 0);
+		assertEquals(stem.getId(), ghost.place(registry).get(1).splineId());
+		ghost.run(1, registry);
+		assertEquals(Map.of(junction.id, true), ghost.routes);
+		assertEquals(branch.getId(), ghost.place(registry).get(1).splineId());
+	}
+
+	@Test
 	void aCarWhoseTrackIsGoneLeavesNoPlace() {
 		GhostTrain ghost = new GhostTrain("world", List.of("loco", "car"), List.of("a", "a"),
 				new double[] {0, 500}, new double[] {3, 3}, tape(), new TapeTimetable.Clock(3, 0),

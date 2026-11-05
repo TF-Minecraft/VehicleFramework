@@ -173,6 +173,7 @@ class TrainGhostsTest {
 		row("car", "{\"id\":\"wagon\",\"parent\":\"loco\"}");
 		GhostTrain ghost = ghost(List.of("loco", "car"), 0, 50);
 		TrainGhosts.register(ghost);
+		ghost.sinceSave = 0;
 		assertTrue(TrainGhosts.isGhost("LOCO"));
 		assertTrue(TrainGhosts.running(ghost));
 		assertFalse(TrainGhosts.running(null));
@@ -254,6 +255,8 @@ class TrainGhostsTest {
 		when(stone.isPassable()).thenReturn(true);
 		TrainGhosts.tick();
 		verify(spawns).spawnNow("loco");
+		// It did not spawn after all: when it does, it checks its track like any saved train.
+		assertFalse(TrainGhosts.consumeTrusted("loco"));
 	}
 
 	@Test
@@ -315,7 +318,10 @@ class TrainGhostsTest {
 		VehicleRepository broken = mock(VehicleRepository.class);
 		doThrow(new IllegalStateException("disk full")).when(broken).runInTransaction(any());
 		framework.when(VehicleFramework::getVehicleRepository).thenReturn(broken);
+		again.consumed = 3;
 		assertFalse(TrainGhosts.save(again, false));
+		// Rolled back: the fuel used is still owed by the fuel car.
+		assertEquals(3, again.consumed);
 		logger.verify(() -> VFLogger.log(contains("disk full")));
 		TrainGhosts.register(again);
 		assertEquals(TrainGhosts.Spawn.NOT_READY, TrainGhosts.materialize(again, again.place(registry), registry));
@@ -327,8 +333,15 @@ class TrainGhostsTest {
 				Map.of(), 0, false, 0, false, 0, null, 0, 0);
 		assertTrue(TrainGhosts.save(stray, false));
 		TrainGhosts.register(stray);
+		// Its track is gone: it stops running on paper and its cars load from their rows.
+		framework.when(VehicleFramework::getVehicleRepository).thenReturn(null);
 		TrainGhosts.tick();
 		assertTrue(TrainGhosts.running(stray));
+		framework.when(VehicleFramework::getVehicleRepository).thenReturn(repository);
+		TrainGhosts.tick();
+		assertFalse(TrainGhosts.running(stray));
+		verify(spawns).requeue("loco");
+		logger.verify(() -> VFLogger.log(contains("a track on its route is gone")));
 	}
 
 	@Test
@@ -528,6 +541,20 @@ class TrainGhostsTest {
 		assertEquals(1, TrainGhosts.all().get(0).clock.cursor());
 		assertEquals(0, TrainGhosts.all().get(0).reserve);
 		TrainGhosts.flush(vehicles);
+	}
+
+	@Test
+	void tapeTrainsStillLoadedAtShutdownGoOnPaper() {
+		row("loco", "{\"id\":\"wagon\"}");
+		row("car", "{\"id\":\"wagon\"}");
+		Live live = live(false);
+		ActiveVehicle cart = mock(ActiveVehicle.class);
+		loaded.put(mock(Entity.class), cart);
+		loaded.put(mock(Entity.class), live.car);
+		loaded.put(mock(Entity.class), live.loco);
+		TrainGhosts.convertAll(vehicles);
+		assertEquals(1, TrainGhosts.count());
+		verify(vehicles).unload(live.loco, "going on paper");
 	}
 
 	@Test

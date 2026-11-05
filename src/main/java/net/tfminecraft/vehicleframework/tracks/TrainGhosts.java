@@ -225,8 +225,12 @@ public final class TrainGhosts {
 	}
 
 	static void tickOne(GhostTrain ghost, TrackRegistry registry) {
-		List<GhostTrain.Spot> spots = spots(ghost, registry);
-		if (!spots.isEmpty() && nearPlayer(ghost, spots)) {
+		if (ghost.place(registry) == null) {
+			end(ghost);
+			return;
+		}
+		List<GhostTrain.Spot> spots = ghost.spots;
+		if (nearPlayer(ghost, spots)) {
 			Spawn spawned = materialize(ghost, spots, registry);
 			if (spawned == Spawn.SPAWNED) {
 				return;
@@ -238,8 +242,7 @@ public final class TrainGhosts {
 			}
 		}
 		List<Integer> stops = ghost.run(TICKS, registry);
-		if (!stops.isEmpty()) {
-			spots(ghost, registry);
+		if (!stops.isEmpty() && ghost.place(registry) != null) {
 			for (int stop : stops) {
 				ghost.stopSerial++;
 				CargoDocks.servePaper(ghost, stop);
@@ -249,6 +252,19 @@ public final class TrainGhosts {
 			ghost.sinceSave = 0;
 			save(ghost, false);
 		}
+	}
+
+	// A track the tape uses is gone: stop running on paper. The cars stay where they were last
+	// saved and check their track when they load, as any saved train does.
+	static void end(GhostTrain ghost) {
+		if (!save(ghost, true)) {
+			return;
+		}
+		unregister(ghost);
+		for (String uuid : ghost.cars) {
+			VehicleFramework.getVehicleManager().getSpawnManager().requeue(uuid);
+		}
+		VFLogger.log("Train " + ghost.loco() + " stopped running unloaded: a track on its route is gone");
 	}
 
 	// Where the cars are now; the last known places if a track they were on is gone.
@@ -296,6 +312,8 @@ public final class TrainGhosts {
 		for (String uuid : ghost.cars) {
 			if (VehicleFramework.getVehicleManager().getSpawnManager().spawnNow(uuid)) {
 				spawned++;
+			} else {
+				trusted.remove(uuid);
 			}
 		}
 		RecorderLog.append("PAPER_END loco=" + ghost.loco() + " spawned=" + spawned + "/" + ghost.cars.size()
@@ -313,19 +331,21 @@ public final class TrainGhosts {
 		return true;
 	}
 
-	// Every car's chunk, and two chunks all round the locomotive so it does not reach the edge at once.
+	// Every car's chunk, and two chunks all round each end so neither reaches the edge at once.
 	static boolean areaLoaded(World world, List<GhostTrain.Spot> spots) {
 		for (GhostTrain.Spot spot : spots) {
 			if (!world.isChunkLoaded((int) Math.floor(spot.pose().x) >> 4, (int) Math.floor(spot.pose().z) >> 4)) {
 				return false;
 			}
 		}
-		int cx = (int) Math.floor(spots.get(0).pose().x) >> 4;
-		int cz = (int) Math.floor(spots.get(0).pose().z) >> 4;
-		for (int x = cx - 2; x <= cx + 2; x++) {
-			for (int z = cz - 2; z <= cz + 2; z++) {
-				if (!world.isChunkLoaded(x, z)) {
-					return false;
+		for (GhostTrain.Spot end : List.of(spots.get(0), spots.get(spots.size() - 1))) {
+			int cx = (int) Math.floor(end.pose().x) >> 4;
+			int cz = (int) Math.floor(end.pose().z) >> 4;
+			for (int x = cx - 2; x <= cx + 2; x++) {
+				for (int z = cz - 2; z <= cz + 2; z++) {
+					if (!world.isChunkLoaded(x, z)) {
+						return false;
+					}
 				}
 			}
 		}
@@ -406,6 +426,7 @@ public final class TrainGhosts {
 		}
 		List<GhostTrain.Spot> spots = spots(ghost, VehicleFramework.getTrackRegistry());
 		boolean[] lost = {false};
+		int consumed = ghost.consumed;
 		try {
 			repository.runInTransaction(() -> {
 				flushFuel(repository, ghost);
@@ -426,6 +447,8 @@ public final class TrainGhosts {
 				}
 			});
 		} catch (RuntimeException e) {
+			// Rolled back: the fuel items are still in the fuel car.
+			ghost.consumed = consumed;
 			VFLogger.log("Could not save train " + ghost.loco() + " running unloaded: " + e.getMessage());
 			return false;
 		}
@@ -474,8 +497,18 @@ public final class TrainGhosts {
 			}
 		}
 		StoredCars.putContainers(found.get(), containers);
-		StoredCars.write(repository, found.get());
-		ghost.consumed = 0;
+		if (StoredCars.write(repository, found.get())) {
+			ghost.consumed = 0;
+		}
+	}
+
+	/** On shutdown, the tape trains still loaded go on paper, so they run on after the restart. */
+	public static void convertAll(VehicleManager vehicles) {
+		for (ActiveVehicle vehicle : List.copyOf(vehicles.get().values())) {
+			if (vehicle.isTrain() && !vehicle.hasParent()) {
+				tryConvert(vehicle, "shutdown");
+			}
+		}
 	}
 
 	/** Saves every train on paper; on shutdown, so each resumes from where it was. */
@@ -506,8 +539,6 @@ public final class TrainGhosts {
 						: null;
 				GhostTrain ghost = GhostTrain.fromJson((JSONObject) json.get(KEY), tape);
 				if (ghost != null && ghost.loco().equalsIgnoreCase(row.getUuid())) {
-					// Spread the saves of resumed runs over the save interval.
-					ghost.sinceSave = Math.floorMod(ghost.loco().hashCode(), Math.max(1, Cache.trainGhostSaveSeconds));
 					register(ghost);
 				}
 			} catch (Exception e) {
@@ -520,6 +551,8 @@ public final class TrainGhosts {
 	}
 
 	static void register(GhostTrain ghost) {
+		// Spread the saves of runs that start together over the save interval.
+		ghost.sinceSave = Math.floorMod(ghost.loco().hashCode(), Math.max(1, Cache.trainGhostSaveSeconds));
 		ghosts.put(ghost.loco(), ghost);
 		for (String car : ghost.cars) {
 			byCar.put(car, ghost);

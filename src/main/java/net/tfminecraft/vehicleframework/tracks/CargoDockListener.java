@@ -73,7 +73,8 @@ public final class CargoDockListener implements Listener {
 		}, 2L);
 	}
 
-	@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+	// Last, so every plugin that may refuse the open has had its say.
+	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
 	public void onOpen(InventoryOpenEvent event) {
 		if (!(event.getPlayer() instanceof Player player)) {
 			return;

@@ -111,6 +111,7 @@ public class VehicleFramework extends JavaPlugin{
 			TrainSpaceHighlight.clearAll();
 		}
 		TrainCollisionWarning.clear();
+		TrainGhosts.convertAll(vehicleManager);
 		TrainGhosts.saveAll();
 		vehicleManager.unloadAll();
 		if (trackRegistry != null) {

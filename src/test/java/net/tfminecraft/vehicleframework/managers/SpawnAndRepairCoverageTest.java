@@ -376,6 +376,20 @@ class SpawnAndRepairCoverageTest {
         }
     }
 
+    @Test void aCarLeftByARunOnPaperIsQueuedAgainOnlyInALoadedChunk() {
+        spawns.requeue("absent");
+        openRepository(); Chunk chunk = chunk(1, -1); when(world.getChunkAt(1, -1)).thenReturn(chunk);
+        repository.upsert(snapshot("left", "world", false));
+        repository.upsert(snapshot("elsewhere", "unloaded", false));
+        spawns.requeue("missing"); spawns.requeue("elsewhere");
+        spawns.requeue("left");
+        assertTrue(SpawnManager.findSpawnLocation("left").isEmpty());
+        when(world.isChunkLoaded(1, -1)).thenReturn(true);
+        spawns.requeue("left");
+        assertEquals(new Location(world, 20, 64, -2, 45, 0), SpawnManager.findSpawnLocation("left").orElseThrow());
+        assertTrue(SpawnManager.findSpawnLocation("elsewhere").isEmpty());
+    }
+
     @Test void aTrainThatGoesOnPaperIsNotUnloadedAgain() {
         Chunk affected = chunk(-1, 2); Entity inside = mock(Entity.class);
         when(inside.getLocation()).thenReturn(new Location(world, -.5, 64, 32));

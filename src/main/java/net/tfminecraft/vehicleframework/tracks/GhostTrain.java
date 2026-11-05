@@ -24,6 +24,9 @@ public final class GhostTrain {
 	public record Spot(UUID splineId, double s, int orientation, int sign, TrackPose pose) {
 	}
 
+	/** Samples looked through for switches the cars ahead of a pushing locomotive reach. */
+	static final int LOOK_AHEAD = 256;
+
 	final String world;
 	final List<String> cars;
 	final List<String> owners;
@@ -99,11 +102,27 @@ public final class GhostTrain {
 			crossed(registry, tape.sample(i), tape.sample(i + 1));
 		}
 		clock = advance.clock();
+		switchesAhead(registry);
 		if (useFuel && advance.maxThrottle() != 0) {
 			double multiplier = locomotive ? LocomotiveOverdrive.fuelMultiplier(advance.maxThrottle()) : 1.0;
 			fuel = Math.max(0, fuel - burn * multiplier);
 		}
 		return advance.stops();
+	}
+
+	// Pushing, the cars run ahead of the locomotive onto the switches it is about to take.
+	private void switchesAhead(TrackRegistry registry) {
+		double length = 0;
+		for (int i = 0; i < offsets.length; i++) {
+			length = Math.max(length, offsets[i] + reaches[i]);
+		}
+		double went = 0;
+		for (int k = 0; k < LOOK_AHEAD && went <= length; k++) {
+			ThrottleTape.Sample a = tape.sample(clock.cursor() + k);
+			ThrottleTape.Sample b = tape.sample(clock.cursor() + k + 1);
+			crossed(registry, a, b);
+			went += Math.min(Math.abs(b.s - a.s), 4);
+		}
 	}
 
 	// The engine takes one fuel item from the fuel car each second the tank has room.

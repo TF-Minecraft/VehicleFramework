@@ -121,9 +121,21 @@ class TrainCollisionWarningTest {
 		parked.add(new TrackedCar("gone", UUID.randomUUID().toString(), 20, null, "world", 500, 64.5, 20));
 		parked.add(parkedCar("far", 250, "farhead"));
 		parked.add(parkedCar("farhead", 260, null));
+		// Running on paper: its saved row is not where it is.
+		parked.add(parkedCar("paper", 40, null));
+		GhostTrain paper = new GhostTrain("world", List.of("paper"), List.of("a"), new double[] {0},
+				new double[] {1}, new ThrottleTape("t", List.of(new ThrottleTape.Sample(0, 1, 0))),
+				new TapeTimetable.Clock(0, 0), Map.of(), 0, false, 0, false, 0, null, 0, 0);
+		TrainGhosts.register(paper);
 
-		Map<Player, TrainCollisionWarning.Warning> warnings = TrainCollisionWarning.check(
-				List.of(runner, standing, mock(ActiveVehicle.class), wrecked(), coupled(), derailed(), pathless()));
+		Map<Player, TrainCollisionWarning.Warning> warnings;
+		try {
+			warnings = TrainCollisionWarning.check(
+					List.of(runner, standing, mock(ActiveVehicle.class), wrecked(), coupled(), derailed(), pathless()));
+		} finally {
+			TrainGhosts.unregister(paper);
+			parked.remove(parked.size() - 1);
+		}
 
 		assertEquals(3, warnings.size());
 		assertEquals("Stopped train ahead", warnings.get(driver).label());

@@ -67,7 +67,8 @@ public final class CargoDocks {
 			Location at = car.getEntity().getLocation();
 			World world = at.getWorld();
 			for (Dock dock : DockRegistry.near(world.getName(), at.getX(), at.getY(), at.getZ(), Cache.trainDockReach)) {
-				if (moved >= budget || !owns(car.getOwnerData().getOwner(), dock) || !loaded(world, chunks(dock))) {
+				String owner = car.getOwnerData() == null ? null : car.getOwnerData().getOwner();
+				if (moved >= budget || !owns(owner, dock) || !loaded(world, chunks(dock))) {
 					continue;
 				}
 				Storage storage = storage(world, dock);
