@@ -515,6 +515,8 @@ class TrainGhostsTest {
 		assertEquals(30, ghost.fuel, 1e-9);
 		assertEquals(7, ghost.reserve);
 		assertEquals("coal", ghost.fuelPath);
+		assertTrue(ghost.isFuelCar(1));
+		assertFalse(ghost.isFuelCar(0));
 		assertTrue(payload("loco").containsKey(TrainGhosts.KEY));
 		// Already on paper: not again.
 		assertFalse(TrainGhosts.tryConvert(live.loco, "unload"));

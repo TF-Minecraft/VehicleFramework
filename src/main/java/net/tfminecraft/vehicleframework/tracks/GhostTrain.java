@@ -45,6 +45,8 @@ public final class GhostTrain {
 	final int fuelPerItem;
 	int reserve;
 	int consumed;
+	// Cars whose type the locomotive takes fuel from; null on runs saved before this was kept.
+	boolean[] fuelCars;
 	int stopSerial;
 	// Items the docks at the current stop may still move.
 	int dockBudget;
@@ -70,6 +72,11 @@ public final class GhostTrain {
 		this.fuelPath = fuelPath;
 		this.fuelPerItem = fuelPerItem;
 		this.reserve = reserve;
+	}
+
+	/** Whether car {@code index} is one of the locomotive's fuel cars, which docks leave alone. */
+	public boolean isFuelCar(int index) {
+		return fuelCars != null ? index < fuelCars.length && fuelCars[index] : index == 1 && fuelPath != null;
 	}
 
 	public String loco() {
@@ -214,6 +221,13 @@ public final class GhostTrain {
 		}
 		json.put("fuelPerItem", (long) fuelPerItem);
 		json.put("reserve", (long) reserve);
+		if (fuelCars != null) {
+			JSONArray fuel = new JSONArray();
+			for (boolean car : fuelCars) {
+				fuel.add(car);
+			}
+			json.put("fuelCars", fuel);
+		}
 		return json;
 	}
 
@@ -248,11 +262,20 @@ public final class GhostTrain {
 		}
 		TapeTimetable.Clock clock = new TapeTimetable.Clock((int) number(json.get("cursor"), 0),
 				(int) number(json.get("ticks"), 0));
-		return new GhostTrain(String.valueOf(json.get("world")), cars, owners, offsets, reaches, tape, clock, routes,
+		boolean[] fuelCars = null;
+		if (json.get("fuelCars") instanceof JSONArray fuel) {
+			fuelCars = new boolean[fuel.size()];
+			for (int i = 0; i < fuel.size(); i++) {
+				fuelCars[i] = Boolean.TRUE.equals(fuel.get(i));
+			}
+		}
+		GhostTrain ghost = new GhostTrain(String.valueOf(json.get("world")), cars, owners, offsets, reaches, tape, clock, routes,
 				number(json.get("fuel"), 0), Boolean.TRUE.equals(json.get("useFuel")), number(json.get("burn"), 0),
 				Boolean.TRUE.equals(json.get("locomotive")), number(json.get("capacity"), 0),
 				json.get("fuelPath") == null ? null : String.valueOf(json.get("fuelPath")),
 				(int) number(json.get("fuelPerItem"), 0), (int) number(json.get("reserve"), 0));
+		ghost.fuelCars = fuelCars;
+		return ghost;
 	}
 
 	private static double number(Object raw, double fallback) {

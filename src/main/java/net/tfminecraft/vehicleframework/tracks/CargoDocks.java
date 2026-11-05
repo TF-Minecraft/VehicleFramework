@@ -104,7 +104,8 @@ public final class CargoDocks {
 		ghost.dockBudget = Cache.trainDockItemsPerStop;
 		int serial = ghost.stopSerial;
 		for (int i = 0; i < ghost.spots.size() && i < ghost.cars.size(); i++) {
-			if (i == 1 && ghost.fuelPath != null && !Cache.trainDockFuelCars) {
+			// As loaded: every car of a type the locomotive takes fuel from.
+			if (ghost.isFuelCar(i) && !Cache.trainDockFuelCars) {
 				continue;
 			}
 			TrackPose pose = ghost.spots.get(i).pose();

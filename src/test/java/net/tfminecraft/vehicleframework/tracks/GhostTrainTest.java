@@ -85,6 +85,43 @@ class GhostTrainTest {
 	}
 
 	@Test
+	void onPaperTheStartingStopIsReachedAtItsPlace() {
+		String s = stem.getId().toString();
+		// From a stop at s 30 out to 40 and back past 30 to 28, under power.
+		ThrottleTape loop = new ThrottleTape(s, List.of(
+				new ThrottleTape.Sample(30, 1, 0, 60, s, null, 1),
+				new ThrottleTape.Sample(31, 1, 40, 20, s, null, 1),
+				new ThrottleTape.Sample(40, 1, 0, 40, s, null, 1),
+				new ThrottleTape.Sample(39, -1, -40, 20, s, null, 1),
+				new ThrottleTape.Sample(28, 1, 40, 20, s, null, 1)));
+		GhostTrain ghost = new GhostTrain("world", List.of("loco"), List.of("a"), new double[] {0}, new double[] {3},
+				loop, new TapeTimetable.Clock(4, 10), Map.of(), 0, false, 0, false, 0, null, 0, 0);
+		assertEquals(29, ghost.place(registry).get(0).s(), 1e-9);
+		assertEquals(List.of(0), ghost.run(11, registry));
+		assertEquals(30, ghost.place(registry).get(0).s(), 0.05);
+	}
+
+	@Test
+	void fuelCarsAreEveryCarOfAFuelType() {
+		GhostTrain ghost = ghost(10, 1);
+		assertTrue(ghost.isFuelCar(1));
+		assertFalse(ghost.isFuelCar(0));
+		ghost.fuelCars = new boolean[] {false, false, true};
+		assertFalse(ghost.isFuelCar(1));
+		assertTrue(ghost.isFuelCar(2));
+		assertFalse(ghost.isFuelCar(3));
+		GhostTrain read = GhostTrain.fromJson(ghost.toJson(), tape());
+		assertTrue(read.isFuelCar(2));
+		assertFalse(read.isFuelCar(1));
+		GhostTrain old = GhostTrain.fromJson(ghost(10, 1).toJson(), tape());
+		assertNull(old.fuelCars);
+		assertTrue(old.isFuelCar(1));
+		assertFalse(new GhostTrain("world", List.of("loco", "car"), List.of("a", "a"), new double[] {0, 8},
+				new double[] {3, 3}, tape(), new TapeTimetable.Clock(0, 0), Map.of(), 0, false, 0, false, 0, null, 0, 0)
+				.isFuelCar(1));
+	}
+
+	@Test
 	void outOfFuelItStandsStill() {
 		GhostTrain ghost = ghost(0, 0);
 		assertTrue(ghost.stalled());
