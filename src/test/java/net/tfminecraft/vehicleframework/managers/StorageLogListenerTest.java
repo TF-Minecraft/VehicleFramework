@@ -202,8 +202,6 @@ class StorageLogListenerTest {
 		when(handler.get("cargo")).thenReturn(container);
 		StorageLogListener.Storage storage = StorageLogListener.storage(view(alex));
 		assertEquals(container, storage.container());
-		StorageLog.configure(false, folder.toFile());
-		assertNull(StorageLogListener.storage(view(alex)));
 		// Nothing to do for other inventories.
 		listener.open(new InventoryOpenEvent(view(alex, chest)));
 		fire(click(alex, false, chest));
@@ -211,6 +209,9 @@ class StorageLogListenerTest {
 		listener.closing(new InventoryCloseEvent(view(alex, chest)));
 		listener.closed(new InventoryCloseEvent(view(alex, chest)));
 		assertFalse(audit.isWatching());
+		assertTrue(tasks.isEmpty());
+		StorageLog.configure(false, folder.toFile());
+		assertNull(StorageLogListener.storage(view(alex)));
 	}
 
 	// As the server does: every listener at LOWEST, then at MONITOR.

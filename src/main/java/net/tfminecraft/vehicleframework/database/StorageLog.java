@@ -81,10 +81,11 @@ public final class StorageLog {
 		}
 		String verb = amount > 0 ? "PUT" : "TOOK";
 		int count = Math.abs(amount);
-		write(verb + " " + who(player) + " amount=" + count + " " + item(item) + " " + where(vehicle, container));
+		Described described = describe(item);
+		write(verb + " " + who(player) + " amount=" + count + " " + described.file() + " " + where(vehicle, container));
 		CoreProtectAPI coreProtect = coreProtect();
 		if (coreProtect != null) {
-			coreProtect.logChat(player, CHAT_PREFIX + (amount > 0 ? "put " : "took ") + count + " " + itemName(item)
+			coreProtect.logChat(player, CHAT_PREFIX + (amount > 0 ? "put " : "took ") + count + " " + described.chat()
 					+ (amount > 0 ? " into " : " from ") + plain(vehicle.getName()) + " (" + vehicle.getId() + " "
 					+ vehicle.getUUID() + ") storage " + container.getId() + " at " + blockPosition(vehicle));
 		}
@@ -104,35 +105,39 @@ public final class StorageLog {
 				+ " at " + worldName(vehicle) + " " + blockPosition(vehicle);
 	}
 
-	// What an item is: its type, its TLibs path (MMOItems, ItemsAdder), its name, and what a
-	// bundle or shulker box holds, since taking one takes all of that.
-	private static String item(ItemStack item) {
-		String path = path(item);
-		String name = name(item);
-		String contents = contents(item);
-		return "item=" + type(item)
-				+ (path == null ? "" : " path=" + path)
-				+ (name == null ? "" : " name=" + quoted(name))
-				+ (contents == null ? "" : " contents=[" + contents + "]");
-	}
+	/** One item as the log file and the CoreProtect chat line put it. */
+	record Described(String file, String chat) { }
 
-	private static String itemName(ItemStack item) {
-		String name = name(item);
-		String contents = contents(item);
-		return type(item) + (name == null ? "" : " " + quoted(name))
-				+ (contents == null ? "" : " [" + contents + "]");
+	// What an item is: its type, its TLibs path (MMOItems, ItemsAdder), its name, and what a
+	// bundle or shulker box holds, since taking one takes all of that. Worked out once per
+	// change; an item that cannot be described further is logged by its type alone.
+	static Described describe(ItemStack item) {
+		String type = type(item);
+		try {
+			String path = path(item);
+			String name = name(item);
+			String contents = contents(item);
+			return new Described("item=" + type
+					+ (path == null ? "" : " path=" + path)
+					+ (name == null ? "" : " name=" + quoted(name))
+					+ (contents == null ? "" : " contents=[" + contents + "]"),
+					type + (name == null ? "" : " " + quoted(name))
+					+ (contents == null ? "" : " [" + contents + "]"));
+		} catch (RuntimeException | LinkageError odd) {
+			return new Described("item=" + type, type);
+		}
 	}
 
 	private static String type(ItemStack item) {
 		return item.getType().name().toLowerCase(Locale.ROOT);
 	}
 
-	// A vanilla item's path only repeats its type.
+	// A vanilla item's path only repeats its type. Without TLibs there is none.
 	private static String path(ItemStack item) {
 		try {
 			String path = TLibs.getItemAPI().getChecker().getAsStringPath(item);
 			return path == null || path.isBlank() || path.startsWith("v.") ? null : path;
-		} catch (RuntimeException unavailable) {
+		} catch (RuntimeException | LinkageError unavailable) {
 			return null;
 		}
 	}
@@ -142,11 +147,12 @@ public final class StorageLog {
 		if (meta == null) {
 			return null;
 		}
+		// Plugins may leave legacy colour codes inside a component's text.
 		if (meta.hasDisplayName() && meta.displayName() != null) {
-			return PlainTextComponentSerializer.plainText().serialize(meta.displayName());
+			return plain(PlainTextComponentSerializer.plainText().serialize(meta.displayName()));
 		}
 		if (meta.hasItemName()) {
-			return PlainTextComponentSerializer.plainText().serialize(meta.itemName());
+			return plain(PlainTextComponentSerializer.plainText().serialize(meta.itemName()));
 		}
 		return null;
 	}
@@ -158,7 +164,7 @@ public final class StorageLog {
 			inside = bundle.getItems().toArray(new ItemStack[0]);
 		} else if (meta instanceof BlockStateMeta state && state.hasBlockState()
 				&& state.getBlockState() instanceof org.bukkit.block.Container box) {
-			inside = box.getInventory().getContents();
+			inside = box.getSnapshotInventory().getContents();
 		} else {
 			return null;
 		}
@@ -170,8 +176,20 @@ public final class StorageLog {
 		return String.join(", ", kinds);
 	}
 
-	private static String quoted(String text) {
-		return "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+	// One line per change: a name cannot break a line or end its quotes early.
+	static String quoted(String text) {
+		StringBuilder out = new StringBuilder(text.length() + 2).append('"');
+		for (int i = 0; i < text.length(); i++) {
+			char c = text.charAt(i);
+			if (c == '\\' || c == '"') {
+				out.append('\\').append(c);
+			} else if (c < 0x20 || c == 0x7f) {
+				out.append(String.format(Locale.ROOT, "\\u%04x", (int) c));
+			} else {
+				out.append(c);
+			}
+		}
+		return out.append('"').toString();
 	}
 
 	private static Location location(ActiveVehicle vehicle) {

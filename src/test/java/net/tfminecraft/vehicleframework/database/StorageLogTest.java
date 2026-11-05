@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import java.nio.file.Files;
@@ -117,7 +118,7 @@ class StorageLogTest {
 		when(box.getItemMeta()).thenReturn(boxMeta);
 		when(boxMeta.hasBlockState()).thenReturn(true);
 		when(boxMeta.getBlockState()).thenReturn(state);
-		when(state.getInventory()).thenReturn(inside);
+		when(state.getSnapshotInventory()).thenReturn(inside);
 		ItemStack[] boxed = { null, item(Material.EMERALD, 7) };
 		when(inside.getContents()).thenReturn(boxed);
 		ItemStack sealed = item(Material.CHEST, 1);
@@ -151,6 +152,19 @@ class StorageLogTest {
 	}
 
 	@Test
+	void anItemThatCannotBeDescribedIsLoggedByItsTypeAndNamesStayOnOneLine() throws Exception {
+		StorageLog.configure(true, folder.toFile());
+		Cache.coreProtect = false;
+		ItemStack odd = item(Material.CHEST, 1);
+		when(odd.hasItemMeta()).thenThrow(new IllegalStateException("bad component"));
+		StorageLog.changed(player(), vehicle(null), container(), odd, -1);
+		assertEquals(1, lines().size());
+		assertTrue(lines().get(0).startsWith("TOOK player=Alex (" + PLAYER + ") amount=1 item=chest storage="));
+		String nl = String.valueOf((char) 10);
+		assertEquals("\"a\\u000ab\\u007f\"", StorageLog.quoted("a" + nl + "b" + (char) 127));
+	}
+
+	@Test
 	void coreProtectGetsAChatLineAndAnInteractionAtTheVehicle() {
 		StorageLog.configure(true, null);
 		Player player = player();
@@ -173,6 +187,7 @@ class StorageLogTest {
 			StorageLog.changed(player, gone, container, item(Material.COAL, 1), 1);
 			verify(api).logChat(player, "[VF storage] put 1 coal into Cargo Wagon (wagon_cargo v-uuid) storage cargo at ?");
 			// CoreProtect hooked but its API off.
+			verifyNoMoreInteractions(api);
 			framework.when(VehicleFramework::getCoreProtect).thenReturn(null);
 			StorageLog.opened(player, vehicle, container);
 			StorageLog.changed(player, vehicle, container, item(Material.COAL, 1), 1);
