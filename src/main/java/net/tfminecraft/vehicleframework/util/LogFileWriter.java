@@ -152,7 +152,8 @@ public final class LogFileWriter {
 					// Its job closed every file. A new thread takes lines queued since.
 					startIfStopped();
 					return;
-				} catch (RuntimeException e) {
+				} catch (Throwable e) {
+					// Keep the thread alive: nothing else would write the lines queued behind.
 					LOGGER.warning("Log writer failed: " + e);
 				}
 			} while ((job = JOBS.poll()) != null);

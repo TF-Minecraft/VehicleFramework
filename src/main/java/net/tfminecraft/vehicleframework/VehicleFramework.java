@@ -121,7 +121,7 @@ public class VehicleFramework extends JavaPlugin{
 		closeVehicleRepository();
 		Cache.removeLights();
 		Cache.removeProjectiles();
-		// Write out the debug logs' last lines.
+		// Write out the last lines of the plugin's log files.
 		LogFileWriter.shutdown();
 	}
 	public void registerListeners() {

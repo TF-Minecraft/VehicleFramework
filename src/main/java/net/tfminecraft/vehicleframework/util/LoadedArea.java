@@ -39,16 +39,20 @@ public final class LoadedArea {
 	 * loaded, it stays loaded until one of them unloads, and Paper fires {@code ChunkUnloadEvent}
 	 * for a chunk while it still counts as loaded. So the last covered area is remembered, and
 	 * the same chunks or fewer are answered without asking the world again until the owner
-	 * passes that unload to {@link #forget(World, int, int)}. An area that is not covered is asked
-	 * in full every time, so a vehicle resumes on the first tick its chunks are loaded.
+	 * passes that unload to {@link #forget(World, int, int)}, and in any case at most
+	 * {@link #MAX_REMEMBERED} times in a row. An area that is not covered is asked in full every
+	 * time, so a vehicle resumes on the first tick its chunks are loaded.
 	 */
 	public static final class Memo {
+		/** Answers from memory before asking the world again anyway, in case an unload went unheard. */
+		static final int MAX_REMEMBERED = 100;
 		// The covered area, in chunks; null while there is none.
 		private World world;
 		private int minX;
 		private int maxX;
 		private int minZ;
 		private int maxZ;
+		private int remembered;
 
 		public boolean covers(World world, BoundingBox box, int margin) {
 			int minChunkX = minChunk(box.getMinX(), margin);
@@ -56,7 +60,7 @@ public final class LoadedArea {
 			int minChunkZ = minChunk(box.getMinZ(), margin);
 			int maxChunkZ = maxChunk(box.getMaxZ(), margin);
 			if (world.equals(this.world) && minChunkX >= minX && maxChunkX <= maxX
-					&& minChunkZ >= minZ && maxChunkZ <= maxZ) {
+					&& minChunkZ >= minZ && maxChunkZ <= maxZ && ++remembered < MAX_REMEMBERED) {
 				return true;
 			}
 			this.world = null;
@@ -64,6 +68,7 @@ public final class LoadedArea {
 				return false;
 			}
 			this.world = world;
+			remembered = 0;
 			minX = minChunkX;
 			maxX = maxChunkX;
 			minZ = minChunkZ;

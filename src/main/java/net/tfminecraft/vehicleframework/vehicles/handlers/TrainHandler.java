@@ -822,8 +822,9 @@ public class TrainHandler {
 
 	/**
 	 * Everything planning a standing train reads, besides track geometry (covered by the
-	 * registry's version) and model blueprints (fixed once a car's model is ready). Records
-	 * compare doubles bit for bit.
+	 * registry's version) and model blueprints (fixed once a car's model is ready; should
+	 * ModelEngine ever change one in place, the replan every STANDING_REPLAN_TICKS ticks picks
+	 * it up). Records compare doubles bit for bit.
 	 */
 	private record StandingInputs(TrackRegistry registry, long trackVersion, UUID splineId, double s,
 			int travelSign, int orientation, List<Object> routes, String pendingParent, boolean hasParent,

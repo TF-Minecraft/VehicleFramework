@@ -92,4 +92,20 @@ class LoadedAreaTest {
         assertTrue(memo.covers(other, box, 2));
         verify(other, times(4)).isChunkLoaded(anyInt(), anyInt());
     }
+
+    @Test
+    void theMemoAsksTheWorldAgainAfterAHundredAnswers() {
+        World world = allLoaded();
+        LoadedArea.Memo memo = new LoadedArea.Memo();
+        BoundingBox box = new BoundingBox(5, 64, 5, 6, 65, 6);
+        assertTrue(memo.covers(world, box, 2));
+        for (int i = 1; i < LoadedArea.Memo.MAX_REMEMBERED; i++) {
+            assertTrue(memo.covers(world, box, 2));
+        }
+        verify(world, times(1)).isChunkLoaded(0, 0);
+        assertTrue(memo.covers(world, box, 2));
+        verify(world, times(2)).isChunkLoaded(0, 0);
+        assertTrue(memo.covers(world, box, 2));
+        verify(world, times(2)).isChunkLoaded(0, 0);
+    }
 }

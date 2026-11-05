@@ -41,6 +41,8 @@ public final class RecorderLog {
 
 	public static void configure(boolean loggingEnabled, File dataFolder) {
 		enabled = loggingEnabled;
+		// A new session logs each car's pose afresh.
+		lastPose.clear();
 		if (dataFolder != null) {
 			logFile = dataFolder.toPath().resolve(LOG_DIRECTORY).resolve(LOG_FILE_NAME);
 		}
