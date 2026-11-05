@@ -127,8 +127,15 @@ class LogFileWriterTest {
 		LogFileWriter.flush();
 		assertNotSame(before, thread());
 		assertEquals(List.of("last", "again"), Files.readAllLines(log));
-		// An interrupt does not stop it.
-		thread().interrupt();
+		// An interrupt while it waits for lines does not stop it.
+		Thread writer = thread();
+		long until = System.currentTimeMillis() + 5000;
+		while (writer.getState() != Thread.State.WAITING && System.currentTimeMillis() < until) {
+			Thread.onSpinWait();
+		}
+		writer.interrupt();
+		// Let it take the interrupt before a new line could wake it first.
+		Thread.sleep(200);
 		LogFileWriter.append(logger, "stop.log", log, "after interrupt");
 		LogFileWriter.flush();
 		assertEquals("after interrupt", Files.readAllLines(log).get(2));
