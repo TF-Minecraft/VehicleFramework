@@ -120,12 +120,16 @@ public class Container {
 
     /** Replaces every slot, also in an open view of this container. */
     public void setContents(ItemStack[] contents) {
+        ItemStack[] before = audit.isWatching() ? contents() : null;
         items.clear();
         for (int i = 0; i < size; i++) {
             ItemStack item = contents != null && i < contents.length ? contents[i] : null;
             items.add(isEmpty(item) ? null : item.clone());
         }
         pushLive();
+        if (before != null) {
+            audit.replacedByPlugin(before, contents);
+        }
         updateBoneVisibility();
     }
 

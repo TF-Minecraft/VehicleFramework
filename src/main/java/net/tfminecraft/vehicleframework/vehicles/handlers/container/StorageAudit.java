@@ -76,6 +76,19 @@ public final class StorageAudit {
 		}
 	}
 
+	/**
+	 * The plugin swapped {@code before} for {@code after} itself (a cargo dock trade). Only that
+	 * difference moves the count, so a player's action still waiting to be counted stays theirs.
+	 */
+	public void replacedByPlugin(ItemStack[] before, ItemStack[] after) {
+		if (counted == null) {
+			return;
+		}
+		for (ItemCounts.Change change : ItemCounts.of(after).since(ItemCounts.of(before))) {
+			counted.add(change.item(), change.amount());
+		}
+	}
+
 	/** The plugin replaced the contents itself; count again from them. */
 	public void recount(Inventory inventory) {
 		if (counted != null && inventory != null) {
