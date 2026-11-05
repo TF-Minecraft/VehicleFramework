@@ -229,7 +229,7 @@ class ActiveVehicleTest {
         when(saved.getThrottle()).thenReturn(12);
         when(saved.getGear()).thenReturn(3);
         net.tfminecraft.vehicleframework.tracks.ThrottleTape tape = new net.tfminecraft.vehicleframework.tracks.ThrottleTape("line");
-        when(saved.getThrottleTape()).thenReturn(tape);
+        when(saved.getThrottleTape()).thenReturn(tape); when(saved.getTapeClock()).thenReturn(new int[] {4, 2});
         constructing = v -> v.getAccessPanel().addRotator(rotator);
         RotationData rotation = mock(RotationData.class);
         when(rotation.getRotator()).thenReturn("RUDDER");
@@ -243,6 +243,7 @@ class ActiveVehicleTest {
         verify(v.getTrainHandler()).applyConsist(null);
         verify(v.getTrainHandler().getOverdrive()).restore(null);
         verify(v.getTrainHandler()).setInstalledTape(tape);
+        verify(v.getTrainHandler()).setTapeClock(4, 2);
         verify(rotator).rawSet(1, 2, 3, 4);
         ActiveVehicle parent = mock(ActiveVehicle.class);
         v.setParent(v);

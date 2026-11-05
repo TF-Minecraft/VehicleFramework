@@ -1001,9 +1001,11 @@ class TrainReversePlacementTest {
 
     // A world with nothing in the way, so only the trains can meet.
     private static World openWorld() {
-        World world = stub(World.class);
+        // Stub-only: long runs read many blocks, and recording every call runs out of memory.
+        World world = mock(World.class, org.mockito.Mockito.withSettings().stubOnly());
         Block air = stub(Block.class);
         when(air.isPassable()).thenReturn(true);
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
         when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenReturn(air);
         return world;
     }
@@ -1458,6 +1460,7 @@ class TrainReversePlacementTest {
 
     private void wall(TrainHandler loco, BoundingBox obstacle) {
         World world = stub(World.class);
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
         when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(call -> {
             int x = call.getArgument(0);
             int y = call.getArgument(1);

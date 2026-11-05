@@ -24,4 +24,14 @@ class TrackLapTest {
 		assertTrue(TrackLap.complete(20, 20));
 		assertFalse(TrackLap.complete(5, 0.5));
 	}
+
+	@Test
+	void backAtStartNeedsTheSameHeadingUnderPowerAfterARealRun() {
+		assertTrue(TrackLap.backAtStart(40, 32, 1.5, 2, 1, 1, 30));
+		assertFalse(TrackLap.backAtStart(40, 32, 1.5, 2, -1, 1, 30));
+		assertFalse(TrackLap.backAtStart(40, 32, 1.5, 2, 1, 0, 30));
+		assertFalse(TrackLap.backAtStart(40, 32, 1.5, 2, 1, 1, 0));
+		assertFalse(TrackLap.backAtStart(20, 32, 1.5, 2, 1, 1, 30));
+		assertFalse(TrackLap.backAtStart(40, 32, 2.5, 2, 1, 1, 30));
+	}
 }

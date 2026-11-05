@@ -38,7 +38,10 @@ import net.tfminecraft.vehicleframework.tracks.TrainSpaceHighlight;
 import net.tfminecraft.vehicleframework.tracks.TrackDisplayManager;
 import net.tfminecraft.vehicleframework.tracks.TrackLog;
 import net.tfminecraft.vehicleframework.tracks.RecorderLog;
+import net.tfminecraft.vehicleframework.tracks.CargoDockListener;
+import net.tfminecraft.vehicleframework.tracks.DockRegistry;
 import net.tfminecraft.vehicleframework.tracks.TrackRegistry;
+import net.tfminecraft.vehicleframework.tracks.TrainGhosts;
 import net.tfminecraft.vehicleframework.tracks.TrackToolListener;
 import net.tfminecraft.vehicleframework.vehicles.controller.GroundEngineLog;
 import net.tfminecraft.vehicleframework.vehicles.handlers.TrainHandler;
@@ -108,6 +111,7 @@ public class VehicleFramework extends JavaPlugin{
 			TrainSpaceHighlight.clearAll();
 		}
 		TrainCollisionWarning.clear();
+		TrainGhosts.saveAll();
 		vehicleManager.unloadAll();
 		if (trackRegistry != null) {
 			trackRegistry.close();
@@ -127,6 +131,7 @@ public class VehicleFramework extends JavaPlugin{
 		getServer().getPluginManager().registerEvents(vehicleManager.getSpawnManager(), this);
 		getServer().getPluginManager().registerEvents(vehicleManager.getRepairManager(), this);
 		getServer().getPluginManager().registerEvents(new TrackToolListener(), this);
+		getServer().getPluginManager().registerEvents(new CargoDockListener(), this);
 		getServer().getPluginManager().registerEvents(new DeckListener(), this);
 		trackDisplayManager = new TrackDisplayManager();
 		getServer().getPluginManager().registerEvents(trackDisplayManager, this);
@@ -149,6 +154,8 @@ public class VehicleFramework extends JavaPlugin{
 	}
 
 	public void startManagers() {
+		DockRegistry.load(getDataFolder());
+		TrainGhosts.restore();
 		vehicleManager.start();
 	}
 	public static VehicleRepository getVehicleRepository() {

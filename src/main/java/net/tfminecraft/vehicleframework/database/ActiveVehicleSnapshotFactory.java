@@ -203,6 +203,7 @@ public final class ActiveVehicleSnapshotFactory {
 				ThrottleTape tape = v.getTrainHandler().getInstalledTape();
 				if (tape != null && !tape.isEmpty()) {
 					vehicleData.put("throttleTape", tape.toJson());
+					VehiclePayloadCodec.putTapeClock(vehicleData, v.getTrainHandler().getTapeClock());
 				}
 			}
 		}

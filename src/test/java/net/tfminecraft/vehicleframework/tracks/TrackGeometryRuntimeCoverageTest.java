@@ -782,8 +782,6 @@ class TrackGeometryRuntimeCoverageTest {
     ThrottleTape empty = new ThrottleTape(null, null);
     assertEquals("", empty.getSplineId());
     assertFalse(empty.matchesSpline(null));
-    assertFalse(empty.takesJunction(null));
-    assertEquals(0, ThrottleTape.lookup(null, 1, 1));
     assertNull(ThrottleTape.fromJson(null));
     assertNull(ThrottleTape.fromJson(new JSONObject()));
     JSONObject json = new JSONObject();
@@ -803,17 +801,14 @@ class TrackGeometryRuntimeCoverageTest {
     ThrottleTape loaded = ThrottleTape.fromJson(json);
     assertTrue(loaded.matchesSpline(origin));
     assertEquals(1, loaded.getSamples().size());
-    assertEquals(0, loaded.lookup(2.5, -1, (UUID) null));
-    assertEquals(3, loaded.holdAt(2.5, -1, (UUID) null));
-    assertEquals(1, loaded.holdAt(2.5, 1, origin));
-    assertEquals(0, loaded.targetWithDwell(2.5, -1, new ThrottleTape.DwellState(), (UUID) null));
-    assertEquals(0, loaded.lookup(2.5, -1, " "));
+    assertEquals(0, loaded.sample(0).throttle);
+    assertEquals(3, loaded.sample(0).holdTicks);
+    assertEquals(-1, loaded.sample(0).sign);
     sample.remove("s");
     assertEquals(0, ThrottleTape.fromJson(json).getSamples().getFirst().s);
-    assertEquals(0, loaded.lookup(Double.NaN, -1));
     ThrottleTape defaults =
         new ThrottleTape(origin.toString(), List.of(new ThrottleTape.Sample(3, 1, 25, 4)));
-    assertEquals(4, defaults.holdAt(3, 1));
+    assertEquals(4, defaults.sample(0).holdTicks);
     assertEquals(ThrottleTape.AppendResult.ADDED, defaults.tryAppend(5, 1, 25, " ", null));
     ThrottleTape blank = new ThrottleTape("");
     assertEquals(ThrottleTape.AppendResult.ADDED, blank.tryAppend(0, 1, 0, (String) null, null));

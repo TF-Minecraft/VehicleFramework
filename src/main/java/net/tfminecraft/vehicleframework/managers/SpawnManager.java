@@ -29,6 +29,7 @@ import net.tfminecraft.vehicleframework.database.PersistenceLog;
 import net.tfminecraft.vehicleframework.database.VehiclePersistence;
 import net.tfminecraft.vehicleframework.database.VehicleSnapshot;
 import net.tfminecraft.vehicleframework.loaders.VehicleLoader;
+import net.tfminecraft.vehicleframework.tracks.TrainGhosts;
 import net.tfminecraft.vehicleframework.util.SpawnLocation;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.Vehicle;
@@ -124,7 +125,8 @@ public class SpawnManager implements Listener {
 			return;
 		}
 		String uuid = snapshot.getUuid();
-		if (vehicleManager.getByUUID(uuid) != null) {
+		// A car running on paper is not where its row says; its run spawns it.
+		if (vehicleManager.getByUUID(uuid) != null || TrainGhosts.isGhost(uuid)) {
 			return;
 		}
 		World world = Bukkit.getWorld(snapshot.getWorld());
@@ -167,7 +169,7 @@ public class SpawnManager implements Listener {
 	 */
 	boolean trySpawn(SpawnLocation loc) {
 		String uuid = stripJson(loc.getFile());
-		if (vehicleManager.getByUUID(uuid) != null) {
+		if (vehicleManager.getByUUID(uuid) != null || TrainGhosts.isGhost(uuid)) {
 			remove(loc);
 			return true;
 		}
@@ -200,6 +202,24 @@ public class SpawnManager implements Listener {
 		return true;
 	}
 
+	/** Forgets any queued spawn of this vehicle. */
+	public void dequeue(String uuid) {
+		spawns.removeIf(queued -> stripJson(queued.getFile()).equalsIgnoreCase(uuid));
+	}
+
+	/** Spawns a saved vehicle from its row now, replacing any queued spawn of it. */
+	public boolean spawnNow(String uuid) {
+		dequeue(uuid);
+		VehiclePersistence persistence = VehiclePersistence.current();
+		Optional<VehicleSnapshot> row = persistence == null ? Optional.empty() : persistence.findLive(uuid);
+		if (row.isEmpty()) {
+			return false;
+		}
+		enqueueSnapshot(row.get());
+		return spawns.stream().filter(queued -> stripJson(queued.getFile()).equalsIgnoreCase(uuid)).findFirst()
+				.map(this::trySpawn).orElse(false);
+	}
+
 	static boolean isComplete(IncompleteVehicle incomplete) {
 		return incomplete != null && incomplete.getId() != null && !incomplete.getId().isBlank();
 	}
@@ -223,10 +243,7 @@ public class SpawnManager implements Listener {
 	public void entitiesUnload(EntitiesUnloadEvent e) {
 		// Entity sections can unload before the chunk itself (and before ME destroys its model).
 		for (Entity entity : e.getEntities()) {
-			ActiveVehicle vehicle = vehicleManager.get().get(entity);
-			if (vehicle != null) {
-				vehicleManager.unload(vehicle, "on entity unload");
-			}
+			unloadOrRunOnPaper(entity, "on entity unload");
 		}
 	}
 
@@ -241,7 +258,19 @@ public class SpawnManager implements Listener {
 			if (!entityInChunk(entity, c)) {
 				continue;
 			}
-			vehicleManager.unload(v, "on chunk unload");
+			unloadOrRunOnPaper(entity, "on chunk unload");
+		}
+	}
+
+	// A tape-driven train goes on paper as a whole; anything else, or a train that cannot, unloads.
+	private void unloadOrRunOnPaper(Entity entity, String context) {
+		ActiveVehicle vehicle = vehicleManager.get().get(entity);
+		if (vehicle == null) {
+			return;
+		}
+		TrainGhosts.tryConvert(vehicle, "unload");
+		if (vehicleManager.get().get(entity) == vehicle) {
+			vehicleManager.unload(vehicle, context);
 		}
 	}
 

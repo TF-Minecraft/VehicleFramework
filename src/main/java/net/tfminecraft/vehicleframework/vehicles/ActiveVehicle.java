@@ -403,6 +403,8 @@ public class ActiveVehicle {
 			getTrainHandler().getOverdrive().restore(inc.getLocomotiveOverdrive());
 			if (inc.getThrottleTape() != null) {
 				getTrainHandler().setInstalledTape(inc.getThrottleTape());
+				int[] clock = inc.getTapeClock();
+				getTrainHandler().setTapeClock(clock[0], clock[1]);
 			}
 		}
 	}

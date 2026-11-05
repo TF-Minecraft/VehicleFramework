@@ -29,6 +29,8 @@ import net.tfminecraft.vehicleframework.tracks.ThrottleTape;
 public final class VehiclePayloadCodec {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 	public static final String ACCESS_GROUPS = "accessGroups";
+	public static final String TAPE_CURSOR = "tapeCursor";
+	public static final String TAPE_TICKS = "tapeTicks";
 
 	private VehiclePayloadCodec() {
 	}
@@ -197,6 +199,9 @@ public final class VehiclePayloadCodec {
 					whitelist,
 					consist);
 			incomplete.setThrottleTape(tape);
+			if (tape != null && json.containsKey(TAPE_CURSOR)) {
+				incomplete.setTapeClock(asInt(json.get(TAPE_CURSOR)), asInt(json.get(TAPE_TICKS)));
+			}
 			if (json.get("locomotiveOverdrive") instanceof JSONObject state) {
 				incomplete.setLocomotiveOverdrive(state);
 			}
@@ -319,6 +324,7 @@ public final class VehiclePayloadCodec {
 		}
 		if (vehicle.getThrottleTape() != null && !vehicle.getThrottleTape().isEmpty()) {
 			json.put("throttleTape", vehicle.getThrottleTape().toJson());
+			putTapeClock(json, vehicle.getTapeClock());
 		}
 		if (vehicle.getLocomotiveOverdrive() != null) {
 			json.put("locomotiveOverdrive", vehicle.getLocomotiveOverdrive());
@@ -329,7 +335,16 @@ public final class VehiclePayloadCodec {
 		return GSON.toJson(treeMap);
 	}
 
-	static List<JsonObject> loadContainers(JSONObject vehicleJson) {
+	/** Saves where tape playback was, so it resumes there; nothing while it is unknown. */
+	@SuppressWarnings("unchecked")
+	public static void putTapeClock(JSONObject json, int[] clock) {
+		if (clock != null && clock.length == 2 && clock[0] >= 0) {
+			json.put(TAPE_CURSOR, (long) clock[0]);
+			json.put(TAPE_TICKS, (long) clock[1]);
+		}
+	}
+
+	public static List<JsonObject> loadContainers(JSONObject vehicleJson) {
 		List<JsonObject> containerList = new ArrayList<>();
 		if (vehicleJson == null || !(vehicleJson.get("containers") instanceof JSONObject containersSection)) {
 			return containerList;

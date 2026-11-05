@@ -78,6 +78,7 @@ import net.tfminecraft.vehicleframework.managers.spawner.VehicleSpawner;
 import net.tfminecraft.vehicleframework.ownership.OwnerNames;
 import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
 import net.tfminecraft.vehicleframework.protocol.PacketConverter;
+import net.tfminecraft.vehicleframework.tracks.TrainGhosts;
 import net.tfminecraft.vehicleframework.tracks.TrainTapeInteract;
 import net.tfminecraft.vehicleframework.tracks.TrainCollision;
 import net.tfminecraft.vehicleframework.tracks.TrainCollisionWarning;
@@ -312,6 +313,7 @@ public class VehicleManager implements Listener{
 						VFLogger.log(v.getId()+" has run into an issue");
 					}
 	            }
+				TrainGhosts.tick();
 	        }
 	    }.runTaskTimer(VehicleFramework.plugin, 0L, 20L);
 	}
@@ -330,6 +332,7 @@ public class VehicleManager implements Listener{
 				TrainCollision.tick(vehicles.values());
 				TrainCollisionWarning.tick(vehicles.values());
 				DeckRiders.tick(vehicles.values());
+				TrainGhosts.flush(VehicleManager.this);
 	            Iterator<Map.Entry<Player, ActiveVehicle>> iterator = tow.entrySet().iterator();
 	            while (iterator.hasNext()) {
 	                Map.Entry<Player, ActiveVehicle> entry = iterator.next();
