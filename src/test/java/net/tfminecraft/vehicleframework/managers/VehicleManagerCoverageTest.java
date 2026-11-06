@@ -816,27 +816,18 @@ class VehicleManagerCoverageTest {
     }
 
     @Test
-    void anOutsideHoldOpensWithAnEmptyHandForThoseAllowedAboard() throws Exception {
+    void theHoldButtonOpensAnOutsideHoldForThoseAllowedAboard() throws Exception {
         ActiveVehicle v = vehicle("v"); Player player = player("Ryan"); register(v);
+        v.getOwnerData().setOwner("player_Ryan"); manager.seatInteract(player, v);
         Container hold = mock(Container.class);
         when(v.hasContainers()).thenReturn(true); when(v.getContainerHandler().outside()).thenReturn(hold);
+        manager.seatSelect(click(player, v, VFGUI.SEAT_SELECTION, InventoryManager.HOLD_SLOT, item(Material.CHEST, null)));
+        verify(hold).open(v, player);
+        // Access gone since the menu opened, or a seat in that slot: nothing opens.
         v.getOwnerData().setOwner("player_Other");
-        manager.vehicleInteract(interact(player, v.getEntity()));
-        verify(player).sendMessage(VehicleManager.NOT_ALLOWED_HOLD); verify(hold, never()).open(any(), any());
-        map("cooldown").clear(); when(player.hasPermission(anyString())).thenReturn(true);
-        manager.vehicleInteract(interact(player, v.getEntity())); verify(hold).open(v, player);
-        map("cooldown").clear(); when(player.hasPermission(anyString())).thenReturn(false); v.getOwnerData().setOwner("player_Ryan");
-        manager.vehicleInteract(interact(player, v.getEntity())); verify(hold, times(2)).open(v, player);
-        // Something in hand, or no outside hold: the seat menu as before.
-        map("cooldown").clear(); ItemStack stick = item(Material.STICK, null); when(player.getInventory().getItemInMainHand()).thenReturn(stick);
-        manager.vehicleInteract(interact(player, v.getEntity()));
-        map("cooldown").clear(); ItemStack air = item(Material.AIR, null); when(player.getInventory().getItemInMainHand()).thenReturn(air);
-        when(v.getContainerHandler().outside()).thenReturn(null);
-        manager.vehicleInteract(interact(player, v.getEntity()));
-        map("cooldown").clear(); when(v.hasContainers()).thenReturn(false);
-        manager.vehicleInteract(interact(player, v.getEntity()));
-        verify(hold, times(2)).open(v, player);
-        verify(inventories.constructed().getFirst(), times(3)).seatSelection(null, player, v, true);
+        manager.seatSelect(click(player, v, VFGUI.SEAT_SELECTION, InventoryManager.HOLD_SLOT, item(Material.CHEST, null)));
+        manager.seatSelect(click(player, v, VFGUI.SEAT_SELECTION, InventoryManager.HOLD_SLOT, item(Material.GREEN_CONCRETE, null)));
+        verify(hold, times(1)).open(any(), any());
     }
 
     @ParameterizedTest

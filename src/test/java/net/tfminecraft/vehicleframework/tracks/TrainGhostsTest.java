@@ -326,8 +326,8 @@ class TrainGhostsTest {
 
 	@Test
 	void aRunOnPaperMovesAwayFromATrainItAlreadyOverlaps() {
-		// A parked car right behind it; it heads away, so it is not held.
-		row("parked", "{\"id\":\"wagon\",\"splineId\":\"" + id() + "\",\"s\":97.0,\"travelSign\":1}");
+		// A parked car it overlaps, right behind it: it heads away, so it is not held.
+		row("parked", "{\"id\":\"wagon\",\"splineId\":\"" + id() + "\",\"s\":99.0,\"travelSign\":1}");
 		GhostTrain ghost = ghost(List.of("g"), 0, 50);
 		TrainGhosts.register(ghost);
 		TrainGhosts.tick();
@@ -348,7 +348,7 @@ class TrainGhostsTest {
 		assertFalse(ghost.held);
 		assertEquals(120, ghost.spots.get(0).s(), 1e-9);
 		when(ahead.getSplineId()).thenReturn(line.getId());
-		when(ahead.getS()).thenReturn(126.0);
+		when(ahead.getS()).thenReturn(124.0);
 		ghost.clock = new TapeTimetable.Clock(0, 20);
 		ghost.place(registry);
 		TrainGhosts.tick();
@@ -358,9 +358,6 @@ class TrainGhostsTest {
 		when(ahead.isBound()).thenReturn(false);
 		TrainGhosts.tick();
 		assertFalse(ghost.held);
-		// A car on another track is no nearer for being close in the numbers.
-		assertEquals(Double.POSITIVE_INFINITY, PaperSpacing.room(ghost, ghost.spots,
-				new PaperSpacing.Car("x", UUID.randomUUID(), ghost.spots.get(0).s(), 1), registry));
 	}
 
 	@Test

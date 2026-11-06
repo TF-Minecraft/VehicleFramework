@@ -114,6 +114,25 @@ class InventoryManagerCoverageTest {
         assertEquals(VFGUI.SEAT_SELECTION, ((VFInventoryHolder) inventory.getHolder()).getType());
     }
 
+    @Test void anOutsideHoldGetsAButtonForThoseAllowedAboardOnly() {
+        when(seats.getSeats()).thenReturn(List.of());
+        when(vehicle.hasContainers()).thenReturn(true); ContainerHandler containers = mock(ContainerHandler.class);
+        when(vehicle.getContainerHandler()).thenReturn(containers); Container hold = mock(Container.class);
+        when(hold.getName()).thenReturn("§eFlat Car Hold"); when(containers.outside()).thenReturn(hold);
+        manager.seatSelection(null, player, vehicle, true); Inventory inventory = created.get(0);
+        assertEquals(Material.CHEST, inventory.getItem(InventoryManager.HOLD_SLOT).getType());
+        assertEquals("§eFlat Car Hold", inventory.getItem(InventoryManager.HOLD_SLOT).getItemMeta().getDisplayName());
+        assertSame(hold, InventoryManager.outsideHold(player, vehicle));
+        when(owner.getOwner()).thenReturn("player_SomeoneElse");
+        assertNull(InventoryManager.outsideHold(player, vehicle));
+        manager.seatSelection(inventory, player, vehicle, false);
+        assertEquals(Material.GRAY_STAINED_GLASS_PANE, inventory.getItem(InventoryManager.HOLD_SLOT).getType());
+        when(player.hasPermission(anyString())).thenReturn(true);
+        assertSame(hold, InventoryManager.outsideHold(player, vehicle));
+        when(vehicle.hasContainers()).thenReturn(false);
+        assertNull(InventoryManager.outsideHold(player, vehicle));
+    }
+
     @Test void nonOwnerGetsNoOwnershipButtonAndRefreshDoesNotReopen() {
         when(owner.getOwner()).thenReturn("player_SomeoneElse"); Inventory inventory = inventory(27, null);
         manager.seatSelection(inventory, player, vehicle, false);

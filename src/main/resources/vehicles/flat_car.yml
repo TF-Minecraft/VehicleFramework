@@ -41,8 +41,8 @@ flat_car:
                     - backward
     # No seats: riders stand on the deck.
     seats: []
-    # Cargo on the deck: right-click the car with an empty hand to open it (no seat needed).
-    # Cargo docks load and unload it at a tape's stops.
+    # Cargo on the deck, opened from the car's menu (right-click it) by those allowed aboard;
+    # no seat needed. Cargo docks load and unload it at a tape's stops.
     containers:
         hold:
             seat: outside
