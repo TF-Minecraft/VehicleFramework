@@ -125,6 +125,12 @@ class InventoryManagerCoverageTest {
         assertSame(hold, InventoryManager.outsideHold(player, vehicle));
         when(owner.getOwner()).thenReturn("player_SomeoneElse");
         assertNull(InventoryManager.outsideHold(player, vehicle));
+        // On the whitelist: only while the owner has it switched on.
+        when(owner.getWhiteList()).thenReturn(new ArrayList<>(List.of("player_Alex")));
+        assertNull(InventoryManager.outsideHold(player, vehicle));
+        when(owner.isWhiteListed()).thenReturn(true);
+        assertSame(hold, InventoryManager.outsideHold(player, vehicle));
+        when(owner.isWhiteListed()).thenReturn(false);
         manager.seatSelection(inventory, player, vehicle, false);
         assertEquals(Material.GRAY_STAINED_GLASS_PANE, inventory.getItem(InventoryManager.HOLD_SLOT).getType());
         // Staff are not let in by their permission alone (as for seats).

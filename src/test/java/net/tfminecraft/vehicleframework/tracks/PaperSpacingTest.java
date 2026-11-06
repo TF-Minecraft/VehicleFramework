@@ -69,6 +69,11 @@ class PaperSpacingTest {
 				spacing.apart(spot(branch, 5), new PaperSpacing.Car("o", other.getId(), 5, 2, 0)));
 		GhostTrain ghost = run("g", stem, 50);
 		assertEquals(15 - 3 - 2, spacing.room(ghost, ghost.spots, onBranch), 1e-9);
+		// From the branch, a car parked on the stem past the frog: 2 + 3 apart is touching.
+		TrackedCar onTheStem = new TrackedCar("stem", stem.getId().toString(), 63, null, "world", 0, 0, 0);
+		GhostTrain back = run("b", branch, 10);
+		PaperSpacing parked = PaperSpacing.now(registry, List.of(), List.of(onTheStem), List.of(back));
+		assertEquals("stem", parked.blocker(back, back.spots, List.of(spot(branch, 2)), List.of(back)));
 	}
 
 	@Test
@@ -102,6 +107,52 @@ class PaperSpacingTest {
 		spacing.stood(ahead);
 		assertNull(spacing.blocker(ghost, ghost.spots, List.of(spot(stem, clear + 1)), List.of(ghost)));
 		assertEquals("ahead", spacing.blocker(ghost, ghost.spots, List.of(spot(stem, 36)), List.of(ghost)));
+	}
+
+	@Test
+	void onALoopCarsAcrossTheSeamAndStalePlacesPastTheEndAreSeen() {
+		TrackStore store = new TrackStore(directory.toFile());
+		TrackSpline loop = TrackSpline.fromPoints(UUID.randomUUID(), "world", true, List.of(new double[] {0, 64, 0},
+				new double[] {100, 64, 0}, new double[] {100, 64, 100}, new double[] {0, 64, 100}));
+		store.save(loop);
+		registry.loadFromDisk();
+		double length = registry.get(loop.getId()).orElseThrow().length();
+		TrackSpline track = registry.get(loop.getId()).orElseThrow();
+		// Parked just before the seam; another saved past the end (the loop was shortened), and one before 0.
+		TrackedCar beforeSeam = new TrackedCar("seam", loop.getId().toString(), length - 2, null, "world", 0, 0, 0);
+		TrackedCar pastEnd = new TrackedCar("stale", loop.getId().toString(), length + 30, null, "world", 0, 0, 0);
+		TrackedCar belowZero = new TrackedCar("under", loop.getId().toString(), -60, null, "world", 0, 0, 0);
+		GhostTrain ghost = run("g", track, 15);
+		PaperSpacing spacing = PaperSpacing.now(registry, List.of(), List.of(beforeSeam, pastEnd, belowZero),
+				List.of(ghost));
+		assertEquals("seam", spacing.blocker(ghost, ghost.spots, List.of(spot(track, 5)), List.of(ghost)));
+		ghost.spots = List.of(spot(track, 40));
+		assertEquals("stale", spacing.blocker(ghost, ghost.spots, List.of(spot(track, 32)), List.of(ghost)));
+		ghost.spots = List.of(spot(track, length - 80));
+		assertEquals("under", spacing.blocker(ghost, ghost.spots, List.of(spot(track, length - 66)), List.of(ghost)));
+		// Near the end of the loop, the window carries on from the start.
+		List<PaperSpacing.Window> wrapped = spacing.windows(ghost, List.of(spot(track, length - 2)));
+		assertEquals(2, wrapped.size());
+		assertEquals(0, wrapped.get(1).lo(), 1e-9);
+		// A whole short loop is one window.
+		GhostTrain wide = new GhostTrain("world", List.of("w"), List.of("a"), new double[] {0}, new double[] {length},
+				null, new TapeTimetable.Clock(0, 0), Map.of(), 1, false, 0, false, 0, null, 0, 0);
+		assertEquals(1, spacing.windows(wide, List.of(spot(track, 5))).size());
+	}
+
+	@Test
+	void aSwitchAtTheBranchEndIsReachedFromTheEndOfTheBranch() {
+		TrackStore store = new TrackStore(directory.toFile());
+		TrackSpline rejoin = line(store, 70);
+		store.saveJunction("world", new TrackJunction(UUID.randomUUID(), stem.getId(), 30, 1, TrackJunction.Side.LEFT,
+				rejoin.getId(), true, 3, true));
+		registry.loadFromDisk();
+		TrackedCar nearFrog = new TrackedCar("end", rejoin.getId().toString(), 95, null, "world", 0, 0, 0);
+		GhostTrain ghost = run("g", stem, 10);
+		PaperSpacing spacing = PaperSpacing.now(registry, List.of(), List.of(nearFrog), List.of(ghost));
+		// Through the frog: (30 - s) on the stem plus (100 - 95) on the branch; they touch under 3 + 5.
+		assertNull(spacing.blocker(ghost, ghost.spots, List.of(spot(stem, 27)), List.of(ghost)));
+		assertEquals("end", spacing.blocker(ghost, ghost.spots, List.of(spot(stem, 28)), List.of(ghost)));
 	}
 
 	@Test

@@ -33,11 +33,22 @@ final class PaperSpacing {
 	record Car(String train, UUID track, double s, double reach, double gap) {
 	}
 
+	/** A stretch of one track, from {@code lo} to {@code hi} along it. */
+	record Window(UUID track, double lo, double hi) {
+		boolean holds(UUID on, double s) {
+			return track.equals(on) && s >= lo && s <= hi;
+		}
+	}
+
 	private static final double EPSILON = 1e-6;
 
 	private final TrackRegistry registry;
 	// Loaded and parked cars, by track; runs on paper are read as they move.
 	private final Map<UUID, List<Car>> fixed = new HashMap<>();
+	// The same, ordered along each track, made when first needed.
+	private final Map<UUID, Car[]> ordered = new HashMap<>();
+	// The longest reach of any car checked, so only those near enough to touch are looked at.
+	private double widest;
 	// The switches on each track, as stem or as branch.
 	private final Map<UUID, List<TrackJunction>> switches = new HashMap<>();
 
@@ -59,6 +70,9 @@ final class PaperSpacing {
 		for (GhostTrain run : runs) {
 			for (String car : run.cars) {
 				skip.add(car.toLowerCase(Locale.ROOT));
+			}
+			for (double reach : run.reaches) {
+				spacing.widest = Math.max(spacing.widest, reach);
 			}
 		}
 		for (ActiveVehicle vehicle : loaded) {
@@ -97,7 +111,15 @@ final class PaperSpacing {
 	}
 
 	private void add(Car car) {
+		// A saved place past the end of a loop (the track was shortened since) is that far round it.
+		TrackSpline spline = registry.get(car.track()).orElse(null);
+		if (spline != null && spline.isLoop() && spline.length() > 0 && (car.s() < 0 || car.s() > spline.length())) {
+			double length = spline.length();
+			car = new Car(car.train(), car.track(), ((car.s() % length) + length) % length, car.reach(), car.gap());
+		}
 		fixed.computeIfAbsent(car.track(), track -> new ArrayList<>()).add(car);
+		ordered.remove(car.track());
+		widest = Math.max(widest, car.reach());
 	}
 
 	/**
@@ -106,17 +128,13 @@ final class PaperSpacing {
 	 */
 	String blocker(GhostTrain ghost, List<GhostTrain.Spot> before, List<GhostTrain.Spot> after,
 			Collection<GhostTrain> runs) {
-		Set<UUID> tracks = new HashSet<>();
-		for (GhostTrain.Spot spot : after) {
-			tracks.add(spot.splineId());
-			for (TrackJunction junction : switches.getOrDefault(spot.splineId(), List.of())) {
-				tracks.add(junction.stemSplineId);
-				tracks.add(junction.branchSplineId);
+		List<Window> windows = windows(ghost, after);
+		for (Window window : windows) {
+			for (Car car : within(window)) {
+				if (blocks(ghost, before, after, car)) {
+					return car.train();
+				}
 			}
-		}
-		List<Car> near = new ArrayList<>();
-		for (UUID track : tracks) {
-			near.addAll(fixed.getOrDefault(track, List.of()));
 		}
 		for (GhostTrain run : runs) {
 			if (run == ghost) {
@@ -124,18 +142,105 @@ final class PaperSpacing {
 			}
 			for (int i = 0; i < run.spots.size() && i < run.reaches.length; i++) {
 				GhostTrain.Spot spot = run.spots.get(i);
-				if (tracks.contains(spot.splineId())) {
-					near.add(new Car(run.loco(), spot.splineId(), spot.s(), run.reaches[i], Cache.trainGhostGap));
+				if (inside(windows, spot.splineId(), spot.s())) {
+					Car car = new Car(run.loco(), spot.splineId(), spot.s(), run.reaches[i], Cache.trainGhostGap);
+					if (blocks(ghost, before, after, car)) {
+						return car.train();
+					}
 				}
 			}
 		}
-		for (Car car : near) {
-			double now = room(ghost, after, car);
-			if (now < 0 && now < room(ghost, before, car) - EPSILON) {
-				return car.train();
+		return null;
+	}
+
+	private boolean blocks(GhostTrain ghost, List<GhostTrain.Spot> before, List<GhostTrain.Spot> after, Car car) {
+		double now = room(ghost, after, car);
+		return now < 0 && now < room(ghost, before, car) - EPSILON;
+	}
+
+	private static boolean inside(List<Window> windows, UUID track, double s) {
+		for (Window window : windows) {
+			if (window.holds(track, s)) {
+				return true;
 			}
 		}
-		return null;
+		return false;
+	}
+
+	/**
+	 * The stretches of track where a car could be close enough to touch one of the ghost's cars:
+	 * around each car on its own track, and past a switch near it on the track beyond.
+	 */
+	List<Window> windows(GhostTrain ghost, List<GhostTrain.Spot> spots) {
+		double own = 0;
+		for (double reach : ghost.reaches) {
+			own = Math.max(own, reach);
+		}
+		double range = own + widest + Math.max(0, Cache.trainGhostGap) + 1;
+		List<Window> out = new ArrayList<>();
+		for (GhostTrain.Spot spot : spots) {
+			span(out, spot.splineId(), spot.s(), range);
+			for (TrackJunction junction : switches.getOrDefault(spot.splineId(), List.of())) {
+				boolean onStem = spot.splineId().equals(junction.stemSplineId);
+				UUID beyond = onStem ? junction.branchSplineId : junction.stemSplineId;
+				double left = range - toFrog(junction, spot.splineId(), spot.s());
+				if (left >= 0 && !beyond.equals(spot.splineId())) {
+					span(out, beyond, frogAt(junction, beyond), left);
+				}
+			}
+		}
+		return out;
+	}
+
+	// The frog's place along this track of the switch.
+	private double frogAt(TrackJunction junction, UUID track) {
+		if (track.equals(junction.stemSplineId)) {
+			return junction.s;
+		}
+		TrackSpline spline = registry.get(track).orElse(null);
+		return junction.branchFrogS(spline == null ? 0 : spline.length());
+	}
+
+	// From s - range to s + range along the track; on a loop, split where it wraps.
+	private void span(List<Window> out, UUID track, double s, double range) {
+		TrackSpline spline = registry.get(track).orElse(null);
+		double length = spline == null ? 0 : spline.length();
+		double lo = s - range, hi = s + range;
+		if (spline == null || !spline.isLoop() || (lo >= 0 && hi <= length)) {
+			out.add(new Window(track, lo, hi));
+		} else if (2 * range >= length) {
+			out.add(new Window(track, 0, length));
+		} else if (lo < 0) {
+			out.add(new Window(track, 0, hi));
+			out.add(new Window(track, lo + length, length));
+		} else {
+			out.add(new Window(track, lo, length));
+			out.add(new Window(track, 0, hi - length));
+		}
+	}
+
+	// The loaded and parked cars in a window, found by halving along the ordered track.
+	private List<Car> within(Window window) {
+		List<Car> cars = fixed.get(window.track());
+		if (cars == null) {
+			return List.of();
+		}
+		Car[] sorted = ordered.computeIfAbsent(window.track(), track -> cars.stream()
+				.sorted(java.util.Comparator.comparingDouble(Car::s)).toArray(Car[]::new));
+		int low = 0, high = sorted.length;
+		while (low < high) {
+			int mid = (low + high) >>> 1;
+			if (sorted[mid].s() < window.lo()) {
+				low = mid + 1;
+			} else {
+				high = mid;
+			}
+		}
+		List<Car> out = new ArrayList<>();
+		for (int i = low; i < sorted.length && sorted[i].s() <= window.hi(); i++) {
+			out.add(sorted[i]);
+		}
+		return out;
 	}
 
 	// The least room between the ghost's cars and this car beyond the gap; negative is too close.
