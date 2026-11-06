@@ -179,5 +179,11 @@ class PaperSpacingTest {
 				List.of(row), List.of(ghost));
 		assertNull(spacing.blocker(ghost, ghost.spots, List.of(spot(stem, 30)), List.of(ghost)));
 		assertEquals("loaded", spacing.blocker(ghost, ghost.spots, List.of(spot(stem, 35)), List.of(ghost)));
+		// A long loaded train reaches far: it is looked for that far away, not only within the gap.
+		when(handler.getS()).thenReturn(70.0);
+		when(handler.trackReach()).thenReturn(30.0);
+		PaperSpacing far = PaperSpacing.now(registry, List.of(loaded), List.of(), List.of(ghost));
+		assertNull(far.blocker(ghost, ghost.spots, List.of(spot(stem, 37)), List.of(ghost)));
+		assertEquals("loaded", far.blocker(ghost, ghost.spots, List.of(spot(stem, 38)), List.of(ghost)));
 	}
 }

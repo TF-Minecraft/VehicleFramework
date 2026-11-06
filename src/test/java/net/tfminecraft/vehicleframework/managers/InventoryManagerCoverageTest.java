@@ -131,6 +131,15 @@ class InventoryManagerCoverageTest {
         when(owner.isWhiteListed()).thenReturn(true);
         assertSame(hold, InventoryManager.outsideHold(player, vehicle));
         when(owner.isWhiteListed()).thenReturn(false);
+        // The vehicle's faction gets in whatever the switch; a switched group only while it is on.
+        when(owner.getWhiteList()).thenReturn(new ArrayList<>());
+        try (MockedStatic<net.tfminecraft.vehicleframework.ownership.GroupAccess> groups =
+                mockStatic(net.tfminecraft.vehicleframework.ownership.GroupAccess.class)) {
+            groups.when(() -> net.tfminecraft.vehicleframework.ownership.GroupAccess.admits(any(), any())).thenReturn(true);
+            assertNull(InventoryManager.outsideHold(player, vehicle));
+            groups.when(() -> net.tfminecraft.vehicleframework.ownership.GroupAccess.admitsAlways(any(), any())).thenReturn(true);
+            assertSame(hold, InventoryManager.outsideHold(player, vehicle));
+        }
         manager.seatSelection(inventory, player, vehicle, false);
         assertEquals(Material.GRAY_STAINED_GLASS_PANE, inventory.getItem(InventoryManager.HOLD_SLOT).getType());
         // Staff are not let in by their permission alone (as for seats).
