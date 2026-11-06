@@ -640,6 +640,29 @@ class TrainGhostsTest {
 	}
 
 	@Test
+	void aRunEndedByATrackEditIsSavedWhereItLastWasNotAgainstTheRebuiltTrack() throws Exception {
+		row("a", "{\"id\":\"wagon\"}");
+		row("b", "{\"id\":\"wagon\"}");
+		GhostTrain placed = ghost(List.of("a"), 0, 50);
+		placed.place(registry);
+		assertEquals(100, placed.spots.get(0).pose().z, 1e-6);
+		// Never placed: its car keeps the place already in its row.
+		GhostTrain unplaced = ghost(List.of("b"), 0, 50);
+		TrainGhosts.register(placed);
+		TrainGhosts.register(unplaced);
+		// The track is cut back at its start under the same id: s 100 is now 50 blocks further on.
+		TrackSpline cut = TrackSpline.fromPoints(line.getId(), "world", false,
+				List.of(new double[] {0, 64, 50}, new double[] {0, 64, 400}));
+		store.save(cut);
+		registry.loadFromDisk();
+		TrainGhosts.trackEdited(line.getId());
+		assertFalse(TrainGhosts.running(placed));
+		assertEquals(100, repository.findLive("a").orElseThrow().getZ(), 1e-6);
+		assertEquals(0, repository.findLive("b").orElseThrow().getZ(), 1e-6);
+		assertFalse(payload("a").containsKey(TrainGhosts.KEY));
+	}
+
+	@Test
 	void aTrainWithAStorageWindowOpenStaysLoaded() {
 		Live live = live(false);
 		when(live.car.hasContainers()).thenReturn(true);

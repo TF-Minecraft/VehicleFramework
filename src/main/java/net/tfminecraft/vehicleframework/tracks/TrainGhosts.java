@@ -315,7 +315,14 @@ public final class TrainGhosts {
 	// Stop running on paper (a track gone or edited, or no fuel). The cars stay where they were
 	// last saved and check their track when they load, as any saved train does.
 	static void end(GhostTrain ghost, String why) {
-		if (!save(ghost, true)) {
+		end(ghost, why, true);
+	}
+
+	// placeAgain false: keep the places the cars last had. After a track edit the tape's
+	// positions may no longer mean the same place on the rebuilt track, and the cars find
+	// their track again from where they stood when they load.
+	static void end(GhostTrain ghost, String why, boolean placeAgain) {
+		if (!save(ghost, true, placeAgain)) {
 			return;
 		}
 		unregister(ghost);
@@ -478,11 +485,16 @@ public final class TrainGhosts {
 	 * to spawn. False if nothing could be written; a locomotive row that is gone ends the run.
 	 */
 	static boolean save(GhostTrain ghost, boolean end) {
+		return save(ghost, end, true);
+	}
+
+	// A run never placed has no last places: its cars' rows keep theirs.
+	static boolean save(GhostTrain ghost, boolean end, boolean placeAgain) {
 		VehicleRepository repository = VehicleFramework.getVehicleRepository();
 		if (repository == null) {
 			return false;
 		}
-		List<GhostTrain.Spot> spots = spots(ghost, VehicleFramework.getTrackRegistry());
+		List<GhostTrain.Spot> spots = placeAgain ? spots(ghost, VehicleFramework.getTrackRegistry()) : ghost.spots;
 		boolean[] lost = {false};
 		int consumed = ghost.consumed;
 		try {
@@ -569,7 +581,7 @@ public final class TrainGhosts {
 				onTape = id.equalsIgnoreCase(ghost.tape.sample(i).resolvedSpline(ghost.tape.getSplineId()));
 			}
 			if (onTape || uses(ghost, splineId)) {
-				end(ghost, "track edited");
+				end(ghost, "track edited", false);
 			}
 		}
 	}
