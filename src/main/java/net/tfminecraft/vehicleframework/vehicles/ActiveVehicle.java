@@ -504,6 +504,7 @@ public class ActiveVehicle {
 		destroyed = true;
 		pendingDeathCause = type;
 		dismountAll();
+		closeStorage();
 		switch(type) {
 		case CRASH:
 			deathHandler.crash();
@@ -540,6 +541,7 @@ public class ActiveVehicle {
 		pendingDeathCause = null;
 		try {
 			seatHandler.dismountAll();
+			closeStorage();
 			VehicleRemovePayload resolved = payload != null
 				? payload
 				: VehicleRemovePayload.remove(VehicleRemoveReason.GENERIC);
@@ -887,6 +889,11 @@ public class ActiveVehicle {
 		}
 		return result;
 	}
+	/** Closes the storage windows anyone has open on this vehicle, seated or not. */
+	public void closeStorage() {
+		if(hasContainers()) containerHandler.closeViewers();
+	}
+
 	public void dismountAll() {
 		seatHandler.dismountAll();
 		for(Seat s : panel.getSeats()) {

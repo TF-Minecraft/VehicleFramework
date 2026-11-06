@@ -10,6 +10,7 @@ import java.util.regex.Pattern;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -553,6 +554,21 @@ public class Container {
             VFLogger.creatorLog("Bone " + i + " (" + bones.get(i).getBoneId() + "): " + (visible ? "VISIBLE" : "HIDDEN"));
         }
         */
+    }
+
+    /**
+     * Closes every window open on this storage, keeping what is in it. Called before the
+     * vehicle is saved, destroyed or removed, so nothing can be taken out of a window onto
+     * items that were already saved or dropped.
+     */
+    public void closeViewers() {
+        if (live == null) {
+            return;
+        }
+        for (HumanEntity viewer : new ArrayList<>(live.getViewers())) {
+            viewer.closeInventory();
+        }
+        pullLive();
     }
 
     public void destroy(Location loc) {

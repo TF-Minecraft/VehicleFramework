@@ -253,6 +253,9 @@ public final class TrainGhosts {
 		for (GhostTrain ghost : new ArrayList<>(ghosts.values())) {
 			try {
 				tickOne(ghost, registry, spacing);
+				if (!running(ghost)) {
+					spacing.stood(ghost);
+				}
 			} catch (RuntimeException e) {
 				VFLogger.log("Train " + ghost.loco() + " running unloaded failed a step: " + e);
 			}
@@ -283,7 +286,7 @@ public final class TrainGhosts {
 		GhostTrain.State before = ghost.state();
 		List<Integer> stops = ghost.run(TICKS, registry);
 		List<GhostTrain.Spot> after = ghost.place(registry);
-		String ahead = after == null ? null : spacing.blocker(ghost, before.spots(), after, ghosts.values(), registry);
+		String ahead = after == null ? null : spacing.blocker(ghost, before.spots(), after, ghosts.values());
 		if (ahead != null) {
 			// Too close to the train ahead: take the step back and wait, burning nothing.
 			ghost.restore(before);

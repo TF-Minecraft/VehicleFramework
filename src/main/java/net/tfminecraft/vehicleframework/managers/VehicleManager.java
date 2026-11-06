@@ -77,7 +77,6 @@ import net.tfminecraft.vehicleframework.managers.inventory.VFInventoryHolder;
 import net.tfminecraft.vehicleframework.managers.spawner.VehicleSpawner;
 import net.tfminecraft.vehicleframework.ownership.OwnerNames;
 import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
-import net.tfminecraft.vehicleframework.permissions.Permissions;
 import net.tfminecraft.vehicleframework.protocol.PacketConverter;
 import net.tfminecraft.vehicleframework.tracks.TrainGhosts;
 import net.tfminecraft.vehicleframework.tracks.TrainTapeInteract;
@@ -108,7 +107,6 @@ public class VehicleManager implements Listener{
 	public static final String TICKET_NEEDED = "§cYou need a ticket for this vehicle.";
 	public static final String TICKET_PASSENGER_ONLY = "§cA ticket only lets you ride in a passenger seat.";
 	public static final String NOT_ALLOWED_ABOARD = "§cThe owner has not allowed you aboard this vehicle.";
-	public static final String NOT_ALLOWED_HOLD = "§cThe owner has not allowed you into this vehicle's hold.";
 	// Checkpoints run every 5 minutes; the SQLite backup copy runs on every 6th.
 	static final int BACKUP_EVERY_CHECKPOINTS = 6;
 	private int checkpoints;
@@ -719,24 +717,7 @@ public class VehicleManager implements Listener{
 			ownership.startRename(p, v);
 			return;
 		}
-		if (openOutsideHold(p, v)) {
-			return;
-		}
 		seatInteract(p, v);
-	}
-
-	// A hold opened from outside (seat: outside), with an empty hand, for those allowed aboard.
-	private boolean openOutsideHold(Player p, ActiveVehicle v) {
-		Container hold = v.hasContainers() ? v.getContainerHandler().outside() : null;
-		if (hold == null || !p.getInventory().getItemInMainHand().getType().isAir()) {
-			return false;
-		}
-		if (!OwnershipAccess.admits(v, OwnershipAccess.key(p)) && !Permissions.isAdmin(p)) {
-			p.sendMessage(NOT_ALLOWED_HOLD);
-			return true;
-		}
-		hold.open(v, p);
-		return true;
 	}
 	@EventHandler
 	public void playerLeave(PlayerQuitEvent e) {
@@ -1124,6 +1105,11 @@ public class VehicleManager implements Listener{
 			v.dismountPassenger(p, false);
 			return;
 		}
+		if(e.getSlot() == InventoryManager.HOLD_SLOT && i.getType().equals(Material.CHEST)) {
+			Container hold = InventoryManager.outsideHold(p, v);
+			if(hold != null) hold.open(v, p);
+			return;
+		}
 		NamespacedKey key = new NamespacedKey(VehicleFramework.plugin, "vf_seat_id");
 		String id = i.getItemMeta().getPersistentDataContainer().get(key, PersistentDataType.STRING);
 		if(id == null) return;
@@ -1377,6 +1363,8 @@ public class VehicleManager implements Listener{
 			return false;
 		}
 		String when = context == null || context.isBlank() ? "during unload" : context;
+		// Nobody may take items out of a window after the car is saved.
+		v.closeStorage();
 		PersistenceLog.unload(v, v.isDestroyed() ? "destroyed" : "unload");
 		if (v.isDestroyed()) {
 			if (!persistDestroy(v)) {

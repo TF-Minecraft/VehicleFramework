@@ -511,6 +511,20 @@ class VehicleComponentsCoverageTest {
         assertEquals("hold", new ContainerHandler(deck).outside().getId());
     }
 
+    @Test void closingViewersClosesEveryOpenWindowAndKeepsWhatIsInIt() {
+        EngineFixture f = engine(false); YamlConfiguration config = new YamlConfiguration();
+        config.set("cargo.name", "Cargo"); config.set("cargo.size", 9); config.set("cargo.seat", "passenger");
+        ContainerHandler handler = new ContainerHandler(f.vehicle, f.model, new ContainerHandler(config));
+        handler.closeViewers();
+        Inventory live = inventory(9); bukkit.when(() -> Bukkit.createInventory(any(InventoryHolder.class), eq(9), eq("Cargo"))).thenReturn(live);
+        Player viewer = mock(Player.class); handler.get("cargo").open(f.vehicle, viewer);
+        when(live.getViewers()).thenReturn(new ArrayList<>(List.of(viewer)));
+        ItemStack coal = stack("coal", 4); live.setItem(1, coal);
+        handler.closeViewers();
+        verify(viewer).closeInventory();
+        assertEquals(4, handler.get("cargo").contents()[1].getAmount());
+    }
+
     @Test void harnessUsesHorseSpeedAndRefusesMoreMountsThanConfiguredSeats() {
         EngineFixture f = engine(false); Harness harness = harness(f, "base", "align");
         assertFalse(harness.hasMounts()); assertTrue(harness.getMountedEntities().isEmpty());

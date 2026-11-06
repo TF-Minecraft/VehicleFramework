@@ -69,6 +69,11 @@ public class ContainerHandler {
         return true;
     }
 
+    /** Closes every window open on this vehicle's storage. */
+    public void closeViewers() {
+        for(Container c : containers.values()) c.closeViewers();
+    }
+
     public void destroy(Location loc) {
         for(Container c : containers.values()) c.destroy(loc);
     }
