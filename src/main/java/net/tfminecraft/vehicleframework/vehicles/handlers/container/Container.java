@@ -44,6 +44,8 @@ public class Container {
     private List<ItemStack> items = new ArrayList<>();
     private List<String> allowItems = new ArrayList<>();
     private Inventory live;
+    // Who puts items in and takes them out, for the storage log.
+    private final StorageAudit audit = new StorageAudit();
     // Saved entries that did not load; written back unchanged on the next save.
     private List<JsonArray> unreadEntries = new ArrayList<>();
 
@@ -117,6 +119,10 @@ public class Container {
         return allowItems;
     }
 
+    public StorageAudit getAudit() {
+        return audit;
+    }
+
     public boolean allows(ItemStack item) {
         return decideAllow(allowItems.isEmpty(), isEmpty(item), matchesAllowList(item));
     }
@@ -172,6 +178,7 @@ public class Container {
             } else {
                 items.set(i, remain);
             }
+            audit.takenByPlugin(one, 1);
             pullLive();
             updateBoneVisibility();
             return one;
@@ -301,6 +308,7 @@ public class Container {
 
         if (!json.has("items")) {
             pushLive();
+            audit.recount(live);
             updateBoneVisibility();
             return;
         }
@@ -322,6 +330,7 @@ public class Container {
             items.set(target, stack);
         }
         pushLive();
+        audit.recount(live);
         updateBoneVisibility();
     }
 

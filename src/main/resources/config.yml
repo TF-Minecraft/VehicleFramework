@@ -133,6 +133,9 @@ terrain-follow-debug: false
 ground-engine-logging: false
 ## Append vehicle save, spawn, unload, and mount events to plugins/VehicleFramework/logs/persistence.log
 persistence-logging: false
+## Log every item players put into or take out of vehicle storage to plugins/VehicleFramework/logs/storage.log,
+## and with CoreProtect to its chat log as "[VF storage] ..." (/co lookup u:<player> a:chat)
+storage-logging: true
 ## When true, ground_engine.log is deleted on every plugin start/reload.
 wipe-log: true
 

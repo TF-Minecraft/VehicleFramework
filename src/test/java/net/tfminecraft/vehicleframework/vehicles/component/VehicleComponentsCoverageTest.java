@@ -428,7 +428,10 @@ class VehicleComponentsCoverageTest {
         container.open(f.vehicle, first); container.open(f.vehicle, second);
         verify(first).openInventory(live); verify(second).openInventory(live);
         assertSame(coal, live.getItem(0)); assertNull(live.getItem(1));
+        container.getAudit().watch(live);
         ItemStack one = container.takeOneMatching("coal"); assertEquals(1, one.getAmount());
+        // The fuel the plugin drew is not a player's doing.
+        assertTrue(container.getAudit().count(live).isEmpty());
         assertEquals(1, live.getItem(0).getAmount()); assertEquals(1, container.getItems().get(0).getAmount());
         container.close(live); assertNotSame(live.getItem(0), container.getItems().get(0));
         Inventory external = inventory(9); ItemStack iron = stack("iron", 4); external.setItem(3, iron);
@@ -676,7 +679,9 @@ class VehicleComponentsCoverageTest {
         when(material.isAir()).thenReturn(path.equals("air")); when(item.getType()).thenReturn(material);
         int[] count = {amount}; when(item.getAmount()).thenAnswer(call -> count[0]);
         doAnswer(call -> { count[0] = call.getArgument(0); return null; }).when(item).setAmount(anyInt());
-        when(item.clone()).thenAnswer(call -> stack(path, count[0])); itemPaths.put(item, path); return item;
+        when(item.clone()).thenAnswer(call -> stack(path, count[0])); itemPaths.put(item, path);
+        when(item.isEmpty()).thenReturn(path.equals("air")); when(item.asOne()).thenAnswer(call -> stack(path, 1));
+        when(item.isSimilar(any())).thenAnswer(call -> path.equals(itemPaths.get(call.<ItemStack>getArgument(0)))); return item;
     }
     private Inventory inventory(int size) {
         Inventory inventory = mock(Inventory.class); ItemStack[] contents = new ItemStack[size];
