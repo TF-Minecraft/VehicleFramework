@@ -652,6 +652,12 @@ class TrainGhostsTest {
 		assertTrue(TrainGhosts.eligible(live.loco));
 		when(handler.getContainers()).thenReturn(new HashMap<>(Map.of("a", closed, "b", open)));
 		assertFalse(TrainGhosts.eligible(live.loco));
+		// An outside hold left open does not hold it back: saving the car closes that window.
+		Container hold = mock(Container.class);
+		when(hold.hasViewers()).thenReturn(true);
+		when(hold.getSeat()).thenReturn(Container.OUTSIDE);
+		when(handler.getContainers()).thenReturn(new HashMap<>(Map.of("a", closed, "h", hold)));
+		assertTrue(TrainGhosts.eligible(live.loco));
 	}
 
 	@Test

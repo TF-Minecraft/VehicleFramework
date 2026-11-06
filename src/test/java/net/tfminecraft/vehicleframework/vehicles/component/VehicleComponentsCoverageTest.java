@@ -522,7 +522,8 @@ class VehicleComponentsCoverageTest {
         ItemStack coal = stack("coal", 4); live.setItem(1, coal);
         handler.closeViewers();
         verify(viewer).closeInventory();
-        assertEquals(4, handler.get("cargo").contents()[1].getAmount());
+        // Pulled from the window into the saved items, not only readable through it.
+        assertEquals(4, handler.get("cargo").getItems().get(1).getAmount());
     }
 
     @Test void harnessUsesHorseSpeedAndRefusesMoreMountsThanConfiguredSeats() {
