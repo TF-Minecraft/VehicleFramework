@@ -853,7 +853,8 @@ public class TrainHandler {
 		if (tank.getCurrent() >= tank.getCapacity()) {
 			return;
 		}
-		if (!acceptsFuelCar(child) || !child.hasContainers()) {
+		// A car being destroyed already dropped what it held.
+		if (!acceptsFuelCar(child) || !child.hasContainers() || child.isDestroyed()) {
 			return;
 		}
 		String path = tank.getInput().getItem();

@@ -224,7 +224,11 @@ class CargoDocksTest {
 		ActiveVehicle gone = car(2, "character:a", container(hold, true));
 		when(gone.getEntity()).thenReturn(null);
 		ActiveVehicle tender = car(2, "character:a", container(hold, true));
-		ActiveVehicle loco = train(car(1, "character:a"), stranger, nobody, blank, unowned, empty, gone, tender);
+		// A car being destroyed already dropped its cargo.
+		ItemStack[] wreckHold = new ItemStack[2];
+		ActiveVehicle wreck = car(2, "character:a", container(wreckHold, true));
+		when(wreck.isDestroyed()).thenReturn(true);
+		ActiveVehicle loco = train(car(1, "character:a"), stranger, nobody, blank, unowned, empty, gone, wreck, tender);
 		when(loco.getTrainHandler().acceptsFuelCar(tender)).thenReturn(true);
 		CargoDocks.serveLive(loco);
 		assertEquals(10, count(dock, Material.COAL));
@@ -236,6 +240,7 @@ class CargoDocksTest {
 		CargoDocks.serveLive(loco);
 		assertEquals(0, count(dock, Material.COAL));
 		assertEquals(10, count(hold, Material.COAL));
+		assertEquals(0, count(wreckHold, Material.COAL));
 		// Turned off, no train, or no docks: nothing to do.
 		Cache.trainDocksEnabled = false;
 		CargoDocks.serveLive(loco);

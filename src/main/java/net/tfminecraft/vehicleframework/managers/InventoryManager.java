@@ -20,7 +20,6 @@ import net.tfminecraft.vehicleframework.enums.VFGUI;
 import net.tfminecraft.vehicleframework.managers.inventory.VFInventoryHolder;
 import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
 import net.tfminecraft.vehicleframework.ownership.OwnershipActions;
-import net.tfminecraft.vehicleframework.permissions.Permissions;
 import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.component.Engine;
@@ -42,11 +41,14 @@ public class InventoryManager {
 	public static final int HOLD_SLOT = 23;
 	private OwnershipGUIManager ownershipGUI = new OwnershipGUIManager();
 
-	/** The vehicle's outside hold, if it has one and the player may open it: aboard-allowed or staff. */
+	/**
+	 * The vehicle's outside hold, if it has one and the player is allowed aboard (owner,
+	 * whitelist or group; a ticket is not enough). Staff get in as for seats: by takeover.
+	 */
 	public static Container outsideHold(Player p, ActiveVehicle v) {
 		Container hold = v.hasContainers() ? v.getContainerHandler().outside() : null;
 		if(hold == null) return null;
-		return OwnershipAccess.admits(v, OwnershipAccess.key(p)) || Permissions.isAdmin(p) ? hold : null;
+		return OwnershipAccess.admits(v, OwnershipAccess.key(p)) ? hold : null;
 	}
 
 	//Seat Selector

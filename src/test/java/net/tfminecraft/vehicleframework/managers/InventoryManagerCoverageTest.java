@@ -127,8 +127,9 @@ class InventoryManagerCoverageTest {
         assertNull(InventoryManager.outsideHold(player, vehicle));
         manager.seatSelection(inventory, player, vehicle, false);
         assertEquals(Material.GRAY_STAINED_GLASS_PANE, inventory.getItem(InventoryManager.HOLD_SLOT).getType());
+        // Staff are not let in by their permission alone (as for seats).
         when(player.hasPermission(anyString())).thenReturn(true);
-        assertSame(hold, InventoryManager.outsideHold(player, vehicle));
+        assertNull(InventoryManager.outsideHold(player, vehicle));
         when(vehicle.hasContainers()).thenReturn(false);
         assertNull(InventoryManager.outsideHold(player, vehicle));
     }
