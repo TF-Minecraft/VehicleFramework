@@ -86,7 +86,7 @@ public final class StorageLog {
 		CoreProtectAPI coreProtect = coreProtect();
 		if (coreProtect != null) {
 			coreProtect.logChat(player, CHAT_PREFIX + (amount > 0 ? "put " : "took ") + count + " " + described.chat()
-					+ (amount > 0 ? " into " : " from ") + plain(vehicle.getName()) + " (" + vehicle.getId() + " "
+					+ (amount > 0 ? " into " : " from ") + quoted(plain(vehicle.getName())) + " (" + vehicle.getId() + " "
 					+ vehicle.getUUID() + ") storage " + container.getId() + " at " + blockPosition(vehicle));
 		}
 	}
@@ -185,20 +185,27 @@ public final class StorageLog {
 		return PLAIN_PATH.matcher(path).matches() ? path : quoted(path);
 	}
 
-	// One line per change: a name cannot break a line or end its quotes early.
+	// One line per change: a name cannot break a line, end its quotes early, or look like more
+	// than one line or reorder itself in a viewer (Unicode line breaks and direction marks).
 	static String quoted(String text) {
 		StringBuilder out = new StringBuilder(text.length() + 2).append('"');
 		for (int i = 0; i < text.length(); i++) {
 			char c = text.charAt(i);
 			if (c == '\\' || c == '"') {
 				out.append('\\').append(c);
-			} else if (c < 0x20 || c == 0x7f) {
+			} else if (c < 0x20 || (c >= 0x7f && c <= 0x9f) || hidden(c)) {
 				out.append(String.format(Locale.ROOT, "\\u%04x", (int) c));
 			} else {
 				out.append(c);
 			}
 		}
 		return out.append('"').toString();
+	}
+
+	// Line and paragraph separators, and invisible format marks such as direction overrides.
+	private static boolean hidden(char c) {
+		int type = Character.getType(c);
+		return type == Character.LINE_SEPARATOR || type == Character.PARAGRAPH_SEPARATOR || type == Character.FORMAT;
 	}
 
 	private static Location location(ActiveVehicle vehicle) {

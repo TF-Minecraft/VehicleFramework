@@ -162,6 +162,9 @@ class StorageLogTest {
 		assertTrue(lines().get(0).startsWith("TOOK player=Alex (" + PLAYER + ") amount=1 item=chest storage="));
 		String nl = String.valueOf((char) 10);
 		assertEquals("\"a\\u000ab\\u007f\"", StorageLog.quoted("a" + nl + "b" + (char) 127));
+		// Unicode line breaks, C1 controls and direction marks are escaped too; other letters stay.
+		String hidden = "x" + (char) 0x2028 + (char) 0x2029 + (char) 0x85 + (char) 0x202e + (char) 0xe9;
+		assertEquals("\"x\\u2028\\u2029\\u0085\\u202e" + (char) 0xe9 + "\"", StorageLog.quoted(hidden));
 		// A path that is not a plain id is quoted, so a renamed item cannot fake another line.
 		assertEquals("m.MATERIAL.STEEL_INGOT", StorageLog.pathField("m.MATERIAL.STEEL_INGOT"));
 		assertEquals("ia.tfmc:train_track/x-1", StorageLog.pathField("ia.tfmc:train_track/x-1"));
@@ -183,13 +186,13 @@ class StorageLogTest {
 			StorageLog.changed(player, vehicle, container, item(Material.IRON_INGOT, 1), 12);
 			StorageLog.changed(player, vehicle, container, item(Material.COAL, 1), -2);
 			verify(api).logInteraction("Alex", at);
-			verify(api).logChat(player, "[VF storage] put 12 iron_ingot into Cargo Wagon (wagon_cargo v-uuid) storage cargo at 1,2,3");
-			verify(api).logChat(player, "[VF storage] took 2 coal from Cargo Wagon (wagon_cargo v-uuid) storage cargo at 1,2,3");
+			verify(api).logChat(player, "[VF storage] put 12 iron_ingot into \"Cargo Wagon\" (wagon_cargo v-uuid) storage cargo at 1,2,3");
+			verify(api).logChat(player, "[VF storage] took 2 coal from \"Cargo Wagon\" (wagon_cargo v-uuid) storage cargo at 1,2,3");
 			// A vehicle with no entity left logs no interaction.
 			ActiveVehicle gone = vehicle(null);
 			StorageLog.opened(player, gone, container);
 			StorageLog.changed(player, gone, container, item(Material.COAL, 1), 1);
-			verify(api).logChat(player, "[VF storage] put 1 coal into Cargo Wagon (wagon_cargo v-uuid) storage cargo at ?");
+			verify(api).logChat(player, "[VF storage] put 1 coal into \"Cargo Wagon\" (wagon_cargo v-uuid) storage cargo at ?");
 			// CoreProtect hooked but its API off.
 			verifyNoMoreInteractions(api);
 			framework.when(VehicleFramework::getCoreProtect).thenReturn(null);
