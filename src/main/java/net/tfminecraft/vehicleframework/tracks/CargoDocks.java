@@ -272,8 +272,9 @@ public final class CargoDocks {
 		return out;
 	}
 
+	// Not a car being destroyed: it already dropped what it held.
 	static boolean cargoCar(TrainHandler loco, ActiveVehicle car) {
-		return car.hasContainers() && (Cache.trainDockFuelCars || !loco.acceptsFuelCar(car));
+		return car.hasContainers() && !car.isDestroyed() && (Cache.trainDockFuelCars || !loco.acceptsFuelCar(car));
 	}
 
 	static boolean owns(String owner, Dock dock) {

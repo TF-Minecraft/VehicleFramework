@@ -349,6 +349,9 @@ class TrainHandlerCoverageTest {
         tank.setFuel(0); when(full.takeOneMatching("coal-item")).thenReturn(null);
         root.train.drainFromChild(tank);
         assertEquals(0, tank.getCurrent()); verify(spare).takeOneMatching("coal-item");
+        // A tender being destroyed already dropped its fuel.
+        when(tender.vehicle.isDestroyed()).thenReturn(true); root.train.drainFromChild(tank);
+        verify(spare, times(1)).takeOneMatching(any());
         assertFalse(root.train.acceptsFuelCar(null));
     }
 
