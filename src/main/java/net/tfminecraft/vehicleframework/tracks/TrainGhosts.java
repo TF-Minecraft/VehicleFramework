@@ -161,11 +161,12 @@ public final class TrainGhosts {
 		return true;
 	}
 
-	// A window open on a car's storage would keep working on the removed car.
+	// A window open on a seat's storage keeps the train loaded, as its rider does. One open on a
+	// hold reached from outside (someone left standing behind) is closed when the car is saved.
 	private static boolean storageOpen(ActiveVehicle car) {
 		if (car.hasContainers()) {
 			for (Container container : car.getContainerHandler().getContainers().values()) {
-				if (container.hasViewers()) {
+				if (container.hasViewers() && !Container.OUTSIDE.equalsIgnoreCase(container.getSeat())) {
 					return true;
 				}
 			}
