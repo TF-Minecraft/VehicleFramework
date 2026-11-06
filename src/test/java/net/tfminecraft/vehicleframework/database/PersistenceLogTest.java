@@ -1,5 +1,7 @@
 package net.tfminecraft.vehicleframework.database;
 
+import net.tfminecraft.vehicleframework.util.LogFileWriter;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,6 +21,7 @@ class PersistenceLogTest {
 		PersistenceLog.configure(true, tempDir.toFile());
 		PersistenceLog.append("reload-probe");
 
+		LogFileWriter.flush();
 		String content = Files.readString(tempDir.resolve("logs").resolve("persistence.log"));
 		assertTrue(content.contains("SESSION"));
 		assertTrue(content.contains("reload-probe"));
@@ -29,6 +32,7 @@ class PersistenceLogTest {
 		PersistenceLog.configure(false, tempDir.toFile());
 		PersistenceLog.append("hello");
 
+		LogFileWriter.flush();
 		assertEquals(false, Files.exists(tempDir.resolve("logs").resolve("persistence.log")));
 	}
 
@@ -39,6 +43,7 @@ class PersistenceLogTest {
 		Files.writeString(logFile, "first-reload\n");
 		PersistenceLog.configure(true, tempDir.toFile());
 
+		LogFileWriter.flush();
 		String content = Files.readString(logFile);
 		assertTrue(content.contains("first-reload"));
 		assertTrue(content.contains("SESSION"));

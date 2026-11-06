@@ -1,5 +1,7 @@
 package net.tfminecraft.vehicleframework.database;
 
+import net.tfminecraft.vehicleframework.util.LogFileWriter;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
@@ -67,6 +69,7 @@ class PersistenceLogQuietTest {
 		// Only the throttle bookkeeping is cleared; the vehicle is not described.
 		verify(vehicle, atLeastOnce()).getUUID();
 		verifyNoMoreInteractions(vehicle);
+		LogFileWriter.flush();
 		assertFalse(Files.exists(folder.resolve("logs/persistence.log")));
 	}
 
@@ -141,6 +144,7 @@ class PersistenceLogQuietTest {
 
 	// Every line but the SESSION header, without its timestamp or the vehicle's age.
 	private List<String> lines() throws Exception {
+		LogFileWriter.flush();
 		return Files.readAllLines(folder.resolve("logs/persistence.log")).stream()
 				.map(line -> line.substring("yyyy-MM-dd HH:mm:ss ".length()))
 				.filter(line -> !line.startsWith("SESSION "))

@@ -19,6 +19,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
 import org.bukkit.event.world.EntitiesUnloadEvent;
+import org.bukkit.event.world.WorldUnloadEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -263,6 +264,10 @@ public class SpawnManager implements Listener {
 	public void chunkUnload(ChunkUnloadEvent e) {
 		Chunk c = e.getChunk();
 		HashMap<Entity, ActiveVehicle> vc = (HashMap<Entity, ActiveVehicle>) vehicleManager.get().clone();
+		World world = c.getWorld();
+		for (ActiveVehicle v : vc.values()) {
+			v.chunkUnloading(world, c.getX(), c.getZ());
+		}
 		for (Map.Entry<Entity, ActiveVehicle> entry : vc.entrySet()) {
 			ActiveVehicle v = entry.getValue();
 			Entity entity = entry.getKey();
@@ -282,6 +287,13 @@ public class SpawnManager implements Listener {
 		TrainGhosts.tryConvert(vehicle, "unload");
 		if (vehicleManager.get().get(entity) == vehicle) {
 			vehicleManager.unload(vehicle, context);
+		}
+	}
+
+	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+	public void worldUnload(WorldUnloadEvent e) {
+		for (ActiveVehicle v : vehicleManager.get().values()) {
+			v.worldUnloading(e.getWorld());
 		}
 	}
 

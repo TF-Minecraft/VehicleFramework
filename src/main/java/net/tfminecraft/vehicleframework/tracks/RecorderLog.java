@@ -1,12 +1,7 @@
 package net.tfminecraft.vehicleframework.tracks;
 
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -20,6 +15,7 @@ import org.bukkit.Location;
 
 import net.tfminecraft.vehicleframework.bones.BoneRotator;
 import net.tfminecraft.vehicleframework.bones.ConvertedAngle;
+import net.tfminecraft.vehicleframework.util.LogFileWriter;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.handlers.TrainHandler;
 
@@ -36,14 +32,17 @@ public final class RecorderLog {
 
 	private static volatile boolean enabled;
 	private static volatile Path logFile;
-	private static final Object LOCK = new Object();
 	private static final Map<String, Long> quietUntil = new ConcurrentHashMap<>();
+	// Each car's last POSE line, so a standing train does not repeat it four times a second.
+	private static final Map<String, String> lastPose = new ConcurrentHashMap<>();
 
 	private RecorderLog() {
 	}
 
 	public static void configure(boolean loggingEnabled, File dataFolder) {
 		enabled = loggingEnabled;
+		// A new session logs each car's pose afresh.
+		lastPose.clear();
 		if (dataFolder != null) {
 			logFile = dataFolder.toPath().resolve(LOG_DIRECTORY).resolve(LOG_FILE_NAME);
 		}
@@ -108,13 +107,26 @@ public final class RecorderLog {
 		if (from != null && to != null && from.getWorld() != null && from.getWorld().equals(to.getWorld())) {
 			gap = from.distance(to);
 		}
-		append("POSE"
+		String line = "POSE"
 				+ " gap=" + fmt(gap)
 				+ " myaw=" + (move == null ? "-" : fmt(move.getYaw()))
 				+ " mpitch=" + (move == null ? "-" : fmt(move.getPitch()))
 				+ " pyaw=" + (pose == null ? "-" : fmt(pose.yaw))
 				+ " ppitch=" + (pose == null ? "-" : fmt(pose.pitch))
-				+ " " + train(v));
+				+ " " + train(v);
+		if (line.equals(lastPose.put(String.valueOf(v.getUUID()), line))) {
+			return;
+		}
+		append(line);
+	}
+
+	/** Drops what is kept about a car that left the world. */
+	public static void forget(String uuid) {
+		if (uuid == null) {
+			return;
+		}
+		lastPose.remove(uuid);
+		quietUntil.remove("pose:" + uuid);
 	}
 
 	public static void sample(ActiveVehicle v, ThrottleTape.AppendResult result, int throttle, int hold) {
@@ -197,21 +209,8 @@ public final class RecorderLog {
 		return fmt(value);
 	}
 
+	// Written off the server thread, in order.
 	private static void write(String line) {
-		synchronized (LOCK) {
-			try {
-				Files.createDirectories(logFile.getParent());
-				try (BufferedWriter writer = Files.newBufferedWriter(
-						logFile,
-						StandardCharsets.UTF_8,
-						StandardOpenOption.CREATE,
-						StandardOpenOption.APPEND)) {
-					writer.write(line);
-					writer.newLine();
-				}
-			} catch (IOException e) {
-				LOGGER.warning("Failed to write recorder.log: " + e.getMessage());
-			}
-		}
+		LogFileWriter.append(LOGGER, "recorder.log", logFile, line);
 	}
 }

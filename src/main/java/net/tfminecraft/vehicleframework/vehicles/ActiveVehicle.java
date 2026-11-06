@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.util.BoundingBox;
@@ -101,6 +102,7 @@ public class ActiveVehicle {
 	protected boolean destroyed;
 	/** Set each tick: state and movement wait because a chunk beside the vehicle is not loaded. */
 	private boolean edgePaused;
+	private final LoadedArea.Memo loadedArea = new LoadedArea.Memo();
 	protected boolean removed = false;
 	protected VehicleDeath pendingDeathCause;
 	
@@ -626,7 +628,17 @@ public class ActiveVehicle {
 		BoundingBox box = entity.getBoundingBox();
 		// At most MAX_MARGIN: the chunks beside any chunk a player is sent are always loaded, so a
 		// margin under 16 can never pause a vehicle a player can see, whatever its speed.
-		return box != null && !LoadedArea.covers(entity.getWorld(), box, Math.min(MAX_MARGIN, EDGE_MARGIN + lookaheadMargin()));
+		return box != null && !loadedArea.covers(entity.getWorld(), box, Math.min(MAX_MARGIN, EDGE_MARGIN + lookaheadMargin()));
+	}
+
+	/** Called as a chunk unloads, so the next tick asks again whether this vehicle's chunks are loaded. */
+	public void chunkUnloading(World world, int chunkX, int chunkZ) {
+		loadedArea.forget(world, chunkX, chunkZ);
+	}
+
+	/** Called as a world unloads, which may drop its chunks without an event for each. */
+	public void worldUnloading(World world) {
+		loadedArea.forget(world);
 	}
 
 	/**

@@ -1,5 +1,7 @@
 package net.tfminecraft.vehicleframework.tracks;
 
+import net.tfminecraft.vehicleframework.util.LogFileWriter;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
@@ -50,6 +52,7 @@ class RecorderLogQuietTest {
 		RecorderLog.junction(train, false, frog.id, "held left");
 
 		verifyNoInteractions(train, from, to);
+		LogFileWriter.flush();
 		assertFalse(Files.exists(folder.resolve("logs/recorder.log")));
 	}
 
@@ -83,6 +86,28 @@ class RecorderLogQuietTest {
 				lines());
 	}
 
+	@Test
+	void aStandingTrainLogsItsPoseOnceUntilSomethingChanges() throws Exception {
+		RecorderLog.configure(true, folder.toFile());
+		String uuid = "standing-" + UUID.randomUUID();
+		ActiveVehicle train = train(uuid);
+		World world = mock(World.class);
+		Location at = new Location(world, 0, 64, 3);
+		TrackPose pose = new TrackPose(0, 64, 3, 90, 5);
+		RecorderLog.pose(train, at, at, pose, null);
+		// Past the quarter-second throttle, the same pose again is not repeated.
+		Thread.sleep(300);
+		RecorderLog.pose(train, at, at, pose, null);
+		Thread.sleep(300);
+		when(train.getTrainHandler().getS()).thenReturn(13.0);
+		RecorderLog.pose(train, at, at, pose, null);
+		// A car that leaves and comes back is logged afresh.
+		RecorderLog.forget(uuid);
+		RecorderLog.forget(null);
+		RecorderLog.pose(train, at, at, pose, null);
+		assertEquals(3, lines().stream().filter(line -> line.startsWith("POSE gap=0.000")).count());
+	}
+
 	private ActiveVehicle train(String uuid) {
 		ActiveVehicle train = mock(ActiveVehicle.class, RETURNS_DEEP_STUBS);
 		TrainHandler handler = mock(TrainHandler.class);
@@ -106,6 +131,7 @@ class RecorderLogQuietTest {
 
 	// Every line but the SESSION header, without its timestamp.
 	private List<String> lines() throws Exception {
+		LogFileWriter.flush();
 		return Files.readAllLines(folder.resolve("logs/recorder.log")).stream()
 				.map(line -> line.substring("yyyy-MM-dd HH:mm:ss ".length()))
 				.filter(line -> !line.startsWith("SESSION "))

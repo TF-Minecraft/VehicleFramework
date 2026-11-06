@@ -1,5 +1,7 @@
 package net.tfminecraft.vehicleframework.tracks;
 
+import net.tfminecraft.vehicleframework.util.LogFileWriter;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -23,6 +25,7 @@ class TrackLoggingCoverageTest {
       log.call("append", "no destination");
       log.call("configure", false, false, folder.toFile());
       log.call("append", "disabled");
+      LogFileWriter.flush();
       assertFalse(Files.exists(folder.resolve("logs/track.log")));
       log.call("configure", true, false, folder.toFile());
       log.call("append", (Object) null);
@@ -66,6 +69,7 @@ class TrackLoggingCoverageTest {
       log.call("junctionStart", "alex", id, 2d);
       log.call("junctionBranch", null, id, id);
       log.call("junctionBranch", tail, id, id);
+      LogFileWriter.flush();
       String text = Files.readString(folder.resolve("logs/track.log"));
       for (String marker :
           List.of(
@@ -87,8 +91,10 @@ class TrackLoggingCoverageTest {
               "JUNCTION_BRANCH")) assertTrue(text.contains(marker), marker);
       assertFalse(text.contains("disabled"));
       log.call("configure", true, true, folder.toFile());
+      LogFileWriter.flush();
       assertFalse(Files.exists(folder.resolve("logs/track.log")));
       log.call("append", "after wipe");
+      LogFileWriter.flush();
       assertTrue(Files.readString(folder.resolve("logs/track.log")).contains("after wipe"));
     }
   }
@@ -105,8 +111,11 @@ class TrackLoggingCoverageTest {
     try (FreshLogger log = new FreshLogger(TrackLog.class)) {
       log.call("configure", true, true, folder.toFile());
       log.call("append", "cannot write over a directory");
+      LogFileWriter.flush();
       assertTrue(Files.exists(destination.resolve("occupied")));
+      LogFileWriter.flush();
       assertTrue(warnings.stream().anyMatch(s -> s.startsWith("Failed to wipe track.log:")));
+      LogFileWriter.flush();
       assertTrue(warnings.stream().anyMatch(s -> s.startsWith("Failed to write track.log:")));
     } finally {
       logger.removeHandler(handler);
@@ -186,6 +195,7 @@ class TrackLoggingCoverageTest {
       assertEquals(true, log.call("throttle", "probe", 100000L));
       assertEquals(false, log.call("throttle", "probe", 100000L));
       assertEquals(true, log.call("throttle", "probe", 0L));
+      LogFileWriter.flush();
       String text = Files.readString(folder.resolve("logs/recorder.log"));
       for (String marker :
           List.of(
@@ -215,7 +225,9 @@ class TrackLoggingCoverageTest {
     logger.addHandler(handler);
     try (FreshLogger log = new FreshLogger(RecorderLog.class)) {
       log.call("configure", true, folder.toFile());
+      LogFileWriter.flush();
       assertTrue(warnings.stream().anyMatch(s -> s.startsWith("Failed to write recorder.log:")));
+      LogFileWriter.flush();
       assertEquals("not a directory", Files.readString(folder.resolve("logs")));
     } finally {
       logger.removeHandler(handler);

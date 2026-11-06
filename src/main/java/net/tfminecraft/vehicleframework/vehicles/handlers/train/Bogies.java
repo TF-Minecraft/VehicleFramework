@@ -101,6 +101,18 @@ public final class Bogies {
 	}
 
 	/**
+	 * Whether {@link #isReady()} has settled on its answer for the current model, so it gives
+	 * the same one until the model changes. Before the model's bones load it may change.
+	 */
+	public boolean isSettled() {
+		if (bones.size() != 2 || v == null) {
+			return true;
+		}
+		ActiveModel model = v.getModel();
+		return model != null && (model == readyFor || model == missingFor);
+	}
+
+	/**
 	 * Follows the vehicle to a new model, as on a skin change. Bogies the new model also
 	 * has keep their angles; otherwise the car is set up again for the new model.
 	 */

@@ -78,6 +78,7 @@ import net.tfminecraft.vehicleframework.managers.spawner.VehicleSpawner;
 import net.tfminecraft.vehicleframework.ownership.OwnerNames;
 import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
 import net.tfminecraft.vehicleframework.protocol.PacketConverter;
+import net.tfminecraft.vehicleframework.tracks.RecorderLog;
 import net.tfminecraft.vehicleframework.tracks.TrainGhosts;
 import net.tfminecraft.vehicleframework.tracks.TrainTapeInteract;
 import net.tfminecraft.vehicleframework.tracks.TrainCollision;
@@ -1366,6 +1367,7 @@ public class VehicleManager implements Listener{
 		// Nobody may take items out of a window after the car is saved.
 		v.closeStorage();
 		PersistenceLog.unload(v, v.isDestroyed() ? "destroyed" : "unload");
+		RecorderLog.forget(v.getUUID());
 		if (v.isDestroyed()) {
 			if (!persistDestroy(v)) {
 				VFLogger.log("Failed to persist " + describeVehicle(v) + " at " + describeLocation(v)

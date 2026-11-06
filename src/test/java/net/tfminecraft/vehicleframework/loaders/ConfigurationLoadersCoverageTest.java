@@ -143,6 +143,7 @@ class ConfigurationLoadersCoverageTest {
                 terrain-follow-debug: true
                 ground-engine-logging: true
                 persistence-logging: true
+                storage-logging: false
                 wipe-log: true
                 """));
     assertEquals(List.of(Material.STONE), Cache.ignoreExplode);
@@ -164,6 +165,8 @@ class ConfigurationLoadersCoverageTest {
     assertTrue(Cache.terrainFollowDebug);
     assertTrue(Cache.groundEngineLogging);
     assertTrue(Cache.persistenceLogging);
+    assertFalse(Cache.storageLogging);
+    Cache.storageLogging = true;
     assertTrue(Cache.wipeLog);
     logger.verify(() -> VFLogger.log("invalid is not a material"), times(3));
   }

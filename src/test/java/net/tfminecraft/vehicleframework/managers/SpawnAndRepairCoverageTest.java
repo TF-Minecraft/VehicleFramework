@@ -346,6 +346,9 @@ class SpawnAndRepairCoverageTest {
         when(broken.getLocation()).thenThrow(new IllegalStateException("Unloaded")); ActiveVehicle other = mock(ActiveVehicle.class);
         manager.get().put(inside, vehicle); manager.get().put(outside, other); manager.get().put(broken, other);
         spawns.chunkUnload(new ChunkUnloadEvent(affected)); verify(manager).unload(vehicle, "on chunk unload"); verify(manager, never()).unload(other, "on chunk unload");
+        // Every vehicle hears of the unload, so none keeps trusting the chunk is loaded.
+        verify(vehicle).chunkUnloading(world, -1, 2); verify(other, times(2)).chunkUnloading(world, -1, 2);
+        spawns.worldUnload(new org.bukkit.event.world.WorldUnloadEvent(world)); verify(vehicle).worldUnloading(world); verify(other, times(2)).worldUnloading(world);
         spawns.entitiesUnload(new EntitiesUnloadEvent(affected, List.of(inside, mock(Entity.class)))); verify(manager).unload(vehicle, "on entity unload");
         assertFalse(SpawnManager.entityInChunk(null, affected)); assertFalse(SpawnManager.entityInChunk(inside, null));
         assertFalse(SpawnManager.entityInChunk(broken, affected)); verify(world, never()).getChunkAt(any(Location.class));

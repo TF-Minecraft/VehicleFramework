@@ -1,9 +1,9 @@
 package net.tfminecraft.vehicleframework.vehicles.handlers;
 
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import org.bukkit.Bukkit;
 import org.bukkit.World;
@@ -111,7 +111,7 @@ public class StateHandler {
 	    boolean deepCentre = floatingConfigured && LocationChecker.hasDeepWaterAtCentre(e.getWorld().getBlockAt(
 			(int) Math.floor(box.getCenterX()), (int) Math.floor(box.getMinY()),
 			(int) Math.floor(box.getCenterZ())));
-	    Set<Block> blocks = floatingConfigured && !deepCentre ? getBlocksBoundingBox(box, e.getWorld(), 0.0) : null;
+	    List<Block> blocks = floatingConfigured && !deepCentre ? getBlocksBoundingBox(box, e.getWorld(), 0.0) : null;
 	    boolean waterAtFeet = deepCentre || (blocks != null && isMostlyWater(blocks, 0.75));
 	    boolean shallowWadable = waterAtFeet && !deepCentre
 	    		&& LocationChecker.isMostlyShallowWadableWater(blocks, 0.75);
@@ -133,7 +133,7 @@ public class StateHandler {
 	    }
 	}
 
-	private boolean isMostlyWater(Set<Block> blocks, double requiredFraction) {
+	private boolean isMostlyWater(List<Block> blocks, double requiredFraction) {
 		int waterCount = 0;
 
 		for (Block block : blocks) {
@@ -146,8 +146,9 @@ public class StateHandler {
 		return fraction >= requiredFraction;
 	}
 
-	private Set<Block> getBlocksBoundingBox(BoundingBox box, World world, double yOffset) {
-		Set<Block> blocks = new HashSet<>();
+	// The nine distinct blocks under the box's centre. Only counted, so a list does.
+	private List<Block> getBlocksBoundingBox(BoundingBox box, World world, double yOffset) {
+		List<Block> blocks = new ArrayList<>(9);
 
 		int cx = (int) Math.floor(box.getCenterX());
 		int cz = (int) Math.floor(box.getCenterZ());
@@ -162,7 +163,7 @@ public class StateHandler {
 		return blocks;
 	}
 
-	private boolean allBlocksInAir(Set<Block> blocks) {
+	private boolean allBlocksInAir(List<Block> blocks) {
 		for (Block block : blocks) {
 			if (!LocationChecker.isInAir(block.getLocation())) return false;
 		}
