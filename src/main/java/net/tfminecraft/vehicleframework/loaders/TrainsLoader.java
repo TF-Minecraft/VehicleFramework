@@ -79,6 +79,8 @@ public class TrainsLoader {
 		Cache.trainRouteMinDistance = Math.max(1.0, config.getDouble("routes.min-distance", 32.0));
 		Cache.trainRunUnloaded = config.getBoolean("routes.run-unloaded", true);
 		Cache.trainGhostSaveSeconds = Math.max(5, config.getInt("routes.save-seconds", 30));
+		Cache.trainGhostFuel = Math.max(0.0, config.getDouble("routes.paper-fuel", 0.5));
+		Cache.trainGhostGap = Math.max(0.0, config.getDouble("routes.paper-gap", 4.0));
 		Cache.trainDocksEnabled = config.getBoolean("docks.enabled", true);
 		Cache.trainDockReach = Math.max(1.0, Math.min(16.0, config.getDouble("docks.reach", 4.0)));
 		Cache.trainDockItemsPerStop = Math.max(0, config.getInt("docks.items-per-stop", 576));

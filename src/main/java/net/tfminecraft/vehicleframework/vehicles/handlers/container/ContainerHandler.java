@@ -53,6 +53,11 @@ public class ContainerHandler {
         return null;
     }
 
+    /** The hold opened by right-clicking the vehicle from outside, or null. */
+    public Container outside() {
+        return getBySeat(Container.OUTSIDE);
+    }
+
     public boolean open(Player player) {
         if (containers.isEmpty()) return false;
 

@@ -50,6 +50,9 @@ public class Cache {
 	// Tape-driven trains nobody is near run "on paper" along their timetable; saved this often.
 	public static boolean trainRunUnloaded = true;
 	public static int trainGhostSaveSeconds = 30;
+	// Share of the loaded fuel burn a train on paper uses, and the blocks it keeps from the train ahead.
+	public static double trainGhostFuel = 0.5;
+	public static double trainGhostGap = 4.0;
 	// Cargo docks.
 	public static boolean trainDocksEnabled = true;
 	public static double trainDockReach = 4.0;

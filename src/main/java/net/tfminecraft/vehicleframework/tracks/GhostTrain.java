@@ -51,6 +51,8 @@ public final class GhostTrain {
 	// Items the docks at the current stop may still move.
 	int dockBudget;
 	int sinceSave;
+	// Waiting behind another train; logged once each time it starts waiting.
+	boolean held;
 	List<Spot> spots = List.of();
 
 	GhostTrain(String world, List<String> cars, List<String> owners, double[] offsets, double[] reaches,
@@ -112,9 +114,28 @@ public final class GhostTrain {
 		switchesAhead(registry);
 		if (useFuel && advance.maxThrottle() != 0) {
 			double multiplier = locomotive ? LocomotiveOverdrive.fuelMultiplier(advance.maxThrottle()) : 1.0;
-			fuel = Math.max(0, fuel - burn * multiplier);
+			fuel = Math.max(0, fuel - burn * multiplier * Cache.trainGhostFuel);
 		}
 		return advance.stops();
+	}
+
+	/** What a step changes, so a step that would run into another train can be taken back. */
+	record State(TapeTimetable.Clock clock, Map<UUID, Boolean> routes, double fuel, int reserve, int consumed,
+			List<Spot> spots) {
+	}
+
+	State state() {
+		return new State(clock, new LinkedHashMap<>(routes), fuel, reserve, consumed, spots);
+	}
+
+	void restore(State state) {
+		clock = state.clock();
+		routes.clear();
+		routes.putAll(state.routes());
+		fuel = state.fuel();
+		reserve = state.reserve();
+		consumed = state.consumed();
+		spots = state.spots();
 	}
 
 	// Pushing, the cars run ahead of the locomotive onto the switches it is about to take.

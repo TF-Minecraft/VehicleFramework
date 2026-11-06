@@ -77,6 +77,7 @@ import net.tfminecraft.vehicleframework.managers.inventory.VFInventoryHolder;
 import net.tfminecraft.vehicleframework.managers.spawner.VehicleSpawner;
 import net.tfminecraft.vehicleframework.ownership.OwnerNames;
 import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
+import net.tfminecraft.vehicleframework.permissions.Permissions;
 import net.tfminecraft.vehicleframework.protocol.PacketConverter;
 import net.tfminecraft.vehicleframework.tracks.RecorderLog;
 import net.tfminecraft.vehicleframework.tracks.TrainGhosts;
@@ -108,6 +109,7 @@ public class VehicleManager implements Listener{
 	public static final String TICKET_NEEDED = "§cYou need a ticket for this vehicle.";
 	public static final String TICKET_PASSENGER_ONLY = "§cA ticket only lets you ride in a passenger seat.";
 	public static final String NOT_ALLOWED_ABOARD = "§cThe owner has not allowed you aboard this vehicle.";
+	public static final String NOT_ALLOWED_HOLD = "§cThe owner has not allowed you into this vehicle's hold.";
 	// Checkpoints run every 5 minutes; the SQLite backup copy runs on every 6th.
 	static final int BACKUP_EVERY_CHECKPOINTS = 6;
 	private int checkpoints;
@@ -718,7 +720,24 @@ public class VehicleManager implements Listener{
 			ownership.startRename(p, v);
 			return;
 		}
+		if (openOutsideHold(p, v)) {
+			return;
+		}
 		seatInteract(p, v);
+	}
+
+	// A hold opened from outside (seat: outside), with an empty hand, for those allowed aboard.
+	private boolean openOutsideHold(Player p, ActiveVehicle v) {
+		Container hold = v.hasContainers() ? v.getContainerHandler().outside() : null;
+		if (hold == null || !p.getInventory().getItemInMainHand().getType().isAir()) {
+			return false;
+		}
+		if (!OwnershipAccess.admits(v, OwnershipAccess.key(p)) && !Permissions.isAdmin(p)) {
+			p.sendMessage(NOT_ALLOWED_HOLD);
+			return true;
+		}
+		hold.open(v, p);
+		return true;
 	}
 	@EventHandler
 	public void playerLeave(PlayerQuitEvent e) {

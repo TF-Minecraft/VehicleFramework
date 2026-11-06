@@ -181,7 +181,7 @@ class TrainGhostsTest {
 		Cache.trainGhostSaveSeconds = 2;
 		TrainGhosts.tick();
 		assertEquals(new TapeTimetable.Clock(0, 20), ghost.clock);
-		assertEquals(49, ghost.fuel, 1e-9);
+		assertEquals(49.5, ghost.fuel, 1e-9);
 		TrainGhosts.tick();
 		// Saved after two seconds: the rows hold the run and where the cars are.
 		JSONObject loco = payload("loco");
@@ -301,6 +301,69 @@ class TrainGhostsTest {
 	}
 
 	@Test
+	void aRunOnPaperWaitsBehindTheTrainAheadAndBurnsNothingWhileItWaits() {
+		// The follower ticks first; the lead starts 10 blocks ahead, just the gap away.
+		GhostTrain follower = ghost(List.of("f"), 0, 50);
+		GhostTrain lead = ghost(List.of("l"), 0, 50);
+		lead.clock = new TapeTimetable.Clock(0, 20);
+		TrainGhosts.register(follower);
+		TrainGhosts.register(lead);
+		TrainGhosts.tick();
+		assertEquals(100, follower.spots.get(0).s(), 1e-9);
+		assertTrue(follower.held);
+		assertEquals(50, follower.fuel, 1e-9);
+		assertEquals(new TapeTimetable.Clock(0, 0), follower.clock);
+		assertEquals(120, lead.spots.get(0).s(), 1e-9);
+		// The lead moved on: the follower closes up to the gap, then waits while the lead stands at its stop.
+		TrainGhosts.tick();
+		assertEquals(110, follower.spots.get(0).s(), 1e-9);
+		assertFalse(follower.held);
+		TrainGhosts.tick();
+		assertEquals(110, follower.spots.get(0).s(), 1e-9);
+		assertTrue(follower.held);
+		assertEquals(120, lead.spots.get(0).s(), 1e-9);
+	}
+
+	@Test
+	void aRunOnPaperMovesAwayFromATrainItAlreadyOverlaps() {
+		// A parked car right behind it; it heads away, so it is not held.
+		row("parked", "{\"id\":\"wagon\",\"splineId\":\"" + id() + "\",\"s\":97.0,\"travelSign\":1}");
+		GhostTrain ghost = ghost(List.of("g"), 0, 50);
+		TrainGhosts.register(ghost);
+		TrainGhosts.tick();
+		assertFalse(ghost.held);
+		assertEquals(110, ghost.spots.get(0).s(), 1e-9);
+		// A loaded train ahead on the same track holds it; one on another track does not.
+		TrainHandler ahead = mock(TrainHandler.class);
+		when(ahead.isBound()).thenReturn(true);
+		when(ahead.getSplineId()).thenReturn(UUID.randomUUID());
+		when(ahead.getS()).thenReturn(121.0);
+		when(ahead.trackReach()).thenReturn(2.0);
+		ActiveVehicle train = mock(ActiveVehicle.class);
+		when(train.getUUID()).thenReturn("Ahead");
+		when(train.isTrain()).thenReturn(true);
+		when(train.getTrainHandler()).thenReturn(ahead);
+		loaded.put(mock(Entity.class), train);
+		TrainGhosts.tick();
+		assertFalse(ghost.held);
+		assertEquals(120, ghost.spots.get(0).s(), 1e-9);
+		when(ahead.getSplineId()).thenReturn(line.getId());
+		when(ahead.getS()).thenReturn(126.0);
+		ghost.clock = new TapeTimetable.Clock(0, 20);
+		ghost.place(registry);
+		TrainGhosts.tick();
+		assertTrue(ghost.held);
+		assertEquals(110, ghost.spots.get(0).s(), 1e-9);
+		// An unbound loaded train is not on any track.
+		when(ahead.isBound()).thenReturn(false);
+		TrainGhosts.tick();
+		assertFalse(ghost.held);
+		// A car on another track is no nearer for being close in the numbers.
+		assertEquals(Double.POSITIVE_INFINITY, PaperSpacing.room(ghost, ghost.spots,
+				new PaperSpacing.Car("x", UUID.randomUUID(), ghost.spots.get(0).s(), 1), registry));
+	}
+
+	@Test
 	void savingWithoutTheDatabaseOrWithTheLocomotiveGoneEndsOrSkips() {
 		GhostTrain ghost = ghost(List.of("loco", "car"), 0, 50);
 		TrainGhosts.register(ghost);
@@ -414,9 +477,12 @@ class TrainGhostsTest {
 		TrainGhosts.register(broken);
 		GhostTrain other = ghost(List.of("other"), 0, 50);
 		TrainGhosts.register(other);
+		// One that cannot even be placed before the first step.
+		TrainGhosts.register(new GhostTrain("world", List.of("tapeless"), List.of("a"), new double[] {0},
+				new double[] {3}, null, new TapeTimetable.Clock(0, 0), Map.of(), 1, true, 1, false, 1, null, 0, 0));
 		when(world.getPlayers()).thenReturn(null);
 		TrainGhosts.tick();
-		logger.verify(() -> VFLogger.log(contains("running unloaded failed a step")), times(2));
+		logger.verify(() -> VFLogger.log(contains("running unloaded failed a step")), times(3));
 	}
 
 	@Test
