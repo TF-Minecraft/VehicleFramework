@@ -11,6 +11,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import java.lang.reflect.Field;
 import java.nio.file.Path;
@@ -145,6 +149,138 @@ class TrainReversePlacementTest {
     void restoreRegistry() throws Exception {
         registryField.set(null, previousRegistry);
         bukkit.close();
+    }
+
+    @Test
+    void standingTrainReusesItsPlanUntilSomethingItWasPlannedFromChanges() {
+        TrackSpline track = straightTrack(false);
+        TrainHandler loco = consist(track, 60);
+        ModelBone back = loco.v.getModel().getBone("back").orElseThrow();
+        BlueprintBone blueprint = back.getBlueprintBone();
+        loco.v.getAccessPanel().setSpeed(0);
+        loco.splineTick();
+        // Couplers are read only while planning, so they show when a tick planned.
+        clearInvocations(back);
+        for (int i = 1; i < TrainHandler.STANDING_REPLAN_TICKS; i++) {
+            loco.splineTick();
+            assertPositions(loco, track, 60);
+        }
+        verify(back, never()).getBlueprintBone();
+        // Planned in full again every STANDING_REPLAN_TICKS ticks regardless.
+        loco.splineTick();
+        verify(back, atLeastOnce()).getBlueprintBone();
+        assertPositions(loco, track, 60);
+        clearInvocations(back);
+        loco.splineTick();
+        verify(back, never()).getBlueprintBone();
+
+        // Moving the train along its track plans again.
+        loco.setS(61);
+        loco.splineTick();
+        verify(back, atLeastOnce()).getBlueprintBone();
+        assertPositions(loco, track, 61);
+        // So does a car turning, an edited track, and a car added.
+        for (Runnable change : List.<Runnable>of(
+                () -> {
+                    Location turned = loco.v.getEntity().getLocation();
+                    turned.setYaw(90);
+                    loco.v.getEntity().teleport(turned);
+                },
+                registry::loadFromDisk,
+                () -> loco.getChild().getTrainHandler().getChild().getTrainHandler().setChild(car().v))) {
+            loco.splineTick();
+            clearInvocations(back);
+            change.run();
+            loco.splineTick();
+            verify(back, atLeastOnce()).getBlueprintBone();
+        }
+        // A coupler not loaded yet plans every tick until it is.
+        when(back.getBlueprintBone()).thenReturn(null);
+        loco.setS(61.5);
+        loco.splineTick();
+        clearInvocations(back);
+        loco.splineTick();
+        verify(back, atLeastOnce()).getBlueprintBone();
+        when(back.getBlueprintBone()).thenReturn(blueprint);
+        loco.splineTick();
+        clearInvocations(back);
+        loco.splineTick();
+        verify(back, never()).getBlueprintBone();
+        assertPositions(loco, track, 61.5);
+        // Driving off drops the plan; stopping again plans afresh.
+        loco.v.getAccessPanel().setSpeed(0.2);
+        loco.splineTick();
+        loco.v.getAccessPanel().setSpeed(0);
+        clearInvocations(back);
+        loco.splineTick();
+        verify(back, atLeastOnce()).getBlueprintBone();
+        assertPositions(loco, track, 61.7);
+    }
+
+    @Test
+    void standingTrainOnBogiesOrWheelsPlansUntilItsModelIsReady() {
+        TrackSpline track = straightTrack(false);
+        TrainHandler loco = wheeledConsist(track, 60);
+        ModelBone back = loco.v.getModel().getBone("back").orElseThrow();
+        ModelBone axle = loco.v.getModel().getBone("axle_front").orElseThrow();
+        loco.v.getAccessPanel().setSpeed(0);
+        loco.splineTick();
+        clearInvocations(back);
+        loco.splineTick();
+        verify(back, never()).getBlueprintBone();
+        // A wheel bone that is not loaded yet keeps it planning.
+        when(axle.getBlueprintBone()).thenReturn(null);
+        loco.setS(60.5);
+        loco.splineTick();
+        clearInvocations(back);
+        loco.splineTick();
+        verify(back, atLeastOnce()).getBlueprintBone();
+        // So do bogies that have not found their bones, a rotator bone not loaded, and a missing
+        // model. A lone car has no couplers to plan with; its bogies show when it planned.
+        TrainHandler car = car();
+        car.setSplineId(track.getId());
+        car.setS(30);
+        net.tfminecraft.vehicleframework.vehicles.handlers.train.Bogies bogies =
+                stub(net.tfminecraft.vehicleframework.vehicles.handlers.train.Bogies.class);
+        setField(car, "bogies", bogies);
+        car.splineTick();
+        clearInvocations(bogies);
+        car.splineTick();
+        verify(bogies, atLeastOnce()).isReady();
+        when(bogies.isSettled()).thenReturn(true);
+        BoneRotator rotator = stub(BoneRotator.class);
+        ModelBone pivot = stub(ModelBone.class);
+        when(rotator.getBone()).thenReturn(pivot);
+        BehaviourHandler behaviour = stub(BehaviourHandler.class);
+        when(behaviour.getRotator()).thenReturn(rotator);
+        when(car.v.getBehaviourHandler()).thenReturn(behaviour);
+        car.splineTick();
+        clearInvocations(bogies);
+        car.splineTick();
+        verify(bogies, atLeastOnce()).isReady();
+        BlueprintBone pivotBlueprint = new BlueprintBone();
+        pivotBlueprint.setRotatedGlobalPosition(new Vector3f());
+        when(pivot.getBlueprintBone()).thenReturn(pivotBlueprint);
+        car.splineTick();
+        clearInvocations(bogies);
+        car.splineTick();
+        verify(bogies, never()).isReady();
+        when(car.v.getModel()).thenReturn(null);
+        car.splineTick();
+        clearInvocations(bogies);
+        car.splineTick();
+        verify(bogies, atLeastOnce()).isReady();
+        assertEquals(30, car.getS(), 1e-9);
+    }
+
+    private static void setField(Object target, String name, Object value) {
+        try {
+            Field field = TrainHandler.class.getDeclaredField(name);
+            field.setAccessible(true);
+            field.set(target, value);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
     }
 
     @Test

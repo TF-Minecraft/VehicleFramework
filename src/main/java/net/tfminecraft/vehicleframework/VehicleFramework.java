@@ -30,6 +30,7 @@ import net.tfminecraft.vehicleframework.ownership.CharacterLookup;
 import net.tfminecraft.vehicleframework.ownership.OwnershipMode;
 import net.tfminecraft.vehicleframework.protocol.VehiclePacketListener;
 import org.bstats.bukkit.Metrics;
+import net.tfminecraft.vehicleframework.util.LogFileWriter;
 import net.tfminecraft.vehicleframework.util.MythicMobsIntegration;
 import net.tfminecraft.vehicleframework.util.TabCompletion;
 import net.tfminecraft.vehicleframework.tracks.TrackBuildAnimator;
@@ -101,6 +102,15 @@ public class VehicleFramework extends JavaPlugin{
 	}
 	@Override
 	public void onDisable() {
+		try {
+			disable();
+		} finally {
+			// Write out the last lines of the plugin's log files, even if disabling failed.
+			LogFileWriter.shutdown();
+		}
+	}
+
+	private void disable() {
 		PersistenceLog.append("DISABLE_BEGIN");
 		if (trackDisplayManager != null) {
 			TrackBuildAnimator.finishAll();

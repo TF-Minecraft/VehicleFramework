@@ -136,12 +136,15 @@ public class FloatController {
 		int z = loc.getBlockZ();
 		int startY = loc.getBlockY();
 
+		World world = loc.getWorld();
+		// Walking down, each block is the one above the next, so it is read once.
+		boolean aboveWater = isWaterBlock(world.getBlockAt(x, startY + 3, z));
 		for (int y = startY + 2; y >= startY - 3; y--) {
-			Block block = loc.getWorld().getBlockAt(x, y, z);
-			Block above = loc.getWorld().getBlockAt(x, y + 1, z);
-			if (isWaterBlock(block) && !isWaterBlock(above)) {
+			boolean water = isWaterBlock(world.getBlockAt(x, y, z));
+			if (water && !aboveWater) {
 				return y + 1.0;
 			}
+			aboveWater = water;
 		}
 		return null;
 	}
@@ -213,12 +216,17 @@ public class FloatController {
 		int minY = (int) Math.floor(box.getMinY());
 		int midY = (int) Math.floor((box.getMinY() + box.getMaxY()) / 2.0);
 
-		for (int y : new int[] {minY, midY}) {
+		World world = entity.getWorld();
+		// A box under two blocks tall samples one layer twice; count it twice without reading it again.
+		int layers = midY == minY ? 1 : 2;
+		int weight = 3 - layers;
+		for (int layer = 0; layer < layers; layer++) {
+			int y = layer == 0 ? minY : midY;
 			for (int x = minX; x <= maxX; x++) {
 				for (int z = minZ; z <= maxZ; z++) {
-					sampleCount++;
-					if (isWaterBlock(entity.getWorld().getBlockAt(x, y, z))) {
-						waterCount++;
+					sampleCount += weight;
+					if (isWaterBlock(world.getBlockAt(x, y, z))) {
+						waterCount += weight;
 					}
 				}
 			}
@@ -228,10 +236,7 @@ public class FloatController {
 	}
 
 	private boolean isWaterBlock(Block block) {
-		if (block.isLiquid()) {
-			return true;
-		}
-		return LocationChecker.isInWater(block.getLocation());
+		return LocationChecker.isLiquidOrWater(block);
 	}
 
 	private boolean checkSink(ActiveVehicle v) {

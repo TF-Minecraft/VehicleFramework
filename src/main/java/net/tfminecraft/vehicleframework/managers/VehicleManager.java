@@ -78,6 +78,7 @@ import net.tfminecraft.vehicleframework.managers.spawner.VehicleSpawner;
 import net.tfminecraft.vehicleframework.ownership.OwnerNames;
 import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
 import net.tfminecraft.vehicleframework.protocol.PacketConverter;
+import net.tfminecraft.vehicleframework.tracks.RecorderLog;
 import net.tfminecraft.vehicleframework.tracks.TrainTapeInteract;
 import net.tfminecraft.vehicleframework.tracks.TrainCollision;
 import net.tfminecraft.vehicleframework.tracks.TrainCollisionWarning;
@@ -1356,6 +1357,7 @@ public class VehicleManager implements Listener{
 		}
 		String when = context == null || context.isBlank() ? "during unload" : context;
 		PersistenceLog.unload(v, v.isDestroyed() ? "destroyed" : "unload");
+		RecorderLog.forget(v.getUUID());
 		if (v.isDestroyed()) {
 			if (!persistDestroy(v)) {
 				VFLogger.log("Failed to persist " + describeVehicle(v) + " at " + describeLocation(v)

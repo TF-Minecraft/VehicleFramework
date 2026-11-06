@@ -1,5 +1,7 @@
 package net.tfminecraft.vehicleframework.tracks;
 
+import net.tfminecraft.vehicleframework.util.LogFileWriter;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,6 +21,7 @@ class RecorderLogTest {
 		RecorderLog.configure(true, tempDir.toFile());
 		RecorderLog.append("lap-probe");
 
+		LogFileWriter.flush();
 		String content = Files.readString(tempDir.resolve("logs").resolve("recorder.log"));
 		assertTrue(content.contains("SESSION"));
 		assertTrue(content.contains("lap-probe"));
@@ -29,6 +32,7 @@ class RecorderLogTest {
 		RecorderLog.configure(false, tempDir.toFile());
 		RecorderLog.append("hello");
 
+		LogFileWriter.flush();
 		assertEquals(false, Files.exists(tempDir.resolve("logs").resolve("recorder.log")));
 	}
 }

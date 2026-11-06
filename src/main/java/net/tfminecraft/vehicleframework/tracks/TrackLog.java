@@ -1,12 +1,7 @@
 package net.tfminecraft.vehicleframework.tracks;
 
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -15,6 +10,7 @@ import java.util.UUID;
 import java.util.logging.Logger;
 
 import net.tfminecraft.vehicleframework.cache.Cache;
+import net.tfminecraft.vehicleframework.util.LogFileWriter;
 
 /**
  * Debug log at {@code logs/track.log} in the plugin data folder.
@@ -29,7 +25,6 @@ public final class TrackLog {
 
 	private static volatile boolean enabled;
 	private static volatile Path logFile;
-	private static final Object LOCK = new Object();
 
 	private TrackLog() {
 	}
@@ -48,13 +43,7 @@ public final class TrackLog {
 		if (logFile == null) {
 			return;
 		}
-		synchronized (LOCK) {
-			try {
-				Files.deleteIfExists(logFile);
-			} catch (IOException e) {
-				LOGGER.warning("Failed to wipe track.log: " + e.getMessage());
-			}
-		}
+		LogFileWriter.wipe(LOGGER, "track.log", logFile);
 	}
 
 	public static void append(String message) {
@@ -203,21 +192,8 @@ public final class TrackLog {
 		return String.format(Locale.US, "%.3f", value);
 	}
 
+	// Written off the server thread, in order.
 	private static void write(String line) {
-		synchronized (LOCK) {
-			try {
-				Files.createDirectories(logFile.getParent());
-				try (BufferedWriter writer = Files.newBufferedWriter(
-						logFile,
-						StandardCharsets.UTF_8,
-						StandardOpenOption.CREATE,
-						StandardOpenOption.APPEND)) {
-					writer.write(line);
-					writer.newLine();
-				}
-			} catch (IOException e) {
-				LOGGER.warning("Failed to write track.log: " + e.getMessage());
-			}
-		}
+		LogFileWriter.append(LOGGER, "track.log", logFile, line);
 	}
 }

@@ -1,12 +1,7 @@
 package net.tfminecraft.vehicleframework.database;
 
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -19,6 +14,7 @@ import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
+import net.tfminecraft.vehicleframework.util.LogFileWriter;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.handlers.TrainHandler;
 import net.tfminecraft.vehicleframework.vehicles.seat.Seat;
@@ -37,7 +33,6 @@ public final class PersistenceLog {
 
 	private static volatile boolean enabled;
 	private static volatile Path logFile;
-	private static final Object LOCK = new Object();
 	private static final Map<String, Integer> poseCounts = new ConcurrentHashMap<>();
 	private static final Map<String, Long> poseTimes = new ConcurrentHashMap<>();
 	private static final Map<String, Integer> placeCounts = new ConcurrentHashMap<>();
@@ -324,21 +319,8 @@ public final class PersistenceLog {
 		return String.format(Locale.US, "%.3f", value);
 	}
 
+	// Written off the server thread, in order.
 	private static void write(String line) {
-		synchronized (LOCK) {
-			try {
-				Files.createDirectories(logFile.getParent());
-				try (BufferedWriter writer = Files.newBufferedWriter(
-						logFile,
-						StandardCharsets.UTF_8,
-						StandardOpenOption.CREATE,
-						StandardOpenOption.APPEND)) {
-					writer.write(line);
-					writer.newLine();
-				}
-			} catch (IOException e) {
-				LOGGER.warning("Failed to write persistence.log: " + e.getMessage());
-			}
-		}
+		LogFileWriter.append(LOGGER, "persistence.log", logFile, line);
 	}
 }

@@ -1,5 +1,7 @@
 package net.tfminecraft.vehicleframework.database;
 
+import net.tfminecraft.vehicleframework.util.LogFileWriter;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -87,7 +89,7 @@ class DatabaseLoggingCoverageTest {
     }
 
     @Test void persistenceLogAppendsAcrossConfigurationAndDescribesPositionsAndPlayers() throws Exception {
-        assertFalse(PersistenceLog.isEnabled()); PersistenceLog.append("disabled"); assertFalse(Files.exists(logFile()));
+        assertFalse(PersistenceLog.isEnabled()); PersistenceLog.append("disabled"); LogFileWriter.flush(); assertFalse(Files.exists(logFile()));
         PersistenceLog.configure(true, folder.toFile()); assertTrue(PersistenceLog.isEnabled()); PersistenceLog.append(null);
         PersistenceLog.append("before reload"); PersistenceLog.configure(true, null); PersistenceLog.append("after reload");
         String log = log(); assertTrue(log.contains("before reload")); assertTrue(log.contains("after reload"));
@@ -153,7 +155,7 @@ class DatabaseLoggingCoverageTest {
         Logger logger = Logger.getLogger(PersistenceLog.class.getName()); List<LogRecord> records = new ArrayList<>();
         Handler capture = new Handler() { public void publish(LogRecord record) { records.add(record); } public void flush() {} public void close() {} };
         logger.addHandler(capture);
-        try { assertDoesNotThrow(() -> PersistenceLog.configure(true, folder.toFile())); } finally { logger.removeHandler(capture); }
+        try { assertDoesNotThrow(() -> PersistenceLog.configure(true, folder.toFile())); LogFileWriter.flush(); } finally { logger.removeHandler(capture); }
         assertTrue(records.stream().anyMatch(record -> record.getMessage().contains("Failed to write persistence.log")));
         assertEquals("keep this file", Files.readString(obstruction));
     }
@@ -170,6 +172,6 @@ class DatabaseLoggingCoverageTest {
     }
     private Location location(double x, double y, double z) { return new Location(world, x, y, z); }
     private Path logFile() { return folder.resolve("logs/persistence.log"); }
-    private String log() throws IOException { return Files.readString(logFile()); }
+    private String log() throws IOException { LogFileWriter.flush(); return Files.readString(logFile()); }
     private long count(String marker) throws IOException { return log().lines().filter(line -> line.contains(marker)).count(); }
 }
