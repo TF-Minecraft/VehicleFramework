@@ -48,6 +48,15 @@ public final class GroupAccess {
 
 	/** Whether a group the vehicle admits, by switch or always, has the rider's character in it. */
 	public static boolean admits(ActiveVehicle vehicle, AccessKey key) {
+		return admits(vehicle, key, true);
+	}
+
+	/** Whether a group the vehicle admits whatever its switches say (such as its faction) has the rider in it. */
+	public static boolean admitsAlways(ActiveVehicle vehicle, AccessKey key) {
+		return admits(vehicle, key, false);
+	}
+
+	private static boolean admits(ActiveVehicle vehicle, AccessKey key, boolean switched) {
 		if (key == null || key.characterId() == null) {
 			return false;
 		}
@@ -57,7 +66,9 @@ public final class GroupAccess {
 			return false;
 		}
 		Set<AccessGroup> groups = EnumSet.noneOf(AccessGroup.class);
-		groups.addAll(vehicle.getOwnerData().getAccessGroups());
+		if (switched) {
+			groups.addAll(vehicle.getOwnerData().getAccessGroups());
+		}
 		groups.addAll(fixed(service.get(), owned.get()));
 		for (AccessGroup group : groups) {
 			try {

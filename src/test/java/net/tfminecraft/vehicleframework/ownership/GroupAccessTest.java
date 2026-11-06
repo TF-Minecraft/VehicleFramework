@@ -66,6 +66,7 @@ class GroupAccessTest {
 		data.toggleAccessGroup(AccessGroup.GUILD);
 		assertTrue(GroupAccess.admits(vehicle, key));
 		assertTrue(OwnershipAccess.admits(vehicle, key));
+		assertFalse(GroupAccess.admitsAlways(vehicle, key), "a switched group is not always open");
 		assertFalse(GroupAccess.admits(vehicle, null));
 		assertFalse(GroupAccess.admits(vehicle, AccessKey.name("Alex")), "account names have no groups");
 	}
@@ -76,6 +77,7 @@ class GroupAccessTest {
 		when(groups.admits(AccessGroup.FACTION, id, owner, rider)).thenReturn(true);
 		assertEquals(Set.of(AccessGroup.FACTION), GroupAccess.alwaysOpen(vehicle));
 		assertTrue(GroupAccess.admits(vehicle, AccessKey.character(rider)));
+		assertTrue(GroupAccess.admitsAlways(vehicle, AccessKey.character(rider)));
 		when(groups.alwaysOpen(id, owner)).thenReturn(null);
 		assertEquals(Set.of(), GroupAccess.alwaysOpen(vehicle));
 	}

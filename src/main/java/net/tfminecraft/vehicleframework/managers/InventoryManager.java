@@ -18,6 +18,9 @@ import net.tfminecraft.vehicleframework.util.Text;
 import net.tfminecraft.vehicleframework.enums.SeatType;
 import net.tfminecraft.vehicleframework.enums.VFGUI;
 import net.tfminecraft.vehicleframework.managers.inventory.VFInventoryHolder;
+import net.tfminecraft.vehicleframework.data.OwnerData;
+import net.tfminecraft.vehicleframework.ownership.AccessKey;
+import net.tfminecraft.vehicleframework.ownership.GroupAccess;
 import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
 import net.tfminecraft.vehicleframework.ownership.OwnershipActions;
 import net.tfminecraft.vehicleframework.VehicleFramework;
@@ -32,6 +35,7 @@ import net.tfminecraft.vehicleframework.vehicles.component.Wings;
 import net.tfminecraft.vehicleframework.vehicles.handlers.container.Container;
 import net.tfminecraft.vehicleframework.vehicles.handlers.SkinHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleIcon;
+import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleTicketRules;
 import net.tfminecraft.vehicleframework.vehicles.handlers.skins.VehicleSkin;
 import net.tfminecraft.vehicleframework.vehicles.seat.Seat;
 import net.tfminecraft.vehicleframework.weapons.ActiveWeapon;
@@ -42,13 +46,19 @@ public class InventoryManager {
 	private OwnershipGUIManager ownershipGUI = new OwnershipGUIManager();
 
 	/**
-	 * The vehicle's outside hold, if it has one and the player is allowed aboard (owner,
-	 * whitelist or group; a ticket is not enough). Staff get in as for seats: by takeover.
+	 * The vehicle's outside hold, if it has one and the player may open it: the owner, a group
+	 * the vehicle always admits (such as its faction), and while the owner has the whitelist
+	 * switched on, those on it and its groups. A ticket is not enough. Staff get in as for
+	 * seats: by takeover.
 	 */
 	public static Container outsideHold(Player p, ActiveVehicle v) {
 		Container hold = v.hasContainers() ? v.getContainerHandler().outside() : null;
 		if(hold == null) return null;
-		return OwnershipAccess.admits(v, OwnershipAccess.key(p)) ? hold : null;
+		AccessKey key = OwnershipAccess.key(p);
+		OwnerData data = v.getOwnerData();
+		boolean owner = key != null && data != null && key.owns(data.getOwner());
+		return owner || GroupAccess.admitsAlways(v, key)
+				|| (VehicleTicketRules.gated(data) && OwnershipAccess.admits(v, key)) ? hold : null;
 	}
 
 	//Seat Selector
