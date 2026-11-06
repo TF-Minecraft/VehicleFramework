@@ -130,6 +130,11 @@ routes:
   run-unloaded: true
   # How often, in seconds, a train running unloaded saves where it is.
   save-seconds: 30
+  # Fuel a train running unloaded burns, as a share of what it burns loaded (1 = the same).
+  paper-fuel: 0.5
+  # Blocks a train running unloaded keeps from the train ahead on the same track: it waits
+  # there, using no fuel, until the way is clear.
+  paper-gap: 4
 
 # Cargo docks: when a tape-driven train stops at a stop on its tape (engine at zero for at
 # least min-stop-seconds while recording), each car with storage moves items with the docks

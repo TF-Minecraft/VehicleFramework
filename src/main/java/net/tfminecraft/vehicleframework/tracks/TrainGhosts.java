@@ -239,16 +239,27 @@ public final class TrainGhosts {
 			return;
 		}
 		TrackRegistry registry = VehicleFramework.getTrackRegistry();
+		// A run that just started has no place yet; the others keep their distance from it too.
+		for (GhostTrain ghost : ghosts.values()) {
+			try {
+				if (ghost.spots.isEmpty()) {
+					ghost.place(registry);
+				}
+			} catch (RuntimeException e) {
+				// Its own step below logs it.
+			}
+		}
+		PaperSpacing spacing = PaperSpacing.now(ghosts.values());
 		for (GhostTrain ghost : new ArrayList<>(ghosts.values())) {
 			try {
-				tickOne(ghost, registry);
+				tickOne(ghost, registry, spacing);
 			} catch (RuntimeException e) {
 				VFLogger.log("Train " + ghost.loco() + " running unloaded failed a step: " + e);
 			}
 		}
 	}
 
-	static void tickOne(GhostTrain ghost, TrackRegistry registry) {
+	static void tickOne(GhostTrain ghost, TrackRegistry registry, PaperSpacing spacing) {
 		if (ghost.place(registry) == null) {
 			end(ghost, "a track on its route is gone");
 			return;
@@ -269,8 +280,23 @@ public final class TrainGhosts {
 				return;
 			}
 		}
+		GhostTrain.State before = ghost.state();
 		List<Integer> stops = ghost.run(TICKS, registry);
-		if (!stops.isEmpty() && ghost.place(registry) != null) {
+		List<GhostTrain.Spot> after = ghost.place(registry);
+		String ahead = after == null ? null : spacing.blocker(ghost, before.spots(), after, ghosts.values(), registry);
+		if (ahead != null) {
+			// Too close to the train ahead: take the step back and wait, burning nothing.
+			ghost.restore(before);
+			if (!ghost.held) {
+				ghost.held = true;
+				RecorderLog.append("PAPER_HELD loco=" + ghost.loco() + " behind=" + ahead);
+			}
+			stops = List.of();
+		} else if (ghost.held) {
+			ghost.held = false;
+			RecorderLog.append("PAPER_CLEAR loco=" + ghost.loco());
+		}
+		if (!stops.isEmpty() && after != null) {
 			for (int stop : stops) {
 				ghost.stopSerial++;
 				CargoDocks.servePaper(ghost, stop);

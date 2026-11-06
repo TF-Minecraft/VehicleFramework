@@ -13,6 +13,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import net.tfminecraft.vehicleframework.cache.Cache;
+
 class GhostTrainTest {
 	@TempDir Path directory;
 	private TrackRegistry registry;
@@ -75,13 +77,39 @@ class GhostTrainTest {
 		assertEquals(new TapeTimetable.Clock(0, 40), ghost.clock);
 		ghost.run(20, registry);
 		assertEquals(new TapeTimetable.Clock(1, 20), ghost.clock);
-		assertEquals(48, ghost.fuel, 1e-9);
+		// On paper it burns half what it would loaded (routes.paper-fuel).
+		assertEquals(50 - 2 * 0.5, ghost.fuel, 1e-9);
 		// Overdrive burns faster.
 		GhostTrain fast = new GhostTrain("world", List.of("loco"), List.of("a"), new double[] {0}, new double[] {3},
 				new ThrottleTape("t", List.of(new ThrottleTape.Sample(0, 1, 120, 30))), new TapeTimetable.Clock(0, 0),
 				Map.of(), 10, true, 2, true, 50, null, 0, 0);
-		fast.run(20, registry);
-		assertEquals(10 - 2 * 2, fast.fuel, 1e-9);
+		double share = Cache.trainGhostFuel;
+		try {
+			Cache.trainGhostFuel = 1;
+			fast.run(20, registry);
+			assertEquals(10 - 2 * 2, fast.fuel, 1e-9);
+		} finally {
+			Cache.trainGhostFuel = share;
+		}
+	}
+
+	@Test
+	void aStepTakenBackLeavesTheRunAsItWas() {
+		GhostTrain ghost = ghost(45, 2);
+		ghost.place(registry);
+		GhostTrain.State before = ghost.state();
+		ghost.run(20, registry);
+		ghost.run(20, registry);
+		ghost.run(20, registry);
+		ghost.place(registry);
+		assertNotEquals(before.clock(), ghost.clock);
+		ghost.restore(before);
+		assertEquals(before.clock(), ghost.clock);
+		assertEquals(45, ghost.fuel, 1e-9);
+		assertEquals(2, ghost.reserve);
+		assertEquals(0, ghost.consumed);
+		assertEquals(before.spots(), ghost.spots);
+		assertEquals(before.routes(), ghost.state().routes());
 	}
 
 	@Test

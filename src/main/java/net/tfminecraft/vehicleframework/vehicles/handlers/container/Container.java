@@ -30,6 +30,8 @@ import net.tfminecraft.vehicleframework.managers.inventory.VFInventoryHolder;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 
 public class Container {
+    /** The seat of a hold opened from outside the vehicle, as on a flat car that has no seats. */
+    public static final String OUTSIDE = "outside";
 
     private String id;
     private String name;
