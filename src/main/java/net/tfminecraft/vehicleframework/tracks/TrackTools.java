@@ -33,6 +33,10 @@ public final class TrackTools {
 		return matches(item, Cache.trackJunctionItem);
 	}
 
+	public static boolean isDock(ItemStack item) {
+		return matches(item, Cache.trackDockItem);
+	}
+
 	/** Shows the wait before the next dig as an item cooldown on the remover in hand. */
 	static void showRemoverCooldown(Player player, long cooldownMs) {
 		ItemStack hand = player.getInventory().getItemInMainHand();

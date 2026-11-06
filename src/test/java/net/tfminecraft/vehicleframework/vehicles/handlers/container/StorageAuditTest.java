@@ -78,6 +78,25 @@ class StorageAuditTest {
 		assertNull(audit.takePending());
 	}
 
+	@Test
+	void aDockTradeIsNoOnesWhileAPlayersActionStaysTheirs() {
+		List<ItemStack> contents = new ArrayList<>(List.of(item(Material.COAL, 10)));
+		Inventory inventory = mock(Inventory.class);
+		when(inventory.getContents()).thenAnswer(call -> contents.toArray(new ItemStack[0]));
+		StorageAudit audit = new StorageAudit();
+		// Not watched: nothing to adjust.
+		audit.replacedByPlugin(new ItemStack[0], new ItemStack[] { item(Material.STONE, 1) });
+		assertFalse(audit.isWatching());
+		audit.watch(inventory);
+		// The player put 2 iron in; before it is counted a dock loads 64 cobblestone and takes 4 coal.
+		contents.add(item(Material.IRON_INGOT, 2));
+		ItemStack[] before = contents.toArray(new ItemStack[0]);
+		contents.set(0, item(Material.COAL, 6));
+		contents.add(item(Material.COBBLESTONE, 64));
+		audit.replacedByPlugin(before, contents.toArray(new ItemStack[0]));
+		assertEquals(Map.of(Material.IRON_INGOT, 2), changes(audit.count(inventory)));
+	}
+
 	private static Map<Material, Integer> changes(List<ItemCounts.Change> changes) {
 		return changes.stream().collect(Collectors.toMap(change -> change.item().getType(), ItemCounts.Change::amount));
 	}

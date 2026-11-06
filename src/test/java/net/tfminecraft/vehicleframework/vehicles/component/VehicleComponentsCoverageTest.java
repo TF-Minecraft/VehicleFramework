@@ -501,7 +501,7 @@ class VehicleComponentsCoverageTest {
         config.set("cargo.name", "Cargo"); config.set("cargo.size", 9); config.set("cargo.seat", "passenger");
         ContainerHandler handler = new ContainerHandler(f.vehicle, f.model, new ContainerHandler(config));
         assertEquals(1, handler.getContainers().size()); assertSame(handler.get("CARGO"), handler.getBySeat("PASSENGER"));
-        assertNull(handler.get("missing")); assertNull(handler.getBySeat("missing"));
+        assertNull(handler.get("missing")); assertNull(handler.getBySeat("missing")); assertNull(handler.outside());
         Player player = mock(Player.class); assertFalse(handler.open(player));
         when(f.vehicle.getSeat(player)).thenReturn(new Seat(SeatType.PASSENGER, "missing")); assertFalse(handler.open(player));
         when(f.vehicle.getSeat(player)).thenReturn(new Seat(SeatType.PASSENGER, "passenger"));
@@ -510,6 +510,23 @@ class VehicleComponentsCoverageTest {
         ItemStack coal = stack("coal", 2); live.setItem(0, coal); handler.destroy(new Location(world, 0, 64, 0));
         verify(world).dropItem(any(Location.class), argThat(item -> item.getAmount() == 2));
         assertFalse(new ContainerHandler(new YamlConfiguration()).open(player));
+        YamlConfiguration deck = new YamlConfiguration(); deck.set("hold.size", 54); deck.set("hold.seat", Container.OUTSIDE);
+        assertEquals("hold", new ContainerHandler(deck).outside().getId());
+    }
+
+    @Test void closingViewersClosesEveryOpenWindowAndKeepsWhatIsInIt() {
+        EngineFixture f = engine(false); YamlConfiguration config = new YamlConfiguration();
+        config.set("cargo.name", "Cargo"); config.set("cargo.size", 9); config.set("cargo.seat", "passenger");
+        ContainerHandler handler = new ContainerHandler(f.vehicle, f.model, new ContainerHandler(config));
+        handler.closeViewers();
+        Inventory live = inventory(9); bukkit.when(() -> Bukkit.createInventory(any(InventoryHolder.class), eq(9), eq("Cargo"))).thenReturn(live);
+        Player viewer = mock(Player.class); handler.get("cargo").open(f.vehicle, viewer);
+        when(live.getViewers()).thenReturn(new ArrayList<>(List.of(viewer)));
+        ItemStack coal = stack("coal", 4); live.setItem(1, coal);
+        handler.closeViewers();
+        verify(viewer).closeInventory();
+        // Pulled from the window into the saved items, not only readable through it.
+        assertEquals(4, handler.get("cargo").getItems().get(1).getAmount());
     }
 
     @Test void harnessUsesHorseSpeedAndRefusesMoreMountsThanConfiguredSeats() {

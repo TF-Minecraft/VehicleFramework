@@ -43,6 +43,22 @@ public class Cache {
 	public static String trackRemoverItem = "v.iron_pickaxe";
 	public static String trackRecorderItem = "v.clock";
 	public static String trackJunctionItem = "v.diamond_shovel";
+	public static String trackDockItem = "m.utils.train_track_dock";
+	// Recording on a line with ends: done back within this many blocks of the start, after at least the minimum run.
+	public static double trainRouteFinishDistance = 2.0;
+	public static double trainRouteMinDistance = 32.0;
+	// Tape-driven trains nobody is near run "on paper" along their timetable; saved this often.
+	public static boolean trainRunUnloaded = true;
+	public static int trainGhostSaveSeconds = 30;
+	// Share of the loaded fuel burn a train on paper uses, and the blocks it keeps from the train ahead.
+	public static double trainGhostFuel = 0.5;
+	public static double trainGhostGap = 4.0;
+	// Cargo docks.
+	public static boolean trainDocksEnabled = true;
+	public static double trainDockReach = 4.0;
+	public static int trainDockItemsPerStop = 576;
+	public static int trainDockMinStopTicks = 40;
+	public static boolean trainDockFuelCars = false;
 	public static String trackSwitchItem = "ia.tfmc:railroad_switch";
 	public static String trackItem = "ia.tfmc:train_track";
 	public static double trackSwitchOffsetAlong = -1.2;

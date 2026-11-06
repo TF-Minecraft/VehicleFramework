@@ -291,7 +291,8 @@ public final class TrainCollisionWarning {
 		PLACED.keySet().retainAll(parents.keySet());
 		List<Train> out = new ArrayList<>();
 		for (TrackedCar car : saved) {
-			if (loaded.contains(car.uuid())) {
+			// A car running on paper is not where its row says.
+			if (loaded.contains(car.uuid()) || TrainGhosts.isGhost(car.uuid())) {
 				continue;
 			}
 			Placed placed = place(registry, car);

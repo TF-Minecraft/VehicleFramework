@@ -30,6 +30,8 @@ public final class TrainBlockCollision {
     private static final double EPS = 1e-6;
     // After a track change, how close a slice must be to the old space to count as it.
     private static final double NEAR = 0.3;
+    // Stands in for the shapes of every block in a chunk that is not loaded: always in the way.
+    private static final List<BoundingBox> UNLOADED = List.of(new BoundingBox());
 
     private TrainBlockCollision() {
     }
@@ -48,7 +50,40 @@ public final class TrainBlockCollision {
     /** As above, reusing block shapes already looked up during the same movement tick. */
     public static boolean blocked(Entity entity, TrackSpline fromSpline, double fromS,
             TrackSpline toSpline, double toS, double reach, Map<Long, List<BoundingBox>> shapes) {
-        return !hits(entity, fromSpline, fromS, toSpline, toS, reach, shapes, true).isEmpty();
+        return check(entity, fromSpline, fromS, toSpline, toS, reach, shapes) != Clearance.CLEAR;
+    }
+
+    /** Whether a step is clear, blocked by a block, or reaches a chunk that is not loaded. */
+    public enum Clearance {
+        CLEAR, BLOCKED, UNLOADED
+    }
+
+    /**
+     * As {@link #blocked}, telling a block apart from the edge of the loaded area. Blocks in
+     * chunks that are not loaded are never read (that would load the chunk on the main
+     * thread); they count as in the way.
+     */
+    public static Clearance check(Entity entity, TrackSpline fromSpline, double fromS,
+            TrackSpline toSpline, double toS, double reach, Map<Long, List<BoundingBox>> shapes) {
+        Set<Long> found = hits(entity, fromSpline, fromS, toSpline, toS, reach, shapes, true);
+        return clearance(found, shapes);
+    }
+
+    /** Whether a car standing at {@code s} would be inside a block or reach unloaded chunks. */
+    public static Clearance occupied(World world, TrackSpline spline, double s, double reach) {
+        if (world == null || spline == null) {
+            return Clearance.CLEAR;
+        }
+        Map<Long, List<BoundingBox>> shapes = new HashMap<>();
+        Set<Long> found = touched(world, slices(spline, s, reach, 0), shapes, Set.of(), true);
+        return clearance(found, shapes);
+    }
+
+    private static Clearance clearance(Set<Long> found, Map<Long, List<BoundingBox>> shapes) {
+        if (found.isEmpty()) {
+            return Clearance.CLEAR;
+        }
+        return shapes.get(found.iterator().next()) == UNLOADED ? Clearance.UNLOADED : Clearance.BLOCKED;
     }
 
     /** Every block that stops a car making this step, for showing to its riders. */
@@ -56,6 +91,9 @@ public final class TrainBlockCollision {
             TrackSpline toSpline, double toS, double reach, Map<Long, List<BoundingBox>> shapes) {
         List<Obstruction> found = new ArrayList<>();
         for (long key : hits(entity, fromSpline, fromS, toSpline, toS, reach, shapes, false)) {
+            if (shapes.get(key) == UNLOADED) {
+                continue;
+            }
             found.add(new Obstruction(keyX(key), keyY(key), keyZ(key), toS));
         }
         return found;
@@ -219,13 +257,19 @@ public final class TrainBlockCollision {
         return new Slice(mid.x, mid.z, mid.fx, mid.fz, mid.halfLength, low, high, false);
     }
 
+    // Moving trains: blocks in chunks that are not loaded are never read and count as in the way.
     private static Set<Long> touched(World world, List<Slice> slices, Map<Long, List<BoundingBox>> shapes,
             Set<Long> ignore, boolean firstOnly) {
-        return touched(world, slices, shapes, ignore, firstOnly, false);
+        return touched(world, slices, shapes, ignore, firstOnly, false, true);
     }
 
     private static Set<Long> touched(World world, List<Slice> slices, Map<Long, List<BoundingBox>> shapes,
             Set<Long> ignore, boolean firstOnly, boolean loadedOnly) {
+        return touched(world, slices, shapes, ignore, firstOnly, loadedOnly, false);
+    }
+
+    private static Set<Long> touched(World world, List<Slice> slices, Map<Long, List<BoundingBox>> shapes,
+            Set<Long> ignore, boolean firstOnly, boolean loadedOnly, boolean guardUnloaded) {
         Set<Long> hits = new LinkedHashSet<>();
         double halfWidth = Cache.trainClearanceWidth / 2;
         for (Slice slice : slices) {
@@ -245,7 +289,15 @@ public final class TrainBlockCollision {
                         if (loadedOnly && !world.isChunkLoaded(x >> 4, z >> 4)) {
                             continue;
                         }
-                        for (BoundingBox solid : shapes.computeIfAbsent(key, k -> solids(world, k))) {
+                        List<BoundingBox> shape = shapes.computeIfAbsent(key, k -> solids(world, k, guardUnloaded));
+                        if (shape == UNLOADED) {
+                            hits.add(key);
+                            if (firstOnly) {
+                                return hits;
+                            }
+                            continue;
+                        }
+                        for (BoundingBox solid : shape) {
                             if (overlaps(slice, halfWidth, solid)) {
                                 hits.add(key);
                                 if (firstOnly) {
@@ -261,10 +313,13 @@ public final class TrainBlockCollision {
         return hits;
     }
 
-    private static List<BoundingBox> solids(World world, long key) {
+    private static List<BoundingBox> solids(World world, long key, boolean guardUnloaded) {
         int x = keyX(key);
         int y = keyY(key);
         int z = keyZ(key);
+        if (guardUnloaded && !world.isChunkLoaded(x >> 4, z >> 4)) {
+            return UNLOADED;
+        }
         Block block = world.getBlockAt(x, y, z);
         if (block.isPassable()) {
             return List.of();

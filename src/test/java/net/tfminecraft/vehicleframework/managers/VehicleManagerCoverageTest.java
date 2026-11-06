@@ -815,6 +815,21 @@ class VehicleManagerCoverageTest {
         }
     }
 
+    @Test
+    void theHoldButtonOpensAnOutsideHoldForThoseAllowedAboard() throws Exception {
+        ActiveVehicle v = vehicle("v"); Player player = player("Ryan"); register(v);
+        v.getOwnerData().setOwner("player_Ryan"); manager.seatInteract(player, v);
+        Container hold = mock(Container.class);
+        when(v.hasContainers()).thenReturn(true); when(v.getContainerHandler().outside()).thenReturn(hold);
+        manager.seatSelect(click(player, v, VFGUI.SEAT_SELECTION, InventoryManager.HOLD_SLOT, item(Material.CHEST, null)));
+        verify(hold).open(v, player);
+        // Access gone since the menu opened, or a seat in that slot: nothing opens.
+        v.getOwnerData().setOwner("player_Other");
+        manager.seatSelect(click(player, v, VFGUI.SEAT_SELECTION, InventoryManager.HOLD_SLOT, item(Material.CHEST, null)));
+        manager.seatSelect(click(player, v, VFGUI.SEAT_SELECTION, InventoryManager.HOLD_SLOT, item(Material.GREEN_CONCRETE, null)));
+        verify(hold, times(1)).open(any(), any());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"select", "attach", "train-attach", "cannot-tow", "detach", "attachable-train", "not-towable"})
     void sneakingInteractionRoutesTowSelectionAttachmentAndDetachment(String outcome) {

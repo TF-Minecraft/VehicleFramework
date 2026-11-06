@@ -79,6 +79,7 @@ import net.tfminecraft.vehicleframework.ownership.OwnerNames;
 import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
 import net.tfminecraft.vehicleframework.protocol.PacketConverter;
 import net.tfminecraft.vehicleframework.tracks.RecorderLog;
+import net.tfminecraft.vehicleframework.tracks.TrainGhosts;
 import net.tfminecraft.vehicleframework.tracks.TrainTapeInteract;
 import net.tfminecraft.vehicleframework.tracks.TrainCollision;
 import net.tfminecraft.vehicleframework.tracks.TrainCollisionWarning;
@@ -313,6 +314,7 @@ public class VehicleManager implements Listener{
 						VFLogger.log(v.getId()+" has run into an issue");
 					}
 	            }
+				TrainGhosts.tick();
 	        }
 	    }.runTaskTimer(VehicleFramework.plugin, 0L, 20L);
 	}
@@ -331,6 +333,7 @@ public class VehicleManager implements Listener{
 				TrainCollision.tick(vehicles.values());
 				TrainCollisionWarning.tick(vehicles.values());
 				DeckRiders.tick(vehicles.values());
+				TrainGhosts.flush(VehicleManager.this);
 	            Iterator<Map.Entry<Player, ActiveVehicle>> iterator = tow.entrySet().iterator();
 	            while (iterator.hasNext()) {
 	                Map.Entry<Player, ActiveVehicle> entry = iterator.next();
@@ -1103,6 +1106,11 @@ public class VehicleManager implements Listener{
 			v.dismountPassenger(p, false);
 			return;
 		}
+		if(e.getSlot() == InventoryManager.HOLD_SLOT && i.getType().equals(Material.CHEST)) {
+			Container hold = InventoryManager.outsideHold(p, v);
+			if(hold != null) hold.open(v, p);
+			return;
+		}
 		NamespacedKey key = new NamespacedKey(VehicleFramework.plugin, "vf_seat_id");
 		String id = i.getItemMeta().getPersistentDataContainer().get(key, PersistentDataType.STRING);
 		if(id == null) return;
@@ -1356,6 +1364,8 @@ public class VehicleManager implements Listener{
 			return false;
 		}
 		String when = context == null || context.isBlank() ? "during unload" : context;
+		// Nobody may take items out of a window after the car is saved.
+		v.closeStorage();
 		PersistenceLog.unload(v, v.isDestroyed() ? "destroyed" : "unload");
 		RecorderLog.forget(v.getUUID());
 		if (v.isDestroyed()) {

@@ -114,6 +114,41 @@ class InventoryManagerCoverageTest {
         assertEquals(VFGUI.SEAT_SELECTION, ((VFInventoryHolder) inventory.getHolder()).getType());
     }
 
+    @Test void anOutsideHoldGetsAButtonForThoseAllowedAboardOnly() {
+        when(seats.getSeats()).thenReturn(List.of());
+        when(vehicle.hasContainers()).thenReturn(true); ContainerHandler containers = mock(ContainerHandler.class);
+        when(vehicle.getContainerHandler()).thenReturn(containers); Container hold = mock(Container.class);
+        when(hold.getName()).thenReturn("§eFlat Car Hold"); when(containers.outside()).thenReturn(hold);
+        manager.seatSelection(null, player, vehicle, true); Inventory inventory = created.get(0);
+        assertEquals(Material.CHEST, inventory.getItem(InventoryManager.HOLD_SLOT).getType());
+        assertEquals("§eFlat Car Hold", inventory.getItem(InventoryManager.HOLD_SLOT).getItemMeta().getDisplayName());
+        assertSame(hold, InventoryManager.outsideHold(player, vehicle));
+        when(owner.getOwner()).thenReturn("player_SomeoneElse");
+        assertNull(InventoryManager.outsideHold(player, vehicle));
+        // On the whitelist: only while the owner has it switched on.
+        when(owner.getWhiteList()).thenReturn(new ArrayList<>(List.of("player_Alex")));
+        assertNull(InventoryManager.outsideHold(player, vehicle));
+        when(owner.isWhiteListed()).thenReturn(true);
+        assertSame(hold, InventoryManager.outsideHold(player, vehicle));
+        when(owner.isWhiteListed()).thenReturn(false);
+        // The vehicle's faction gets in whatever the switch; a switched group only while it is on.
+        when(owner.getWhiteList()).thenReturn(new ArrayList<>());
+        try (MockedStatic<net.tfminecraft.vehicleframework.ownership.GroupAccess> groups =
+                mockStatic(net.tfminecraft.vehicleframework.ownership.GroupAccess.class)) {
+            groups.when(() -> net.tfminecraft.vehicleframework.ownership.GroupAccess.admits(any(), any())).thenReturn(true);
+            assertNull(InventoryManager.outsideHold(player, vehicle));
+            groups.when(() -> net.tfminecraft.vehicleframework.ownership.GroupAccess.admitsAlways(any(), any())).thenReturn(true);
+            assertSame(hold, InventoryManager.outsideHold(player, vehicle));
+        }
+        manager.seatSelection(inventory, player, vehicle, false);
+        assertEquals(Material.GRAY_STAINED_GLASS_PANE, inventory.getItem(InventoryManager.HOLD_SLOT).getType());
+        // Staff are not let in by their permission alone (as for seats).
+        when(player.hasPermission(anyString())).thenReturn(true);
+        assertNull(InventoryManager.outsideHold(player, vehicle));
+        when(vehicle.hasContainers()).thenReturn(false);
+        assertNull(InventoryManager.outsideHold(player, vehicle));
+    }
+
     @Test void nonOwnerGetsNoOwnershipButtonAndRefreshDoesNotReopen() {
         when(owner.getOwner()).thenReturn("player_SomeoneElse"); Inventory inventory = inventory(27, null);
         manager.seatSelection(inventory, player, vehicle, false);

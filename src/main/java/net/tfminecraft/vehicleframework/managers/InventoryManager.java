@@ -18,6 +18,10 @@ import net.tfminecraft.vehicleframework.util.Text;
 import net.tfminecraft.vehicleframework.enums.SeatType;
 import net.tfminecraft.vehicleframework.enums.VFGUI;
 import net.tfminecraft.vehicleframework.managers.inventory.VFInventoryHolder;
+import net.tfminecraft.vehicleframework.data.OwnerData;
+import net.tfminecraft.vehicleframework.ownership.AccessKey;
+import net.tfminecraft.vehicleframework.ownership.GroupAccess;
+import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
 import net.tfminecraft.vehicleframework.ownership.OwnershipActions;
 import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
@@ -31,20 +35,41 @@ import net.tfminecraft.vehicleframework.vehicles.component.Wings;
 import net.tfminecraft.vehicleframework.vehicles.handlers.container.Container;
 import net.tfminecraft.vehicleframework.vehicles.handlers.SkinHandler;
 import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleIcon;
+import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleTicketRules;
 import net.tfminecraft.vehicleframework.vehicles.handlers.skins.VehicleSkin;
 import net.tfminecraft.vehicleframework.vehicles.seat.Seat;
 import net.tfminecraft.vehicleframework.weapons.ActiveWeapon;
 
 public class InventoryManager {
+	/** Seat menu slot of the button that opens a hold reached from outside (seat: outside). */
+	public static final int HOLD_SLOT = 23;
 	private OwnershipGUIManager ownershipGUI = new OwnershipGUIManager();
+
+	/**
+	 * The vehicle's outside hold, if it has one and the player may open it: the owner, a group
+	 * the vehicle always admits (such as its faction), and while the owner has the whitelist
+	 * switched on, those on it and its groups. A ticket is not enough. Staff get in as for
+	 * seats: by takeover.
+	 */
+	public static Container outsideHold(Player p, ActiveVehicle v) {
+		Container hold = v.hasContainers() ? v.getContainerHandler().outside() : null;
+		if(hold == null) return null;
+		AccessKey key = OwnershipAccess.key(p);
+		OwnerData data = v.getOwnerData();
+		boolean owner = key != null && data != null && key.owns(data.getOwner());
+		return owner || GroupAccess.admitsAlways(v, key)
+				|| (VehicleTicketRules.gated(data) && OwnershipAccess.admits(v, key)) ? hold : null;
+	}
 
 	//Seat Selector
 	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
 	@SuppressWarnings("deprecation")
 	public void seatSelection(Inventory i, Player p, ActiveVehicle v, boolean open) {
 		VehicleIcon icon = v.getIcon();
-		// Slots 25 and 26 hold the ownership and dismount controls; slot 24 shows the vehicle when it has an icon.
-		int firstControl = icon == null ? 25 : 24;
+		Container hold = outsideHold(p, v);
+		// Slots 25 and 26 hold the ownership and dismount controls; slot 24 shows the vehicle when it
+		// has an icon, and slot 23 opens its outside hold.
+		int firstControl = hold != null ? HOLD_SLOT : icon == null ? 25 : 24;
 		int size = Math.max(27, ((v.getSeatHandler().getSeats().size() + 27 - firstControl + 8) / 9) * 9);
 		if(open || i.getSize() < size) {
 			i = VehicleFramework.plugin.getServer().createInventory(new VFInventoryHolder(v.getUUID(), VFGUI.SEAT_SELECTION), size, "§7Select Seat");
@@ -58,6 +83,7 @@ public class InventoryManager {
 			x++;
 		}
 		if(icon != null) i.setItem(24, createVehicleInfo(v, icon));
+		if(hold != null) i.setItem(HOLD_SLOT, createHoldButton(hold));
 		// Slot 25 – ownership settings button (owner, or staff on an owned vehicle)
 		if(OwnershipActions.mayOpenMenu(p, v)) {
 			i.setItem(25, ownershipGUI.createOwnershipButton());
@@ -134,6 +160,17 @@ public class InventoryManager {
 		i.setItemMeta(m);
 		return i;
 	}
+	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
+	@SuppressWarnings("deprecation")
+	private ItemStack createHoldButton(Container hold) {
+		ItemStack i = new ItemStack(Material.CHEST, 1);
+		ItemMeta m = i.getItemMeta();
+		m.setDisplayName("§e" + hold.getName().replaceAll("§.", ""));
+		m.setLore(List.of("§7Click to open"));
+		i.setItemMeta(m);
+		return i;
+	}
+
 	// Keep the existing legacy text representation, formatting, and exact-string comparisons.
 	@SuppressWarnings("deprecation")
 	private ItemStack createDismountButton() {

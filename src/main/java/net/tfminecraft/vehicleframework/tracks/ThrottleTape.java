@@ -1,10 +1,7 @@
 package net.tfminecraft.vehicleframework.tracks;
 
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import org.json.simple.JSONArray;
@@ -50,20 +47,14 @@ public final class ThrottleTape {
 		}
 	}
 
-	public static final class DwellState {
-		public int left;
-		public Double atS;
-	}
-
 	public enum AppendResult {
 		HELD, ADDED, CAPPED
 	}
 
 	private final String splineId;
 	private final List<Sample> samples;
-	// Playback asks the tape every tick. Each spline and direction's samples, sorted along the
-	// track, are built on first use and dropped when a sample is added.
-	private final Map<String, Index[]> indexes = new HashMap<>();
+	// Derived from the samples; rebuilt when a sample is added.
+	private int[] changes;
 
 	public ThrottleTape(String splineId) {
 		this(splineId, List.of());
@@ -86,114 +77,100 @@ public final class ThrottleTape {
 		return id != null && id.toString().equalsIgnoreCase(splineId);
 	}
 
-	public boolean takesJunction(UUID junctionId) {
-		if (junctionId == null) {
-			return false;
-		}
-		String want = junctionId.toString();
-		for (Sample sample : samples) {
-			if (want.equalsIgnoreCase(sample.junctionId)) {
-				return true;
-			}
-		}
-		return false;
-	}
-
 	public List<Sample> getSamples() {
 		return List.copyOf(samples);
 	}
 
-	public int lookup(double s, int sign) {
-		return lookup(s, sign, splineId);
+	public int size() {
+		return samples.size();
 	}
 
-	public int lookup(double s, int sign, UUID currentSpline) {
-		return lookup(s, sign, currentSpline == null ? splineId : currentSpline.toString());
+	/** The sample at {@code index}, wrapping around the end of the tape. */
+	public Sample sample(int index) {
+		int n = samples.size();
+		return samples.get(((index % n) + n) % n);
 	}
 
-	public int lookup(double s, int sign, String currentSpline) {
-		return index(currentSpline, sign).lookup(s);
+	public Sample last() {
+		return samples.isEmpty() ? null : samples.get(samples.size() - 1);
 	}
 
-	static int lookup(List<Sample> samples, double s, int sign) {
-		if (samples == null || samples.isEmpty()) {
-			return 0;
-		}
-		int want = sign < 0 ? -1 : 1;
-		List<Sample> matched = new ArrayList<>();
+	/**
+	 * One run of the tape, in ticks. A sample is taken every tick and a held sample counts
+	 * each tick it was held, so the tape is also a timetable.
+	 */
+	public long totalTicks() {
+		long total = 0;
 		for (Sample sample : samples) {
-			if (sample.sign == want) {
-				matched.add(sample);
+			total += sample.holdTicks;
+		}
+		return total;
+	}
+
+	/**
+	 * The first sample after {@code index}, going round the tape once, that is on another
+	 * track than the sample at {@code index}; -1 if the whole tape stays on that track.
+	 */
+	public int nextSplineChange(int index) {
+		int n = samples.size();
+		if (changes == null || changes.length != n) {
+			changes = splineChanges();
+		}
+		return n == 0 ? -1 : changes[((index % n) + n) % n];
+	}
+
+	private int[] splineChanges() {
+		int n = samples.size();
+		int[] next = new int[n];
+		java.util.Arrays.fill(next, -1);
+		int pending = -1;
+		// Two passes round the ring: the first finds changes past the end of the tape.
+		for (int k = 2 * n - 1; k >= 0; k--) {
+			int i = k % n;
+			int after = (i + 1) % n;
+			if (!sameId(samples.get(i).resolvedSpline(splineId), samples.get(after).resolvedSpline(splineId))) {
+				pending = after;
+			}
+			if (k < n) {
+				next[i] = pending;
 			}
 		}
-		if (matched.isEmpty()) {
-			return 0;
-		}
-		matched.sort(Comparator.comparingDouble(a -> a.s));
-		if (s <= matched.get(0).s) {
-			return matched.get(0).throttle * matched.get(0).orientation;
-		}
-		Sample last = matched.get(matched.size() - 1);
-		if (s >= last.s) {
-			return last.throttle * last.orientation;
-		}
-		for (int i = 0; i < matched.size() - 1; i++) {
-			Sample a = matched.get(i);
-			Sample b = matched.get(i + 1);
-			if (s >= a.s && s <= b.s) {
-				double t = (s - a.s) / (b.s - a.s);
-				return (int) Math.round(a.throttle * a.orientation + t * (b.throttle * b.orientation - a.throttle * a.orientation));
+		return next;
+	}
+
+	/**
+	 * The sample a train at {@code s} on {@code spline} should resume from: on that track,
+	 * within {@code reach} blocks, travelling with {@code sign} if any does, then the first
+	 * one at or after {@code prefer} in tape order, then the nearest. -1 if there is none.
+	 */
+	public int nearestIndex(String spline, double s, int sign, int prefer, double reach, double length, boolean loop) {
+		int n = samples.size();
+		int want = sign < 0 ? -1 : 1;
+		int best = -1;
+		double bestScore = Double.POSITIVE_INFINITY;
+		for (int i = 0; i < n; i++) {
+			Sample sample = samples.get(i);
+			double d = Math.abs(along(sample.s, s, length, loop));
+			if (d > reach || !sameId(sample.resolvedSpline(splineId), blankToNull(spline))) {
+				continue;
+			}
+			int order = prefer < 0 ? 0 : Math.floorMod(i - prefer, n);
+			double score = (sample.sign == want ? 0 : n) + order + d / (reach + 1);
+			if (score < bestScore) {
+				bestScore = score;
+				best = i;
 			}
 		}
-		return 0;
+		return best;
 	}
 
-	public int holdAt(double s, int sign) {
-		return holdAt(s, sign, splineId);
-	}
-
-	public int holdAt(double s, int sign, UUID currentSpline) {
-		return holdAt(s, sign, currentSpline == null ? splineId : currentSpline.toString());
-	}
-
-	/** The hold of the recorded sample nearest {@code s}, the first recorded on a tie, if under {@link #HOLD_S} away. */
-	public int holdAt(double s, int sign, String currentSpline) {
-		return index(currentSpline, sign).holdAt(s);
-	}
-
-	public int targetWithDwell(double s, int sign, DwellState dwell) {
-		return targetWithDwell(s, sign, dwell, splineId);
-	}
-
-	public int targetWithDwell(double s, int sign, DwellState dwell, UUID currentSpline) {
-		return targetWithDwell(s, sign, dwell, currentSpline == null ? splineId : currentSpline.toString());
-	}
-
-	/** Converts each recorded sample from its body frame, then into the current body's frame. */
-	public int targetWithDwell(double s, int sign, DwellState dwell, UUID currentSpline, int orientation) {
-		return targetWithDwell(s, sign, dwell, currentSpline) * (orientation < 0 ? -1 : 1);
-	}
-
-	public int targetWithDwell(double s, int sign, DwellState dwell, String currentSpline) {
-		int target = lookup(s, sign, currentSpline);
-		int hold = holdAt(s, sign, currentSpline);
-		if (dwell == null) {
-			return target;
+	/** Signed distance along a track from {@code from} to {@code to}, the short way round a loop. */
+	public static double along(double from, double to, double length, boolean loop) {
+		double d = to - from;
+		if (loop && length > 1e-9) {
+			d -= length * Math.rint(d / length);
 		}
-		if (target == 0 && hold > 1) {
-			if (dwell.atS == null || Math.abs(s - dwell.atS) >= HOLD_S) {
-				dwell.left = hold;
-				dwell.atS = s;
-			}
-			if (dwell.left > 0) {
-				dwell.left--;
-				return 0;
-			}
-		} else if (dwell.atS != null && Math.abs(s - dwell.atS) >= HOLD_S) {
-			dwell.left = 0;
-			dwell.atS = null;
-		}
-		return target;
+		return d;
 	}
 
 	public AppendResult tryAppend(double s, int sign, int throttle) {
@@ -227,7 +204,7 @@ public final class ThrottleTape {
 			return AppendResult.CAPPED;
 		}
 		samples.add(new Sample(s, nsign, throttle, 1, spline, junction, orientation));
-		indexes.clear();
+		changes = null;
 		if (samples.size() >= MAX_SAMPLES) {
 			return AppendResult.CAPPED;
 		}
@@ -289,133 +266,6 @@ public final class ThrottleTape {
 			}
 		}
 		return new ThrottleTape(splineId, loaded);
-	}
-
-	private Index index(String currentSpline, int sign) {
-		String want = wanted(currentSpline);
-		Index[] bySign = indexes.computeIfAbsent(want, key -> new Index[2]);
-		int slot = sign < 0 ? 0 : 1;
-		if (bySign[slot] == null) {
-			bySign[slot] = new Index(samplesFor(want), sign < 0 ? -1 : 1);
-		}
-		return bySign[slot];
-	}
-
-	private String wanted(String currentSpline) {
-		String want = blankToNull(currentSpline);
-		return want == null ? splineId : want;
-	}
-
-	/**
-	 * One spline and direction's samples, sorted along the track the way {@link #lookup(List, double, int)}
-	 * sorts them, so both give the same answers. A sample at NaN sorts last and is never between two others.
-	 */
-	static final class Index {
-		private final Sample[] sorted;
-		// Each sorted sample's place in recording order.
-		private final int[] recorded;
-		// Sorted samples before the first NaN.
-		private final int numbered;
-
-		Index(List<Sample> samples, int want) {
-			List<Sample> matched = new ArrayList<>();
-			for (Sample sample : samples) {
-				if (sample.sign == want) {
-					matched.add(sample);
-				}
-			}
-			Integer[] order = new Integer[matched.size()];
-			for (int i = 0; i < order.length; i++) {
-				order[i] = i;
-			}
-			// A stable sort, as List.sort is: equal positions keep recording order.
-			java.util.Arrays.sort(order, Comparator.comparingDouble(i -> matched.get(i).s));
-			sorted = new Sample[order.length];
-			recorded = new int[order.length];
-			int count = 0;
-			for (int i = 0; i < order.length; i++) {
-				sorted[i] = matched.get(order[i]);
-				recorded[i] = order[i];
-				if (!Double.isNaN(sorted[i].s)) {
-					count++;
-				}
-			}
-			numbered = count;
-		}
-
-		int lookup(double s) {
-			if (sorted.length == 0) {
-				return 0;
-			}
-			Sample first = sorted[0];
-			if (s <= first.s) {
-				return first.throttle * first.orientation;
-			}
-			Sample last = sorted[sorted.length - 1];
-			if (s >= last.s) {
-				return last.throttle * last.orientation;
-			}
-			// The first pair with a.s <= s <= b.s: b is the first sample from the second on at
-			// or past s, as "s <= sample.s" only turns true once along the numbered samples.
-			int lo = 1;
-			int hi = numbered;
-			while (lo < hi) {
-				int mid = (lo + hi) >>> 1;
-				if (s <= sorted[mid].s) {
-					hi = mid;
-				} else {
-					lo = mid + 1;
-				}
-			}
-			if (lo >= numbered) {
-				return 0;
-			}
-			Sample a = sorted[lo - 1];
-			Sample b = sorted[lo];
-			double t = (s - a.s) / (b.s - a.s);
-			return (int) Math.round(a.throttle * a.orientation + t * (b.throttle * b.orientation - a.throttle * a.orientation));
-		}
-
-		int holdAt(double s) {
-			if (!(Math.abs(s) < Double.POSITIVE_INFINITY)) {
-				// Nothing is a finite distance from an infinite or NaN position.
-				return 1;
-			}
-			// sample.s - s only grows along the sorted samples, so those under HOLD_S away
-			// sit together: from the first more than HOLD_S behind s up to HOLD_S ahead.
-			int lo = 0;
-			int hi = numbered;
-			while (lo < hi) {
-				int mid = (lo + hi) >>> 1;
-				if (sorted[mid].s - s > -HOLD_S) {
-					hi = mid;
-				} else {
-					lo = mid + 1;
-				}
-			}
-			Sample best = null;
-			double bestD = HOLD_S;
-			int bestRecorded = Integer.MAX_VALUE;
-			for (int i = lo; i < numbered && sorted[i].s - s < HOLD_S; i++) {
-				double d = Math.abs(sorted[i].s - s);
-				if (d < bestD || (d == bestD && recorded[i] < bestRecorded)) {
-					bestD = d;
-					best = sorted[i];
-					bestRecorded = recorded[i];
-				}
-			}
-			return best == null ? 1 : best.holdTicks;
-		}
-	}
-
-	private List<Sample> samplesFor(String want) {
-		List<Sample> out = new ArrayList<>();
-		for (Sample sample : samples) {
-			if (sameId(sample.resolvedSpline(splineId), want)) {
-				out.add(sample);
-			}
-		}
-		return out;
 	}
 
 	private static boolean sameId(String a, String b) {

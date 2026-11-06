@@ -76,6 +76,7 @@ class TrainHandlerCoverageTest {
         when(world.getName()).thenReturn("world");
         org.bukkit.block.Block air = mock(org.bukkit.block.Block.class);
         when(air.isPassable()).thenReturn(true);
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
         when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenReturn(air);
     }
     @AfterEach void cleanup() throws Exception {
@@ -228,14 +229,14 @@ class TrainHandlerCoverageTest {
         assertTrue(car.train.toConsistData().isUnbound());
     }
 
-    @Test void onlyAnActualCircuitCanStartRecording() {
+    @Test void recordingStartsOnAnyTrackWithACircuitOrEnds() {
         Car car = car(false);
-        assertFalse(car.train.canRecordCircuit()); car.train.startRecording(null);
+        assertFalse(car.train.canRecordRoute()); car.train.startRecording(null);
         assertFalse(car.train.isRecording());
         bindAt(car, track(false), 20); car.train.startRecording(null);
-        assertFalse(car.train.canRecordCircuit()); assertFalse(car.train.isRecording());
+        assertTrue(car.train.canRecordRoute()); assertTrue(car.train.isRecording());
         bindAt(car, track(true), 20); car.train.startRecording(null);
-        assertTrue(car.train.canRecordCircuit()); assertTrue(car.train.isRecording());
+        assertTrue(car.train.canRecordRoute()); assertTrue(car.train.isRecording());
         assertEquals(1, car.train.recordingSampleCount());
         assertNull(car.train.playbackThrottle(null));
     }
@@ -278,7 +279,7 @@ class TrainHandlerCoverageTest {
         tools.when(() -> TrackTools.isRecorder(hand)).thenReturn(recorderHeld);
         car.train.startRecording(player); car.train.unbind(); car.train.maybeRecordSample(20);
         assertFalse(car.train.isRecording());
-        verify(player).sendMessage("§eRecording stopped: locomotive left the circuit");
+        verify(player).sendMessage("§eRecording stopped: locomotive left the route");
         if (recorderHeld) tapes.verify(() -> ThrottleTapeItems.write(eq(hand), any()));
         else assertTrue(car.train.hasInstalledTape());
     }
@@ -348,6 +349,9 @@ class TrainHandlerCoverageTest {
         tank.setFuel(0); when(full.takeOneMatching("coal-item")).thenReturn(null);
         root.train.drainFromChild(tank);
         assertEquals(0, tank.getCurrent()); verify(spare).takeOneMatching("coal-item");
+        // A tender being destroyed already dropped its fuel.
+        when(tender.vehicle.isDestroyed()).thenReturn(true); root.train.drainFromChild(tank);
+        verify(spare, times(1)).takeOneMatching(any());
         assertFalse(root.train.acceptsFuelCar(null));
     }
 
@@ -487,8 +491,8 @@ class TrainHandlerCoverageTest {
         when(car.seats.getPassengers()).thenReturn(blockCount < 0 ? List.of(cargo) : List.of(cargo, rider));
         MockedStatic<TrainBlockCollision> collision = keep(mockStatic(TrainBlockCollision.class));
         MockedStatic<TrainSpaceHighlight> highlight = keep(mockStatic(TrainSpaceHighlight.class));
-        collision.when(() -> TrainBlockCollision.blocked(any(), any(), anyDouble(), any(), anyDouble(), anyDouble(), anyMap()))
-                .thenReturn(true);
+        collision.when(() -> TrainBlockCollision.check(any(), any(), anyDouble(), any(), anyDouble(), anyDouble(), anyMap()))
+                .thenReturn(TrainBlockCollision.Clearance.BLOCKED);
         List<TrainBlockCollision.Obstruction> blocks = new ArrayList<>();
         for (int i = 0; i < blockCount; i++) blocks.add(new TrainBlockCollision.Obstruction(i, 64, 52, 51));
         collision.when(() -> TrainBlockCollision.blockers(any(), any(), anyDouble(), any(), anyDouble(), anyDouble(), anyMap()))
@@ -515,7 +519,7 @@ class TrainHandlerCoverageTest {
         when(car.vehicle.hasParent()).thenReturn(true); car.train.holdJunction(TrackJunction.Side.LEFT);
         assertFalse(car.train.occupies(List.of(new TrackRegistry.Span(loop.getId(), 1, 1))));
         framework.when(VehicleFramework::getTrackRegistry).thenReturn(null);
-        assertFalse(car.train.canRecordCircuit());
+        assertFalse(car.train.canRecordRoute());
         assertFalse(TrainHandler.shouldDrain(List.of("coal"), "coal", false, true));
     }
 
@@ -587,6 +591,161 @@ class TrainHandlerCoverageTest {
         verify(loading.entity, never()).teleport(any(Location.class));
         root.train.unbind();
         assertFalse(loading.train.isBound());
+    }
+
+    private void at(Car car, TrackSpline track, double s, int sign) {
+        car.train.applyConsist(new ConsistData(null, null, track.getId().toString(), s, sign));
+    }
+
+    @Test void aRecordingOnALineWithEndsFinishesBackAtTheStartHeadingTheSameWay() {
+        Car car = car(false); TrackSpline line = track(false);
+        bindAt(car, line, 50); at(car, line, 50, 1);
+        car.train.startRecording(null);
+        car.train.maybeRecordSample(0);
+        // Out to s 80, back past the start the other way to s 20, and forward again.
+        for (int s = 51; s <= 80; s++) { at(car, line, s, 1); car.train.maybeRecordSample(50); }
+        for (int s = 79; s >= 20; s--) { at(car, line, s, -1); car.train.maybeRecordSample(-50); }
+        assertTrue(car.train.isRecording());
+        for (int s = 21; s <= 47; s++) { at(car, line, s, 1); car.train.maybeRecordSample(50); }
+        assertTrue(car.train.isRecording());
+        at(car, line, 48, 1); car.train.maybeRecordSample(50);
+        assertFalse(car.train.isRecording());
+        ThrottleTape tape = car.train.getInstalledTape();
+        assertEquals(line.getId().toString(), tape.getSplineId());
+        assertTrue(tape.size() > 100);
+        assertEquals(-50, tape.sample(40).throttle);
+    }
+
+    @Test void aRecordingThatStaysNearTheStartDoesNotFinish() {
+        Car car = car(false); TrackSpline line = track(false);
+        bindAt(car, line, 50); at(car, line, 50, 1);
+        car.train.startRecording(null);
+        at(car, line, 51, 1); car.train.maybeRecordSample(20);
+        at(car, line, 50.5, 1); car.train.maybeRecordSample(20);
+        assertTrue(car.train.isRecording());
+    }
+
+    private ThrottleTape shuttle(TrackSpline line, int throttle, int hold) {
+        String id = line.getId().toString();
+        return new ThrottleTape(id, List.of(new ThrottleTape.Sample(50, 1, throttle, hold, id, null, 1),
+                new ThrottleTape.Sample(50, 1, throttle, 1, id, null, 1),
+                new ThrottleTape.Sample(70, 1, 30, 1, id, null, 1)));
+    }
+
+    @Test void tapePlaybackWaitsForItsSpawnItsCarsAndItsTrack() {
+        Car car = car(false); TrackSpline line = track(false);
+        bindAt(car, line, 50);
+        car.train.setInstalledTape(shuttle(line, 30, 1));
+        when(car.vehicle.getSpawnTime()).thenReturn(System.currentTimeMillis());
+        assertEquals(0, car.train.playbackThrottle(null));
+        when(car.vehicle.getSpawnTime()).thenReturn(System.currentTimeMillis() - 10_000);
+        car.train.setPendingChild("coming");
+        assertTrue(car.train.hasMissingCars());
+        assertEquals(0, car.train.playbackThrottle(null));
+        // A car that never comes holds the train only for a while.
+        when(car.vehicle.getSpawnTime()).thenReturn(0L);
+        assertEquals(30, car.train.playbackThrottle(null));
+        car.train.setPendingChild(null);
+        car.train.setTapeClock(0, 0);
+        assertEquals(30, car.train.playbackThrottle(null));
+        assertArrayEquals(new int[] {0, 1}, car.train.getTapeClock());
+        car.train.setTapeClock(2, 0);
+        assertEquals(30, car.train.playbackThrottle(null));
+        car.train.setSplineId(UUID.randomUUID());
+        assertEquals(0, car.train.playbackThrottle(null));
+        // On a track the tape never uses: it waits there.
+        bindAt(car, line(40, false), 50);
+        assertEquals(0, car.train.playbackThrottle(null));
+    }
+
+    @Test void aMovingTapeTrainBrakesForTheStopAhead() {
+        Car car = car(false); TrackSpline line = track(false);
+        bindAt(car, line, 50);
+        String id = line.getId().toString();
+        car.train.setInstalledTape(new ThrottleTape(id, List.of(new ThrottleTape.Sample(50, 1, 40, 3, id, null, 1),
+                new ThrottleTape.Sample(51, 1, 40, 3, id, null, 1),
+                new ThrottleTape.Sample(52, 1, 0, 60, id, null, 1))));
+        assertEquals(40, car.train.playbackThrottle(null));
+        car.throttle.setThrottle(40); car.panel.setSpeed(.288);
+        int braking = car.train.playbackThrottle(null);
+        assertTrue(braking < 40 && braking > 0, "braking throttle " + braking);
+    }
+
+    @Test void aRecordedStopServesTheDocksOnceWhenTheTrainHasStopped() {
+        Car car = car(false); TrackSpline line = track(false);
+        bindAt(car, line, 50);
+        car.train.setInstalledTape(shuttle(line, 0, 60));
+        MockedStatic<CargoDocks> docks = keep(mockStatic(CargoDocks.class));
+        car.panel.setSpeed(.2);
+        assertEquals(0, car.train.playbackThrottle(null));
+        docks.verify(() -> CargoDocks.serveLive(any()), never());
+        car.panel.setSpeed(0);
+        car.train.playbackThrottle(null); car.train.playbackThrottle(null);
+        docks.verify(() -> CargoDocks.serveLive(car.vehicle), times(1));
+        for (int i = 0; i < 60; i++) car.train.playbackThrottle(null);
+        assertEquals(0, car.train.playbackThrottle(null));
+        car.train.setTapeClock(0, 0);
+        car.train.playbackThrottle(null);
+        docks.verify(() -> CargoDocks.serveLive(car.vehicle), times(2));
+    }
+
+    @Test void theTapeThrowsTheSwitchItNeedsOrWaitsShortOfIt() {
+        TrackSpline stem = track(false), branch = line(30, false);
+        TrackJunction turnout = junction(stem, branch, 52, 1);
+        Car car = car(false); bindAt(car, stem, 50);
+        String id = stem.getId().toString();
+        car.train.setInstalledTape(new ThrottleTape(id, List.of(new ThrottleTape.Sample(50, 1, 40, 1, id, null, 1),
+                new ThrottleTape.Sample(51, 1, 40, 1, id, null, 1),
+                new ThrottleTape.Sample(1, 1, 40, 1, branch.getId().toString(), turnout.id.toString(), 1))));
+        registry.onJunctionOccupied(junctionId -> true);
+        assertEquals(0, car.train.playbackThrottle(null));
+        // Checked again only every few ticks.
+        assertEquals(0, car.train.playbackThrottle(null));
+        registry.onJunctionOccupied(junctionId -> false);
+        for (int i = 0; i < 4; i++) car.train.playbackThrottle(null);
+        assertEquals(40, car.train.playbackThrottle(null));
+        assertTrue(registry.getJunction(turnout.id).orElseThrow().thrown);
+    }
+
+    @Test void reversingLooksForSwitchesAsFarAheadAsTheTrainReaches() {
+        Car root = car(true), tail = car(true);
+        root.train.setChild(tail.vehicle); tail.vehicle.setParent(root.vehicle);
+        TrackSpline line = track(false); bindAt(root, line, 50);
+        String id = line.getId().toString();
+        root.train.setInstalledTape(new ThrottleTape(id, List.of(new ThrottleTape.Sample(50, -1, -40, 1, id, null, 1),
+                new ThrottleTape.Sample(30, -1, -40, 1, id, null, 1))));
+        assertEquals(-40, root.train.playbackThrottle(null));
+        TrainHandler.Layout layout = root.train.layout();
+        assertEquals(List.of(root.vehicle, tail.vehicle), layout.cars());
+        assertArrayEquals(new double[] {0, 4}, layout.offsets(), 1e-9);
+        assertArrayEquals(new double[] {2, 2}, layout.reaches(), 1e-9);
+        assertEquals(2, root.train.trackReach(), 1e-9);
+        assertFalse(root.train.hasMissingCars());
+    }
+
+    @Test void aTrainReachingAChunkThatIsNotLoadedStopsAndAsksToRunUnloaded() {
+        Car car = car(false); TrackSpline line = track(false);
+        bindAt(car, line, 62.5);
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenAnswer(call -> call.<Integer>getArgument(1) < 4);
+        MockedStatic<TrainGhosts> ghosts = keep(mockStatic(TrainGhosts.class));
+        car.panel.setSpeed(1); car.train.splineTick();
+        assertTrue(car.train.isEdgeBlocked());
+        ghosts.verify(() -> TrainGhosts.request(car.vehicle));
+        assertEquals(63, car.train.getS(), 1e-9);
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+        car.train.splineTick();
+        assertFalse(car.train.isEdgeBlocked());
+    }
+
+    @Test void aCarSpawnedFromARunOnPaperTrustsItsSavedTrackPosition() {
+        Car car = car(false); TrackSpline line = track(false);
+        MockedStatic<TrainGhosts> ghosts = keep(mockStatic(TrainGhosts.class));
+        ghosts.when(() -> TrainGhosts.consumeTrusted(car.vehicle.getUUID())).thenReturn(true);
+        car.location[0] = new Location(world, 30, 64, 30);
+        car.train.applyConsist(new ConsistData(null, null, line.getId().toString(), 40.));
+        car.train.placeLoadedCars();
+        assertEquals(line.getId(), car.train.getSplineId());
+        assertEquals(40, car.location[0].getZ(), 1e-9);
     }
 
     private Car car(boolean couplers) { return car(new TrainHandler(config(couplers))); }

@@ -10,6 +10,7 @@ import java.util.regex.Pattern;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -30,6 +31,8 @@ import net.tfminecraft.vehicleframework.managers.inventory.VFInventoryHolder;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 
 public class Container {
+    /** The seat of a hold opened from outside the vehicle, as on a flat car that has no seats. */
+    public static final String OUTSIDE = "outside";
 
     private String id;
     private String name;
@@ -84,6 +87,73 @@ public class Container {
                 continue;
             }
             bones.add(opt.get());
+        }
+    }
+
+    /**
+     * A copy of a configured container with no vehicle behind it, for reading and changing
+     * the items saved in a stored vehicle's data.
+     */
+    public static Container detached(Container template) {
+        Container copy = new Container();
+        copy.id = template.id;
+        copy.name = template.name;
+        copy.size = template.size;
+        copy.seat = template.seat;
+        copy.allowItems.addAll(template.allowItems);
+        return copy;
+    }
+
+    private Container() {
+    }
+
+    /** A copy of every slot, {@link #getSize()} long. */
+    public ItemStack[] contents() {
+        pullLive();
+        ItemStack[] out = new ItemStack[size];
+        for (int i = 0; i < size && i < items.size(); i++) {
+            ItemStack item = items.get(i);
+            out[i] = isEmpty(item) ? null : item.clone();
+        }
+        return out;
+    }
+
+    /** Replaces every slot, also in an open view of this container. */
+    public void setContents(ItemStack[] contents) {
+        ItemStack[] before = audit.isWatching() ? contents() : null;
+        items.clear();
+        for (int i = 0; i < size; i++) {
+            ItemStack item = contents != null && i < contents.length ? contents[i] : null;
+            items.add(isEmpty(item) ? null : item.clone());
+        }
+        pushLive();
+        if (before != null) {
+            audit.replacedByPlugin(before, contents);
+        }
+        updateBoneVisibility();
+    }
+
+    /** Whether a player has this container's window open. */
+    public boolean hasViewers() {
+        return live != null && !live.getViewers().isEmpty();
+    }
+
+    /** How many items in this container match a TLibs item path. */
+    public int countMatching(String tlibsPath) {
+        int count = 0;
+        for (ItemStack stack : contents()) {
+            if (!isEmpty(stack) && matchesPath(stack, tlibsPath)) {
+                count += stack.getAmount();
+            }
+        }
+        return count;
+    }
+
+    private static boolean matchesPath(ItemStack stack, String tlibsPath) {
+        try {
+            return tlibsPath != null && TLibs.getItemAPI().getChecker().checkItemWithPath(stack, tlibsPath);
+        } catch (Exception ignored) {
+            return false;
         }
     }
 
@@ -497,6 +567,21 @@ public class Container {
             VFLogger.creatorLog("Bone " + i + " (" + bones.get(i).getBoneId() + "): " + (visible ? "VISIBLE" : "HIDDEN"));
         }
         */
+    }
+
+    /**
+     * Closes every window open on this storage, keeping what is in it. Called before the
+     * vehicle is saved, destroyed or removed, so nothing can be taken out of a window onto
+     * items that were already saved or dropped.
+     */
+    public void closeViewers() {
+        if (live == null) {
+            return;
+        }
+        for (HumanEntity viewer : new ArrayList<>(live.getViewers())) {
+            viewer.closeInventory();
+        }
+        pullLive();
     }
 
     public void destroy(Location loc) {

@@ -36,6 +36,7 @@ public class IncompleteVehicle {
 	private List<String> whitelist = new ArrayList<>();
 	private ConsistData consist = ConsistData.unbound();
 	private ThrottleTape throttleTape;
+	private int[] tapeClock = {-1, 0};
 	private JSONObject locomotiveOverdrive;
 	private boolean ticketsEnabled = false;
 	private String ticketId;
@@ -146,6 +147,15 @@ public class IncompleteVehicle {
 
 	public void setThrottleTape(ThrottleTape tape) {
 		this.throttleTape = tape;
+	}
+
+	/** Where playback of the tape was: the sample in effect and ticks spent at it; -1 if unknown. */
+	public int[] getTapeClock() {
+		return tapeClock.clone();
+	}
+
+	public void setTapeClock(int cursor, int ticksAt) {
+		tapeClock = new int[] {cursor, ticksAt};
 	}
 
 	public boolean isTicketsEnabled() {

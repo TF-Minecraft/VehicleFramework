@@ -136,19 +136,17 @@ public final class RecorderLog {
 		append("SAMPLE result=" + result + " thr=" + throttle + " hold=" + hold + " " + train(v));
 	}
 
-	public static void playback(ActiveVehicle v, String reason, Integer target, ThrottleTape.DwellState dwell) {
+	public static void playback(ActiveVehicle v, String reason, Integer target, int cursor) {
 		if (off()) {
 			return;
 		}
-		String key = (v == null ? "none" : v.getUUID()) + ":" + reason + ":" + target
-				+ ":" + (dwell != null && dwell.left > 0);
+		String key = (v == null ? "none" : v.getUUID()) + ":" + reason + ":" + target;
 		if (!note(key, 750)) {
 			return;
 		}
 		append("PLAY reason=" + reason
 				+ " target=" + target
-				+ " dwellLeft=" + (dwell == null ? "-" : dwell.left)
-				+ " dwellS=" + (dwell == null || dwell.atS == null ? "-" : fmt(dwell.atS))
+				+ " cursor=" + cursor
 				+ " " + train(v));
 	}
 

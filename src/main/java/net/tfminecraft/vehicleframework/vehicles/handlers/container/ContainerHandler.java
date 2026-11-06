@@ -53,6 +53,11 @@ public class ContainerHandler {
         return null;
     }
 
+    /** The hold opened by right-clicking the vehicle from outside, or null. */
+    public Container outside() {
+        return getBySeat(Container.OUTSIDE);
+    }
+
     public boolean open(Player player) {
         if (containers.isEmpty()) return false;
 
@@ -62,6 +67,11 @@ public class ContainerHandler {
         if(c == null) return false;
         c.open(vehicle, player);
         return true;
+    }
+
+    /** Closes every window open on this vehicle's storage. */
+    public void closeViewers() {
+        for(Container c : containers.values()) c.closeViewers();
     }
 
     public void destroy(Location loc) {

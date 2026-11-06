@@ -62,14 +62,15 @@ public final class TrainTapeInteract {
 			player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 0.8f);
 			return true;
 		}
-		if (!train.canRecordCircuit()) {
-			player.sendMessage("§cRecording only works on a circuit");
-			RecorderLog.interact("not-circuit", player.getName());
+		if (!train.canRecordRoute()) {
+			player.sendMessage("§cThis locomotive is not on a track");
+			RecorderLog.interact("no-track", player.getName());
 			return true;
 		}
 		ThrottleTapeItems.write(hand, null);
 		train.startRecording(player);
-		player.sendMessage("§aRecording started. Drive one lap.");
+		player.sendMessage("§aRecording started. Drive one lap of a circuit, or out and back to this spot,"
+				+ " heading the way you set off. Stop for 2 seconds or more where it should stop.");
 		player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.4f);
 		return true;
 	}
