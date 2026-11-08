@@ -29,7 +29,7 @@ public class TorpedoShooter implements Shooter {
 	}
 
 	@Override
-	public void shoot(List<Player> players, Entity o, Location loc, Vector vector, Ammunition ammo, ActiveWeapon w) {
+	public void shoot(List<Player> players, Entity o, Location loc, Vector vector, Ammunition ammo, ActiveWeapon w, Player gunner) {
 		FusedExplosive a = (FusedExplosive) ammo;
 
 	    Vector direction = vector.clone();
@@ -47,7 +47,7 @@ public class TorpedoShooter implements Shooter {
 	        public void run() {   
 	        	i++;
 	        	if (i > 10 && (checker.getHitEntities(torpedo, projectiles, 2.0).size() > 0 || checker.hasHitIgnoreWater(torpedo, projectiles) || torpedo.isOnGround() || torpedo.isDead() || i > a.getFuse())) {
-	        		shooter.triggerExplosion(players, torpedo.getLocation(), a.getData(), w);
+	        		shooter.triggerExplosion(players, torpedo.getLocation(), a.getData(), w, gunner);
 	        		torpedo.remove();
 	                projectiles.remove(torpedo);
 					Cache.projectiles.remove(torpedo);

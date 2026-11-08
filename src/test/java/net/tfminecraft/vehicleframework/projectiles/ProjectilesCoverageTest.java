@@ -41,6 +41,7 @@ public class ProjectilesCoverageTest {
   }
 
   Rig r;
+  final Player gunner = mock(Player.class);
 
   @BeforeEach
   void setup() {
@@ -82,11 +83,11 @@ public class ProjectilesCoverageTest {
             new Weapon("gun", config),
             null);
     try (var explosions = mockStatic(ExplosionCreator.class)) {
-      BulletRaycast.triggerExplosion(new Location(r.world, 0, 64, 0), bullet, weapon);
+      BulletRaycast.triggerExplosion(new Location(r.world, 0, 64, 0), bullet, weapon, gunner);
       explosions.verify(
           () ->
               ExplosionCreator.triggerExplosion(
-                  any(Location.class), eq(4d), eq(9d), eq(25d), eq("FIRE")));
+                  any(Location.class), eq(4d), eq(9d), eq(25d), eq("FIRE"), eq(false), same(gunner)));
     }
   }
 
@@ -182,7 +183,7 @@ public class ProjectilesCoverageTest {
             bullet.getData(),
             bullet,
             null,
-            List.of()));
+            List.of(), gunner));
     assertFalse(
         BulletRaycast.handleSegment(
             new Location(r.world, 0, 0, 0),
@@ -192,7 +193,7 @@ public class ProjectilesCoverageTest {
             bullet.getData(),
             bullet,
             null,
-            List.of()));
+            List.of(), gunner));
   }
 
   @Test
@@ -236,12 +237,12 @@ public class ProjectilesCoverageTest {
     r.rayTargets.add(target);
     try (var explosions = mockStatic(ExplosionCreator.class)) {
       assertTrue(segment(r.bullet(false), null, 5));
-      explosions.verify(() -> ExplosionCreator.applyDamage(target, 8d, "PROJECTILE"));
+      explosions.verify(() -> ExplosionCreator.applyDamage(target, 8d, "PROJECTILE", gunner));
       assertTrue(segment(r.bullet(true), null, 5));
       explosions.verify(
           () ->
               ExplosionCreator.triggerExplosion(
-                  any(Location.class), eq(1d), eq(5d), eq(8d), eq("PROJECTILE")));
+                  any(Location.class), eq(1d), eq(5d), eq(8d), eq("PROJECTILE"), eq(false), same(gunner)));
     }
   }
 
@@ -264,11 +265,11 @@ public class ProjectilesCoverageTest {
               explosive.getData(),
               explosive,
               null,
-              List.of()));
+              List.of(), gunner));
       explosions.verify(
           () ->
               ExplosionCreator.triggerExplosion(
-                  any(Location.class), eq(1d), eq(5d), eq(8d), eq("PROJECTILE")));
+                  any(Location.class), eq(1d), eq(5d), eq(8d), eq("PROJECTILE"), eq(false), same(gunner)));
       Bullet regular = r.bullet(false);
       String victimId = victim.getUUID().toUpperCase(Locale.ROOT);
       when(shooter.getUUID()).thenReturn(victimId);
@@ -281,7 +282,7 @@ public class ProjectilesCoverageTest {
               regular.getData(),
               regular,
               null,
-              List.of()));
+              List.of(), gunner));
       verify(victim, times(2)).damage("PROJECTILE", 8);
     }
   }
@@ -301,7 +302,7 @@ public class ProjectilesCoverageTest {
       explosions.verify(
           () ->
               ExplosionCreator.triggerExplosion(
-                  any(Location.class), eq(1d), eq(5d), eq(8d), eq("PROJECTILE")));
+                  any(Location.class), eq(1d), eq(5d), eq(8d), eq("PROJECTILE"), eq(false), same(gunner)));
     }
     assertTrue(BulletRaycast.isBulletPassable(Material.GLASS_PANE));
     assertFalse(BulletRaycast.isBulletPassable(Material.STONE));
@@ -320,7 +321,7 @@ public class ProjectilesCoverageTest {
             bullet.getData(),
             bullet,
             null,
-            List.of()));
+            List.of(), gunner));
   }
 
   private boolean segment(Bullet bullet, ActiveWeapon weapon, double length) {
@@ -332,7 +333,7 @@ public class ProjectilesCoverageTest {
         bullet.getData(),
         bullet,
         weapon,
-        List.of());
+        List.of(), gunner);
   }
 
   /**

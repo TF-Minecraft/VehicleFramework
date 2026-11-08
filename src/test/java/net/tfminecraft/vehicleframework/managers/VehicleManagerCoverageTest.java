@@ -712,10 +712,38 @@ class VehicleManagerCoverageTest {
         Player player = player("Ryan"); ActiveVehicle v = vehicle("v"); register(v);
         when(v.isPassenger(player, true)).thenReturn(true);
         EntityDamageEvent event = mock(EntityDamageEvent.class); when(event.getEntity()).thenReturn(player); when(event.getCause()).thenReturn(DamageCause.FIRE); when(event.getDamage()).thenReturn(8d);
+        Player igniter = player("Ann"); org.bukkit.damage.DamageSource source = mock(org.bukkit.damage.DamageSource.class);
+        when(source.getCausingEntity()).thenReturn(igniter); when(event.getDamageSource()).thenReturn(source);
         try (MockedStatic<Damager> damager = mockStatic(Damager.class)) {
             manager.damagePassenger(event); verify(event).setCancelled(true); damager.verify(() -> Damager.damage(player, 8));
         }
-        verify(plugins).callEvent(isA(VFEntityDamageEvent.class));
+        verify(plugins).callEvent(argThat(e -> e instanceof VFEntityDamageEvent d && d.getDamager() == igniter && d.getDamage() == 8));
+    }
+
+    @Test
+    void redirectedDamageNamesTheHitterOrTheProjectileShooter() {
+        Player player = player("Ryan"); ActiveVehicle v = vehicle("v"); register(v);
+        when(v.isPassenger(player, true)).thenReturn(true);
+        Player attacker = player("Ann");
+        Arrow arrow = mock(Arrow.class); when(arrow.getShooter()).thenReturn(attacker);
+        Arrow dispensed = mock(Arrow.class);
+        List<Entity> damagers = new ArrayList<>();
+        doAnswer(c -> { if (c.getArgument(0) instanceof VFEntityDamageEvent d) damagers.add(d.getDamager()); return null; })
+            .when(plugins).callEvent(any(Event.class));
+        try (MockedStatic<Damager> damager = mockStatic(Damager.class)) {
+            manager.damagePassenger(hitBy(player, attacker, DamageCause.ENTITY_ATTACK));
+            manager.damagePassenger(hitBy(player, arrow, DamageCause.PROJECTILE));
+            manager.damagePassenger(hitBy(player, dispensed, DamageCause.PROJECTILE));
+            damager.verify(() -> Damager.damage(player, 6), times(3));
+        }
+        assertEquals(List.of(attacker, attacker, dispensed), damagers);
+    }
+
+    private EntityDamageByEntityEvent hitBy(Entity victim, Entity damager, DamageCause cause) {
+        EntityDamageByEntityEvent event = mock(EntityDamageByEntityEvent.class);
+        when(event.getEntity()).thenReturn(victim); when(event.getDamager()).thenReturn(damager);
+        when(event.getCause()).thenReturn(cause); when(event.getDamage()).thenReturn(6d);
+        return event;
     }
 
     @Test
@@ -999,6 +1027,7 @@ class VehicleManagerCoverageTest {
         when(v.isPassenger(player, true)).thenReturn(true);
         EntityDamageEvent event = mock(EntityDamageEvent.class); when(event.getEntity()).thenReturn(player);
         when(event.getCause()).thenReturn(DamageCause.FIRE); when(event.getDamage()).thenReturn(4d);
+        when(event.getDamageSource()).thenReturn(mock(org.bukkit.damage.DamageSource.class));
         java.io.PrintStream previous = System.err;
         java.io.ByteArrayOutputStream errors = new java.io.ByteArrayOutputStream();
         try (MockedStatic<Damager> damage = mockStatic(Damager.class);

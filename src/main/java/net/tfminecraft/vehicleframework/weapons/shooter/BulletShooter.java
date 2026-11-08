@@ -31,7 +31,7 @@ public class BulletShooter implements Shooter {
 	}
 
 	@Override
-	public void shoot(List<Player> players, Entity vehicleRoot, Location loc, Vector vector, Ammunition a, ActiveWeapon w) {
+	public void shoot(List<Player> players, Entity vehicleRoot, Location loc, Vector vector, Ammunition a, ActiveWeapon w, Player gunner) {
 		AmmunitionData ammoData = a.getData();
 		Bullet bullet = (Bullet) a;
 		Vector direction = vector.clone().normalize();
@@ -61,7 +61,8 @@ public class BulletShooter implements Shooter {
 						ammoData,
 						bullet,
 						w,
-						players)) {
+						players,
+						gunner)) {
 					cancel();
 					return;
 				}
@@ -71,7 +72,7 @@ public class BulletShooter implements Shooter {
 				tick++;
 
 				if (current.distanceSquared(start) > maxRangeSquared) {
-					BulletRaycast.triggerExplosion(current, bullet, w);
+					BulletRaycast.triggerExplosion(current, bullet, w, gunner);
 					cancel();
 				}
 			}

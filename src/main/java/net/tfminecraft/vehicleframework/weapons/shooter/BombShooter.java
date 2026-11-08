@@ -28,7 +28,7 @@ public class BombShooter implements Shooter {
 	}
 	
 	@Override
-	public void shoot(List<Player> players, Entity o, Location loc, Vector vector, Ammunition ammo, ActiveWeapon w) {
+	public void shoot(List<Player> players, Entity o, Location loc, Vector vector, Ammunition ammo, ActiveWeapon w, Player gunner) {
 		FusedExplosive a = (FusedExplosive) ammo;
 		AmmunitionData ammoData = a.getData();
 
@@ -59,7 +59,7 @@ public class BombShooter implements Shooter {
 
 	            // Check if the projectile has hit something or reached the ground
 	            if (i > a.getFuse() && (checker.hasHit(e, projectiles) || e.isOnGround() || e.isDead())) {
-	                shooter.triggerExplosion(players, e.getLocation(), a.getData(), w);
+	                shooter.triggerExplosion(players, e.getLocation(), a.getData(), w, gunner);
 	                e.remove();
 	                projectiles.remove(e);
 					Cache.projectiles.remove(e);

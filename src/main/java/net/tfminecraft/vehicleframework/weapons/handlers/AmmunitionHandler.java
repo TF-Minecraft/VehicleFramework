@@ -234,7 +234,7 @@ public class AmmunitionHandler {
 		reloadStart(p, a);
 	}
 	
-	private void shootProjectiles(List<Player> nearby) {
+	private void shootProjectiles(Player gunner, List<Player> nearby) {
 		if(exitBones.size() > 1 && currentBone >= exitBones.size()) {
 			currentBone = 0;
 		}
@@ -249,13 +249,13 @@ public class AmmunitionHandler {
 			new BukkitRunnable() {
 				@Override
 		        public void run() {
-				projectileShooter.shoot(nearby, v.getEntity(), bone.getBaseLocation(), bone.getVector(), shotAmmo, w);
+				projectileShooter.shoot(nearby, v.getEntity(), bone.getBaseLocation(), bone.getVector(), shotAmmo, w, gunner);
 					particle(bone);
 					playSound(bone, SoundArg.SHOOT);
 		        }	       
 			}.runTaskLater(VehicleFramework.plugin, delay*1L);
 		} else {
-			projectileShooter.shoot(nearby, v.getEntity(), bone.getBaseLocation(), bone.getVector(), ammo, w);
+			projectileShooter.shoot(nearby, v.getEntity(), bone.getBaseLocation(), bone.getVector(), ammo, w, gunner);
 			particle(bone);
 			playSound(bone, SoundArg.SHOOT);
 		}
@@ -279,7 +279,7 @@ public class AmmunitionHandler {
 			return;
 		}
 		activeCooldown = System.currentTimeMillis() + (cooldown + delay) * 50L;
-		shootProjectiles(nearby);
+		shootProjectiles(p, nearby);
 		if(count > 0) decrease();
 	}
 	

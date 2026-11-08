@@ -25,6 +25,7 @@ import org.bukkit.entity.Horse;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mule;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -773,7 +774,7 @@ public class VehicleManager implements Listener{
             }
         }
 		if(!(vehicles.containsKey(entity) || getByPassenger(entity) != null)) return;
-		VFEntityDamageEvent event = new VFEntityDamageEvent(e.getEntity(), null, e.getCause().toString(), e.getDamage());
+		VFEntityDamageEvent event = new VFEntityDamageEvent(e.getEntity(), attackerOf(e), e.getCause().toString(), e.getDamage());
         Bukkit.getPluginManager().callEvent(event);
         if (!event.isCancelled()) {
         	if(e.getEntity() instanceof LivingEntity) {
@@ -907,6 +908,18 @@ public class VehicleManager implements Listener{
 		} catch (Exception ignored) {
 			return false;
 		}
+	}
+
+	/** The entity behind redirected damage: the hitter, a projectile's shooter, or the source's causing entity. */
+	static Entity attackerOf(EntityDamageEvent e) {
+		if (e instanceof EntityDamageByEntityEvent by) {
+			Entity damager = by.getDamager();
+			if (damager instanceof Projectile projectile && projectile.getShooter() instanceof Entity shooter) {
+				return shooter;
+			}
+			return damager;
+		}
+		return e.getDamageSource().getCausingEntity();
 	}
 
 	static boolean isPassengerMeleeOnOwnVehicle(EntityDamageEvent e, Map<Entity, ActiveVehicle> vehicles) {
