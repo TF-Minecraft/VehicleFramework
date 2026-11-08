@@ -98,14 +98,14 @@ public class ProjectileShooter implements Shooter {
 
 		if (!a.getPotionEffects().isEmpty()) {
 			for (AmmunitionData.LingeringCloudData cloudData : a.getLingeringClouds()) {
-				spawnLingeringCloud(explosionCenter, cloudData, Weapon.effectiveRadius(w, a), gunner);
+				spawnLingeringCloud(explosionCenter, cloudData, Weapon.effectiveRadius(w, a));
 			}
 		}
 
 		a.hitFX(players, explosionCenter, 1f);
 	}
 
-	private void spawnLingeringCloud(Location loc, AmmunitionData.LingeringCloudData data, int radius, Player gunner) {
+	private void spawnLingeringCloud(Location loc, AmmunitionData.LingeringCloudData data, int radius) {
 		AreaEffectCloud cloud = loc.getWorld().spawn(loc, AreaEffectCloud.class);
 
 		cloud.setRadius(Math.max(1.5f, radius / 2.0f));
@@ -113,7 +113,6 @@ public class ProjectileShooter implements Shooter {
 		cloud.setColor(data.getColor());
 		cloud.setWaitTime(0);
 		cloud.setReapplicationDelay(20);
-		cloud.setSource(gunner);
 
 		// Optional: slowly shrink over lifetime
 		float startRadius = Math.max(1.5f, radius / 2.0f);

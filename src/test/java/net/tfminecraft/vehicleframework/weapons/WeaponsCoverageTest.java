@@ -460,7 +460,8 @@ class WeaponsCoverageTest {
       verify(cloud).setDuration(240);
       verify(cloud).setRadiusPerTick(-2.5f / 240);
       verify(cloud).addCustomEffect(first.getEffect(), true);
-      verify(cloud).setSource(player);
+      // Clouds stay unowned, so PvP-off regions still let them work as before.
+      verify(cloud, never()).setSource(any());
     }
   }
 
