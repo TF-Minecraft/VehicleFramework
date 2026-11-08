@@ -660,6 +660,24 @@ class RuntimeUtilitiesCoverageTest {
   }
 
   @Test
+  void blastAndDirectHitsNameTheGunnerAsDamager() {
+    Player gunner = r.entity(Player.class, new Location(r.world, 0, 64, 20));
+    LivingEntity target = r.entity(LivingEntity.class, new Location(r.world, 0, 64, 1));
+    r.nearby.add(target);
+    List<Entity> damagers = new ArrayList<>();
+    onEvent =
+        e -> {
+          if (e instanceof VFEntityDamageEvent damage) damagers.add(damage.getDamager());
+        };
+    ExplosionCreator.triggerExplosion(new Location(r.world, 0, 64, 0), 2, 4, 10, "test", false, gunner);
+    ExplosionCreator.applyDamage(target, 5, "test", gunner);
+    ExplosionCreator.triggerExplosion(new Location(r.world, 0, 64, 0), 2, 4, 10, "test", false);
+    assertEquals(Arrays.asList(gunner, gunner, null), damagers);
+    verify(target, times(2)).damage(10);
+    verify(target).damage(5);
+  }
+
+  @Test
   void explosionsRespectCancellationObserversDamageFalloffArmourAndVehicleKnockback() {
     Cache.blockDamage = true;
     Location center = new Location(r.world, 0, 64, 0);

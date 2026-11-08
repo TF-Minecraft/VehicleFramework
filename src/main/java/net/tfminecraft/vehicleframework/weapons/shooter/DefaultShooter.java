@@ -40,7 +40,7 @@ public class DefaultShooter implements Shooter {
 	}
 
 	@Override
-	public void shoot(List<Player> players, Entity o, Location loc, Vector vector, Ammunition a, ActiveWeapon w) {
+	public void shoot(List<Player> players, Entity o, Location loc, Vector vector, Ammunition a, ActiveWeapon w, Player gunner) {
 		AmmunitionData ammoData = a.getData();
 	    List<Entity> projectiles = new ArrayList<>();
 	    
@@ -71,7 +71,7 @@ public class DefaultShooter implements Shooter {
 
 	            // Check if the projectile has hit something or reached the ground
 	            if (i > 5 && (checker.hasHit(e, projectiles) || e.isOnGround() || e.isDead())) {
-	                shooter.triggerExplosion(players, e.getLocation(), ammoData, w);
+	                shooter.triggerExplosion(players, e.getLocation(), ammoData, w, gunner);
 	                e.remove();
 	                projectiles.remove(e);
 					Cache.projectiles.remove(e);
@@ -97,8 +97,8 @@ public class DefaultShooter implements Shooter {
 	            		for(Player p : players) {
 	        				p.spawnParticle(Particle.EXPLOSION_EMITTER, e.getLocation(), particleCount, 0, 0, 0, 0);
 	        			}
-						shooter.triggerExplosion(players, e.getLocation(), ammoData, w);
-	            		sendCluster(e.getLocation(), c, players, projectiles, w);
+						shooter.triggerExplosion(players, e.getLocation(), ammoData, w, gunner);
+	            		sendCluster(e.getLocation(), c, players, projectiles, w, gunner);
 	            		e.remove();
 		                projectiles.remove(e);
 						Cache.projectiles.remove(e);
@@ -109,7 +109,7 @@ public class DefaultShooter implements Shooter {
 	    }.runTaskTimer(VehicleFramework.plugin, 0L, 1L);
 	}
 	
-	private void sendCluster(Location original, ClusterBomb a, List<Player> players, List<Entity> projectiles, ActiveWeapon w) {
+	private void sendCluster(Location original, ClusterBomb a, List<Player> players, List<Entity> projectiles, ActiveWeapon w, Player gunner) {
 	    World world = original.getWorld();
 	    if (world == null) return;
 	    int count = Weapon.effectiveClusterAmount(w, a);
@@ -133,7 +133,7 @@ public class DefaultShooter implements Shooter {
 	        	Location current = armorStand.getLocation();
 	            public void run() {
 	                if (i > 5 && (landed || checker.hasHit(armorStand, projectiles) || armorStand.isDead())) {
-	                    shooter.triggerExplosion(players, armorStand.getLocation(), a.getClusterData(), w);
+	                    shooter.triggerExplosion(players, armorStand.getLocation(), a.getClusterData(), w, gunner);
 	                    removeBomblet();
 	                    return;
 	                }

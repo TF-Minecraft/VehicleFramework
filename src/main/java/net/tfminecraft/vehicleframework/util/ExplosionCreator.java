@@ -34,6 +34,10 @@ public class ExplosionCreator {
 		triggerExplosion(explosionCenter, yield, blastRadius, damage, cause, false);
 	}
 	public static void triggerExplosion(Location explosionCenter, double yield, double blastRadius, double damage, String cause, boolean fire) {
+		triggerExplosion(explosionCenter, yield, blastRadius, damage, cause, fire, null);
+	}
+	/** {@code damager} is the entity responsible (such as the gunner), or null; each hit's VFEntityDamageEvent names it. */
+	public static void triggerExplosion(Location explosionCenter, double yield, double blastRadius, double damage, String cause, boolean fire, Entity damager) {
 		if (!Double.isFinite(blastRadius) || blastRadius <= 0) return;
 		VFExplosionEvent event = new VFExplosionEvent(explosionCenter);
         Bukkit.getPluginManager().callEvent(event);
@@ -155,7 +159,7 @@ public class ExplosionCreator {
 	                    scaledDamage = damage * (1 - ((distance - halfBlastRadius) / (blastRadius - halfBlastRadius)));
 	                }
 	                scaledDamage = Math.max(0, scaledDamage); // Ensure no negative damage
-	                applyDamage(livingEntity, scaledDamage, cause);
+	                applyDamage(livingEntity, scaledDamage, cause, damager);
 	                // Apply knockback to the entity
 	                if(!noKnockback.contains(livingEntity)) {
 	                	Vector knockback = livingEntity.getLocation().toVector().subtract(explosionCenter.toVector());
@@ -175,6 +179,10 @@ public class ExplosionCreator {
 	}
 	
 	public static void applyDamage(Entity e, double damage, String cause) {
+		applyDamage(e, damage, cause, null);
+	}
+	/** {@code damager} is the entity responsible, or null; the VFEntityDamageEvent names it. */
+	public static void applyDamage(Entity e, double damage, String cause, Entity damager) {
 		if(!(e instanceof LivingEntity) || DeckBody.isPart(e)) return;
         if (e instanceof Player) {
         	Player player = (Player) e;
@@ -183,7 +191,7 @@ public class ExplosionCreator {
             damage *= damageReductionFactor; // Apply armor scaling
         }
         LivingEntity l = (LivingEntity) e;
-        VFEntityDamageEvent event = new VFEntityDamageEvent(l, null, cause, damage);
+        VFEntityDamageEvent event = new VFEntityDamageEvent(l, damager, cause, damage);
         Bukkit.getPluginManager().callEvent(event);
 
         if (!event.isCancelled()) {

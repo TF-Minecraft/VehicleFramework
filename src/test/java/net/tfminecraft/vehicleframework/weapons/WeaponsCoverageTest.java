@@ -122,6 +122,30 @@ class WeaponsCoverageTest {
   }
 
   @Test
+  void delayedShellsCreditTheGunnerWhoFiredThem() throws Exception {
+    ActiveWeapon active = active("fixed: true\ndelay: 2\nbones: [muzzle.aim]\n");
+    active.getAmmunitionHandler().setAmmo(ammo("CANNONBALL", ""), 1);
+    try (var explosions = mockStatic(ExplosionCreator.class)) {
+      active.getAmmunitionHandler().shoot(player, List.of());
+      r.ticks(3);
+      Entity shell = r.spawned.getLast();
+      when(shell.isOnGround()).thenReturn(true);
+      r.ticks(6);
+      verify(shell).remove();
+      explosions.verify(
+          () ->
+              ExplosionCreator.triggerExplosion(
+                  any(Location.class),
+                  anyDouble(),
+                  anyDouble(),
+                  anyDouble(),
+                  anyString(),
+                  anyBoolean(),
+                  same(player)));
+    }
+  }
+
+  @Test
   void fixedWeaponsIgnoreManualTurnInputs() throws Exception {
     Weapon stored = new Weapon("fixed", Rig.yaml("fixed: true\n"));
     ActiveWeapon active = new ActiveWeapon(model, vehicle, stored, null);
@@ -430,12 +454,13 @@ class WeaponsCoverageTest {
     assertEquals(Color.fromRGB(0, 255, 0), clouds.get(3).getColor());
     try (var explosions = mockStatic(ExplosionCreator.class)) {
       new ProjectileShooter()
-          .triggerExplosion(List.of(), new Location(r.world, 0, 64, 0), data, null);
+          .triggerExplosion(List.of(), new Location(r.world, 0, 64, 0), data, null, player);
       assertEquals(4, r.spawned.stream().filter(AreaEffectCloud.class::isInstance).count());
       AreaEffectCloud cloud = (AreaEffectCloud) r.spawned.getFirst();
       verify(cloud).setDuration(240);
       verify(cloud).setRadiusPerTick(-2.5f / 240);
       verify(cloud).addCustomEffect(first.getEffect(), true);
+      verify(cloud).setSource(player);
     }
   }
 
@@ -893,7 +918,7 @@ class WeaponsCoverageTest {
         new Location(r.world, 0, 64, 0),
         new Vector(0, 0, 1),
         ammo,
-        null);
+        null, player);
     Entity shot = r.spawned.getLast();
     assertTrue(Cache.projectiles.contains(shot));
     r.tick();
@@ -922,7 +947,7 @@ class WeaponsCoverageTest {
               new Location(r.world, 0, 1000, 0),
               new Vector(0, 0, 1),
               ammo,
-              null);
+              null, player);
       Entity shot = r.spawned.getLast();
       r.ticks(85);
       ArgumentCaptor<Float> pitches = ArgumentCaptor.forClass(Float.class);
@@ -946,7 +971,7 @@ class WeaponsCoverageTest {
             new Location(r.world, 0, 64, 0),
             new Vector(0, 0, 1),
             ammo,
-            null);
+            null, player);
     Entity shot = r.spawned.getLast();
     when(shot.isOnGround()).thenReturn(true);
     r.tick();
@@ -978,7 +1003,7 @@ class WeaponsCoverageTest {
             new Location(r.world, 0, 64, 0),
             new Vector(0, 0, 1),
             ammo,
-            null);
+            null, player);
     Entity shell = r.spawned.getFirst();
     r.ticks(2);
     verify(shell).remove();
@@ -1034,14 +1059,14 @@ class WeaponsCoverageTest {
               new Location(r.world, 0, 64, 0),
               new Vector(0, 0, 1),
               ammo,
-              null);
+              null, player);
       Entity shell = r.spawned.getFirst();
       when(shell.isOnGround()).thenReturn(true);
       r.ticks(6);
       explosions.verify(
           () ->
               ExplosionCreator.triggerExplosion(
-                  any(Location.class), eq(1d), eq(5d), eq(8d), eq("PROJECTILE"), eq(false)),
+                  any(Location.class), eq(1d), eq(5d), eq(8d), eq("PROJECTILE"), eq(false), same(player)),
           times(1));
       verify(shell, times(1)).remove();
     }
@@ -1080,7 +1105,7 @@ class WeaponsCoverageTest {
       explosions.verify(
           () ->
               ExplosionCreator.triggerExplosion(
-                  eq(at), anyDouble(), anyDouble(), anyDouble(), anyString(), eq(false)));
+                  eq(at), anyDouble(), anyDouble(), anyDouble(), anyString(), eq(false), same(player)));
     }
   }
 
@@ -1117,7 +1142,7 @@ class WeaponsCoverageTest {
             new Location(r.world, 0, 1000, 0),
             new Vector(0, 0, 1),
             ammo,
-            null);
+            null, player);
     r.tick();
     assertEquals(2, r.spawned.size());
     return r.spawned.getLast();
@@ -1139,7 +1164,7 @@ class WeaponsCoverageTest {
               "TORPEDO",
               "fuse: 10\nexplosive: false\nmodel: {type: item, material: STONE, small: true}\n");
       new ProjectileShooter()
-          .shoot(List.of(), vehicle.getEntity(), launch, new Vector(0, .1, 1), ammo, null);
+          .shoot(List.of(), vehicle.getEntity(), launch, new Vector(0, .1, 1), ammo, null, player);
       Entity torpedo = r.spawned.getLast();
       r.tick();
       assertEquals(0, torpedo.getVelocity().getY(), 1e-9);
@@ -1161,7 +1186,7 @@ class WeaponsCoverageTest {
             new Location(r.world, 0, 64, 0),
             new Vector(0, 0, 1),
             shortRange,
-            null);
+            null, player);
     r.tick();
     r.ticks(3);
     assertEquals(0, r.pending());
@@ -1173,7 +1198,7 @@ class WeaponsCoverageTest {
             new Location(r.world, 0, 64, 0),
             new Vector(0, 0, 1),
             shortRange,
-            null);
+            null, player);
     r.tick();
     r.ticks(3);
     assertEquals(0, r.pending());

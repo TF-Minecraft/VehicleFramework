@@ -42,7 +42,8 @@ public final class BulletRaycast {
 			AmmunitionData ammoData,
 			Bullet bullet,
 			ActiveWeapon weapon,
-			List<Player> players) {
+			List<Player> players,
+			Entity gunner) {
 		Vector direction = to.toVector().subtract(from.toVector());
 		double distance = direction.length();
 		if (distance < 1e-6) {
@@ -60,16 +61,17 @@ public final class BulletRaycast {
 		if (entityResult != null && entityResult.getHitEntity() != null) {
 			Entity hit = entityResult.getHitEntity();
 			Location hitPoint = entityResult.getHitPosition().toLocation(from.getWorld());
-			if (handleBlockSegment(from, hitPoint, direction, from.distance(hitPoint), ammoData, bullet, weapon, players)) return true;
+			if (handleBlockSegment(from, hitPoint, direction, from.distance(hitPoint), ammoData, bullet, weapon, players, gunner)) return true;
 
 			if (hit instanceof LivingEntity living) {
 				if (Weapon.effectiveExplosive(weapon, bullet.getData())) {
-					triggerExplosion(hitPoint, bullet, weapon);
+					triggerExplosion(hitPoint, bullet, weapon, gunner);
 				} else {
 					ExplosionCreator.applyDamage(
 							living,
 							Weapon.effectiveDamage(weapon, ammoData),
-							Weapon.effectiveDamageType(weapon, ammoData));
+							Weapon.effectiveDamageType(weapon, ammoData),
+							gunner);
 				}
 				return true;
 			}
@@ -80,13 +82,13 @@ public final class BulletRaycast {
 						Weapon.effectiveDamageType(weapon, ammoData),
 						Weapon.effectiveDamage(weapon, ammoData));
 				if (Weapon.effectiveExplosive(weapon, bullet.getData())) {
-					triggerExplosion(hitPoint, bullet, weapon);
+					triggerExplosion(hitPoint, bullet, weapon, gunner);
 				}
 				return true;
 			}
 		}
 
-		return handleBlockSegment(from, to, direction, distance, ammoData, bullet, weapon, players);
+		return handleBlockSegment(from, to, direction, distance, ammoData, bullet, weapon, players, gunner);
 	}
 
 	private static boolean isValidTarget(Entity entity, Set<Entity> ignoreEntities) {
@@ -115,7 +117,8 @@ public final class BulletRaycast {
 			AmmunitionData ammoData,
 			Bullet bullet,
 			ActiveWeapon weapon,
-			List<Player> players) {
+			List<Player> players,
+			Entity gunner) {
 		World world = from.getWorld();
 		Location current = from.clone();
 
@@ -147,7 +150,7 @@ public final class BulletRaycast {
 			}
 
 			if (Weapon.effectiveExplosive(weapon, bullet.getData())) {
-				triggerExplosion(current, bullet, weapon);
+				triggerExplosion(current, bullet, weapon, gunner);
 			} else {
 				Location impact = ImpactVfx.onBlockSurface(current, direction, block);
 				ammoData.hitFX(players, impact, 1f);
@@ -200,7 +203,7 @@ public final class BulletRaycast {
 		return false;
 	}
 
-	public static void triggerExplosion(Location loc, Bullet bullet, ActiveWeapon weapon) {
+	public static void triggerExplosion(Location loc, Bullet bullet, ActiveWeapon weapon, Entity gunner) {
 		if (!Weapon.effectiveExplosive(weapon, bullet.getData())) {
 			return;
 		}
@@ -211,6 +214,8 @@ public final class BulletRaycast {
 				Weapon.effectiveYield(weapon, ammo),
 				Weapon.effectiveRadius(weapon, ammo),
 				Weapon.effectiveDamage(weapon, ammo),
-				Weapon.effectiveDamageType(weapon, ammo));
+				Weapon.effectiveDamageType(weapon, ammo),
+				false,
+				gunner);
 	}
 }

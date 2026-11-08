@@ -28,23 +28,23 @@ public class ProjectileShooter implements Shooter {
 	private BombShooter bombShooter = new BombShooter(this);
 	
 	@Override
-	public void shoot(List<Player> players, Entity e, Location loc, Vector vector, Ammunition a, ActiveWeapon w) {
+	public void shoot(List<Player> players, Entity e, Location loc, Vector vector, Ammunition a, ActiveWeapon w, Player gunner) {
 		loc.setDirection(vector);
 		switch(a.getType()) {
 			case BULLET:
-				bulletShooter.shoot(players, e, loc, vector, a, w);
+				bulletShooter.shoot(players, e, loc, vector, a, w, gunner);
 				break;
 			case CANNONBALL:
-				defaultShooter.shoot(players, e, loc, vector, a, w);
+				defaultShooter.shoot(players, e, loc, vector, a, w, gunner);
 				break;
 			case CLUSTER:
-				defaultShooter.shoot(players, e, loc, vector, a, w);
+				defaultShooter.shoot(players, e, loc, vector, a, w, gunner);
 				break;
 			case TORPEDO:
-				torpedoShooter.shoot(players, e, loc, vector, a, w);
+				torpedoShooter.shoot(players, e, loc, vector, a, w, gunner);
 				break;
 			case BOMB:
-				bombShooter.shoot(players, e, loc, vector, a, w);
+				bombShooter.shoot(players, e, loc, vector, a, w, gunner);
 				break;
 			default:
 				break;	
@@ -82,7 +82,7 @@ public class ProjectileShooter implements Shooter {
 		}.runTaskTimer(VehicleFramework.plugin, 0L, 1L);
 	}
 	
-	public void triggerExplosion(List<Player> players, Location explosionCenter, AmmunitionData a, ActiveWeapon w) {
+	public void triggerExplosion(List<Player> players, Location explosionCenter, AmmunitionData a, ActiveWeapon w, Player gunner) {
 		if (Weapon.effectiveExplosive(w, a)) {
 			explosionCenter.getWorld().playSound(explosionCenter, Sound.ENTITY_GENERIC_EXPLODE, 8, 1);
 	    	ExplosionCreator.triggerExplosion(
@@ -91,20 +91,21 @@ public class ProjectileShooter implements Shooter {
 	    			Weapon.effectiveRadius(w, a),
 	    			Weapon.effectiveDamage(w, a),
 	    			Weapon.effectiveDamageType(w, a),
-	    			a.isFire()
+	    			a.isFire(),
+	    			gunner
 	    	);
 		}
 
 		if (!a.getPotionEffects().isEmpty()) {
 			for (AmmunitionData.LingeringCloudData cloudData : a.getLingeringClouds()) {
-				spawnLingeringCloud(explosionCenter, cloudData, Weapon.effectiveRadius(w, a));
+				spawnLingeringCloud(explosionCenter, cloudData, Weapon.effectiveRadius(w, a), gunner);
 			}
 		}
 
 		a.hitFX(players, explosionCenter, 1f);
 	}
 
-	private void spawnLingeringCloud(Location loc, AmmunitionData.LingeringCloudData data, int radius) {
+	private void spawnLingeringCloud(Location loc, AmmunitionData.LingeringCloudData data, int radius, Player gunner) {
 		AreaEffectCloud cloud = loc.getWorld().spawn(loc, AreaEffectCloud.class);
 
 		cloud.setRadius(Math.max(1.5f, radius / 2.0f));
@@ -112,6 +113,7 @@ public class ProjectileShooter implements Shooter {
 		cloud.setColor(data.getColor());
 		cloud.setWaitTime(0);
 		cloud.setReapplicationDelay(20);
+		cloud.setSource(gunner);
 
 		// Optional: slowly shrink over lifetime
 		float startRadius = Math.max(1.5f, radius / 2.0f);
