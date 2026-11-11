@@ -2,6 +2,7 @@ package net.tfminecraft.vehicleframework.loaders;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.Locale;
 
 import org.bukkit.Material;
@@ -89,6 +90,13 @@ public class ConfigLoader {
 		Cache.blockDamage = config.getBoolean("block-damage", true);
 		
 		Cache.despawnDistance = (int) Math.round(Math.pow(config.getInt("despawn-distance", 64), 2));
+
+		Cache.cleanupWorlds = new HashSet<>();
+		for (String world : config.getStringList("cleanup.worlds")) {
+			Cache.cleanupWorlds.add(world.toLowerCase(Locale.ROOT));
+		}
+		Cache.cleanupKeepOwners = new HashSet<>(config.getStringList("cleanup.keep-owners"));
+		Cache.cleanupIdleMillis = Math.max(1, config.getInt("cleanup.idle-minutes", 30)) * 60_000L;
 
 		Cache.skinItem = config.getString("skin-item", "v.bucket");
 		Cache.repairItem = config.getString("repair-item", "v.iron_shovel");

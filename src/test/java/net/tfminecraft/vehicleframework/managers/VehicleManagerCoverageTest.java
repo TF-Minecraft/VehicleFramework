@@ -457,9 +457,40 @@ class VehicleManagerCoverageTest {
     }
 
     @Test
+    void cleanupRemovesIdleVehiclesOnCleanupWorldsLikeAnAdminKill() throws Exception {
+        Set<String> worlds = Cache.cleanupWorlds; long idle = Cache.cleanupIdleMillis;
+        try {
+            Cache.cleanupWorlds = new HashSet<>(Set.of("world")); Cache.cleanupIdleMillis = 60_000L;
+            ActiveVehicle v = vehicle("v"); register(v);
+            when(v.getSeatHandler().getPassengers()).thenReturn(new ArrayList<>());
+            VehiclePersistence persistence = persistence();
+            when(persistence.tombstone("v")).thenReturn(false);
+            manager.start();
+            timers.get(3).run(); // first sight: the idle clock starts
+            verify(v, never()).remove(any(VehicleRemoveReason.class));
+            assertEquals(1, manager.runCleanup(System.currentTimeMillis() + 120_000L));
+            verify(v).remove(VehicleRemoveReason.ADMIN_KILL);
+            verify(persistence).tombstone("v");
+            String described = VehicleManager.describeVehicle(v) + " at " + VehicleManager.describeLocation(v);
+            logger.verify(() -> VFLogger.log("Failed to tombstone " + described + " after cleanup"));
+            logger.verify(() -> VFLogger.info("Cleanup removed " + described + " (empty for 1 minutes)"));
+            // a later vehicle on its own clock; the tombstone succeeds this time (no failure line)
+            when(persistence.tombstone("w")).thenReturn(true);
+            manager.get().remove(v.getEntity());
+            ActiveVehicle w = vehicle("w"); register(w);
+            when(w.getSeatHandler().getPassengers()).thenReturn(new ArrayList<>());
+            assertEquals(0, manager.runCleanup(0));
+            assertEquals(1, manager.runCleanup(120_000L));
+            verify(w).remove(VehicleRemoveReason.ADMIN_KILL);
+        } finally {
+            Cache.cleanupWorlds = worlds; Cache.cleanupIdleMillis = idle;
+        }
+    }
+
+    @Test
     void timersRunIndependentTicksAndSkipUnavailablePersistence() throws Exception {
         ActiveVehicle v = vehicle("v"); register(v); Player player = player("Ryan");
-        manager.start(); assertEquals(3, timers.size()); verify(manager.getSpawnManager()).start();
+        manager.start(); assertEquals(4, timers.size()); verify(manager.getSpawnManager()).start();
         timers.get(0).run(); timers.get(1).run(); timers.get(2).run();
         verify(v).tick(); verify(v).slowTick();
         doThrow(new IllegalStateException("broken tick")).when(v).tick();

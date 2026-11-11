@@ -101,6 +101,15 @@ enable-logging: false
 ##How far away does the player need to be for the vehicle to despawn?
 despawn-distance: 160
 
+##Idle vehicle cleanup, for a world where vehicles are only for trying out (e.g. a tutorial server).
+##Every minute, a vehicle on one of these worlds that has had no passenger for idle-minutes is removed
+##like an admin kill. keep-owners lists stored owner values (e.g. char_<uuid>) that are never removed.
+##No worlds (the default) means no cleanup.
+cleanup:
+    worlds: []
+    keep-owners: []
+    idle-minutes: 30
+
 ##Explosion Damage
 block-damage: true
 
