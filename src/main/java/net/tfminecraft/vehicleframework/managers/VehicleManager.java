@@ -132,6 +132,7 @@ public class VehicleManager implements Listener{
 	private HashMap<Player, HashMap<String, Long>> ejectCooldown = new HashMap<>();
 
 	private final OwnershipManager ownership = new OwnershipManager(this);
+	private final VehicleCleanup cleanup = new VehicleCleanup();
 	
 	private HashMap<Player, ActiveVehicle> tow = new HashMap<>();
 
@@ -296,6 +297,33 @@ public class VehicleManager implements Listener{
 		vehicleFastTickCycle();
 		vehicleSlowTickCycle();
 		snapshotCycle();
+		cleanupCycle();
+	}
+
+	/** Every minute: remove the idle vehicles on the cleanup worlds (cleanup: in config.yml). */
+	private void cleanupCycle() {
+		new BukkitRunnable() {
+			@Override
+			public void run() {
+				runCleanup(System.currentTimeMillis());
+			}
+		}.runTaskTimer(VehicleFramework.plugin, 1200L, 1200L);
+	}
+
+	/** Removes the vehicles the cleanup finds idle, like an admin kill; returns how many. */
+	int runCleanup(long now) {
+		int removed = 0;
+		for (ActiveVehicle v : cleanup.due(new ArrayList<>(vehicles.values()), now)) {
+			String described = describeVehicle(v) + " at " + describeLocation(v);
+			v.remove(VehicleRemoveReason.ADMIN_KILL);
+			if (!persistDestroy(v)) {
+				VFLogger.log("Failed to tombstone " + described + " after cleanup");
+			}
+			VFLogger.info("Cleanup removed " + described + " (empty for "
+					+ Cache.cleanupIdleMillis / 60_000L + " minutes)");
+			removed++;
+		}
+		return removed;
 	}
 
 	public void reload() {

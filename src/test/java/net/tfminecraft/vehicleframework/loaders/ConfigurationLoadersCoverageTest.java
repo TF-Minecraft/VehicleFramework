@@ -131,6 +131,10 @@ class ConfigurationLoadersCoverageTest {
                 enable-logging: true
                 block-damage: false
                 despawn-distance: 17
+                cleanup:
+                  worlds: [TFMC_S2]
+                  keep-owners: [char_demo]
+                  idle-minutes: 0
                 skin-item: custom.skin
                 repair-item: custom.repair
                 destroy-item: custom.destroy
@@ -153,6 +157,9 @@ class ConfigurationLoadersCoverageTest {
     assertTrue(Cache.enableLogging);
     assertFalse(Cache.blockDamage);
     assertEquals(289, Cache.despawnDistance);
+    assertEquals(Set.of("tfmc_s2"), Cache.cleanupWorlds);
+    assertEquals(Set.of("char_demo"), Cache.cleanupKeepOwners);
+    assertEquals(60_000L, Cache.cleanupIdleMillis); // at least a minute
     assertEquals("custom.skin", Cache.skinItem);
     assertEquals("custom.repair", Cache.repairItem);
     assertEquals("custom.destroy", Cache.destroyItem);

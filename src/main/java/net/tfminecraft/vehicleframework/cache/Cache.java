@@ -22,6 +22,12 @@ public class Cache {
 	
 	// Keep the same defaults as an empty config if the first YAML load fails.
 	public static int despawnDistance = 64 * 64;
+	/** cleanup.worlds (lower case): idle vehicles there are removed; empty means no cleanup. */
+	public static Set<String> cleanupWorlds = new HashSet<>();
+	/** cleanup.keep-owners: stored owner values whose vehicles the cleanup never removes. */
+	public static Set<String> cleanupKeepOwners = new HashSet<>();
+	/** cleanup.idle-minutes, in milliseconds: how long a vehicle may stand empty. */
+	public static long cleanupIdleMillis = 30 * 60_000L;
 
 	public static boolean blockDamage = true;
 	
