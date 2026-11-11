@@ -20,22 +20,42 @@ import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 /**
  * Finds idle vehicles to remove on the worlds in {@code cleanup.worlds} (config.yml), such as a
  * tutorial server's world. A vehicle is due once it has had no passenger and has not moved for
- * {@code cleanup.idle-minutes}, counted from when the cleanup first saw it loaded or last saw it in
- * use. Moving counts as use, so a train car behind an occupied locomotive, a horse-drawn cart or a
- * towed vehicle is not idle. Owners in {@code cleanup.keep-owners} (stored owner values, e.g.
- * {@code char_<uuid>}) are never removed. With no worlds configured nothing is ever due.
+ * {@code cleanup.idle-minutes}, counted from when the cleanup first saw it loaded or it was last in
+ * use. Use is a passenger at a check, a mount or dismount at any time ({@link #markUsed}), or moving
+ * more than a block between checks, so a train car behind an occupied locomotive, a horse-drawn cart
+ * or a towed vehicle is not idle. A vehicle that unloads and loads again starts a fresh clock.
+ * Owners in {@code cleanup.keep-owners} (stored owner values, e.g. {@code char_<uuid>}) are never
+ * removed. With no worlds configured nothing is ever due.
  */
 public final class VehicleCleanup {
 
-	private final Map<String, Long> lastActive = new HashMap<>();
-	private final Map<String, double[]> lastPosition = new HashMap<>();
+	/** One loaded vehicle: the instance, when it was last in use and where the last check saw it. */
+	private static final class Track {
+		final ActiveVehicle vehicle;
+		long since;
+		double[] position;
+
+		Track(ActiveVehicle vehicle, long since) {
+			this.vehicle = vehicle;
+			this.since = since;
+		}
+	}
+
+	private final Map<String, Track> tracks = new HashMap<>();
+
+	/** Someone got in or out: the vehicle's idle clock starts again now. */
+	public void markUsed(ActiveVehicle v, long now) {
+		Track track = v == null || v.getUUID() == null ? null : tracks.get(v.getUUID());
+		if (track != null && track.vehicle == v) {
+			track.since = now;
+		}
+	}
 
 	/** The loaded vehicles to remove now; also forgets vehicles that are no longer loaded. */
 	public List<ActiveVehicle> due(Collection<ActiveVehicle> vehicles, long now) {
 		List<ActiveVehicle> due = new ArrayList<>();
 		if (Cache.cleanupWorlds.isEmpty()) {
-			lastActive.clear();
-			lastPosition.clear();
+			tracks.clear();
 			return due;
 		}
 		Set<String> seen = new HashSet<>();
@@ -45,28 +65,32 @@ public final class VehicleCleanup {
 			if (id == null || v.isDestroyed() || !seen.add(id) || !onCleanupWorld(v) || isKept(v)) {
 				continue;
 			}
-			boolean moved = moved(id, v.getEntity().getLocation());
-			if (moved || !v.getSeatHandler().getPassengers().isEmpty()) {
-				lastActive.put(id, now);
+			Track track = tracks.get(id);
+			if (track == null || track.vehicle != v) {
+				// first sight, or loaded again since the last check: a fresh clock
+				track = new Track(v, now);
+				tracks.put(id, track);
+				moved(track, v.getEntity().getLocation());
 				continue;
 			}
-			Long since = lastActive.putIfAbsent(id, now);
-			if (since != null && now - since >= Cache.cleanupIdleMillis) {
+			if (moved(track, v.getEntity().getLocation()) || !v.getSeatHandler().getPassengers().isEmpty()) {
+				track.since = now;
+			} else if (now - track.since >= Cache.cleanupIdleMillis) {
 				due.add(v);
 			}
 		}
-		lastActive.keySet().retainAll(seen);
-		lastPosition.keySet().retainAll(seen);
+		tracks.keySet().retainAll(seen);
 		return due;
 	}
 
-	/** Whether the vehicle is more than a block from where the last check saw it. */
-	private boolean moved(String id, Location at) {
+	/** Whether the vehicle is more than a block from where the last check saw it; remembers where it is. */
+	private static boolean moved(Track track, Location at) {
 		if (at == null) {
 			return false;
 		}
 		double[] now = {at.getX(), at.getY(), at.getZ()};
-		double[] before = lastPosition.put(id, now);
+		double[] before = track.position;
+		track.position = now;
 		return before != null
 				&& Math.abs(now[0] - before[0]) + Math.abs(now[1] - before[1]) + Math.abs(now[2] - before[2]) > 1.0;
 	}

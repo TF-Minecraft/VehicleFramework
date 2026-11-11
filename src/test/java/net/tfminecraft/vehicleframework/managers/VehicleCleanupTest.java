@@ -94,6 +94,24 @@ class VehicleCleanupTest {
 	}
 
 	@Test
+	void aReloadedVehicleStartsAFreshClockAndGettingInOrOutCountsAsUse() {
+		ActiveVehicle car = vehicle("car", tutorial, "player_Saint");
+		cleanup.due(List.of(car), 0);
+		// unloaded and loaded again between two checks: a new instance with the same id
+		ActiveVehicle reloaded = vehicle("car", tutorial, "player_Saint");
+		assertTrue(cleanup.due(List.of(reloaded), 29 * MIN).isEmpty());
+		assertTrue(cleanup.due(List.of(reloaded), 58 * MIN).isEmpty());
+		cleanup.markUsed(car, 58 * MIN); // the old instance: ignored
+		// someone got in and out between checks, at minute 58
+		cleanup.markUsed(reloaded, 58 * MIN);
+		assertTrue(cleanup.due(List.of(reloaded), 60 * MIN).isEmpty());
+		assertEquals(List.of(reloaded), cleanup.due(List.of(reloaded), 88 * MIN));
+		cleanup.markUsed(null, 0); // a player who was in no vehicle
+		cleanup.markUsed(vehicle(null, tutorial, "x"), 0);
+		cleanup.markUsed(vehicle("never-seen", tutorial, "x"), 0);
+	}
+
+	@Test
 	void unloadedVehiclesAreForgottenAndNoWorldsMeansNoCleanup() {
 		ActiveVehicle car = vehicle("car", tutorial, "player_Saint");
 		cleanup.due(List.of(car), 0);

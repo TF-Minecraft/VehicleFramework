@@ -437,7 +437,7 @@ public class VehicleManager implements Listener{
 	}
 	
 	public void dismount(Player p) {
-		if(activeVehicle.containsKey(p)) activeVehicle.remove(p);
+		cleanup.markUsed(activeVehicle.remove(p), System.currentTimeMillis());
 		if (p != null) {
 			packetSneak.remove(p.getUniqueId());
 			mountedLeftClickAt.remove(p.getUniqueId());
@@ -1027,6 +1027,7 @@ public class VehicleManager implements Listener{
 		}
 		if (tempVehicle.containsKey(p)) tempVehicle.remove(p);
 		if (!activeVehicle.containsKey(p)) activeVehicle.put(p, v);
+		cleanup.markUsed(v, System.currentTimeMillis());
 		return true;
 	}
 
