@@ -19,6 +19,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.*;
 import net.tfminecraft.vehicleframework.bones.BoneRotator;
 import net.tfminecraft.vehicleframework.bones.VectorBone;
+import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.enums.Animation;
 import net.tfminecraft.vehicleframework.enums.Component;
 import net.tfminecraft.vehicleframework.enums.Direction;
@@ -568,6 +569,189 @@ class VehicleMovementControllerCoverageTest {
         verify(entity, never()).teleport(any(Location.class));
         verify(entity, never()).setVelocity(any());
         verify(vehicle, never()).animate(any());
+    }
+
+    /** An empty engine vehicle with no throttle whose ground step keeps answering "stay here, level". */
+    private void idleOnTerrain() {
+        component(Component.ENGINE, Engine.class);
+        park();
+        follow();
+        terrainResult(new TerrainFollowEngine.Result(location.clone(), new Vector(), new TerrainFollowMath.Tilt(0, 0)));
+    }
+
+    private void moveTicks(int ticks) {
+        for (int i = 0; i < ticks; i++) controller.input(player, Input.MOVE);
+    }
+
+    private void verifySteps(int count) {
+        terrain.verify(() -> TerrainFollowEngine.step(eq(vehicle), any(VectorBone.class), any(Direction.class),
+                any(BaseController.class), any(TerrainFollowConfig.class)), times(count));
+    }
+
+    @Test
+    void anIdleTerrainVehicleStopsReadingTheGroundOnceSettledAndRechecksOnceAWindow() {
+        idleOnTerrain();
+        assertFalse(controller.isParked(), "a terrain state is never parked");
+        moveTicks(TerrainRest.SETTLE_STEPS);
+        verifySteps(TerrainRest.SETTLE_STEPS);
+        verify(entity, times(TerrainRest.SETTLE_STEPS)).teleport(any(Location.class));
+        clearInvocations(entity, vehicle, rotator);
+        velocity = new Vector(.2, -.3, .1);
+
+        moveTicks(TerrainRest.RECHECK_TICKS - 1);
+        verifySteps(TerrainRest.SETTLE_STEPS);
+        verify(entity, never()).teleport(any(Location.class));
+        verify(rotator, never()).rotateToTarget(anyFloat(), anyFloat(), anyFloat(), anyFloat(), anyBoolean(), anyBoolean(), anyBoolean());
+        // What the left-out step would still have done: no velocity, drive animations stopped.
+        assertEquals(new Vector(), velocity);
+        verify(entity, times(TerrainRest.RECHECK_TICKS - 1)).setVelocity(new Vector());
+        verify(vehicle, times(TerrainRest.RECHECK_TICKS - 1)).stopAnimation(Animation.FORWARD);
+        verify(vehicle, times(TerrainRest.RECHECK_TICKS - 1)).stopAnimation(Animation.BACKWARD);
+
+        moveTicks(1);
+        verifySteps(TerrainRest.SETTLE_STEPS + 1);
+        verify(entity).teleport(any(Location.class));
+        moveTicks(TerrainRest.RECHECK_TICKS - 1);
+        verifySteps(TerrainRest.SETTLE_STEPS + 1);
+    }
+
+    @Test
+    void anIdleTerrainVehicleSettlesWithoutATiltButNotWhileTheStepGivesItVelocity() {
+        component(Component.ENGINE, Engine.class);
+        park();
+        follow();
+        terrainResult(new TerrainFollowEngine.Result(location.clone(), new Vector(), null));
+        moveTicks(TerrainRest.SETTLE_STEPS + 5);
+        verifySteps(TerrainRest.SETTLE_STEPS);
+        // Same spot, but the step still pushes it: it has not come to rest.
+        location = new Location(world, 30, 64, 30);
+        terrainResult(new TerrainFollowEngine.Result(location.clone(), new Vector(.1, 0, 0), null));
+        moveTicks(TerrainRest.SETTLE_STEPS * 2);
+        verifySteps(TerrainRest.SETTLE_STEPS * 3);
+    }
+
+    @Test
+    void aRecheckThatFindsTheGroundChangedBringsEveryGroundStepBack() {
+        idleOnTerrain();
+        moveTicks(TerrainRest.SETTLE_STEPS);
+        verifySteps(TerrainRest.SETTLE_STEPS);
+        // A block went from under it. Nothing moved the vehicle, so only the recheck can notice.
+        Location lower = new Location(world, 8, 63, 8);
+        terrainResult(new TerrainFollowEngine.Result(lower, new Vector(), new TerrainFollowMath.Tilt(0, 0)));
+        moveTicks(TerrainRest.RECHECK_TICKS - 1);
+        verifySteps(TerrainRest.SETTLE_STEPS);
+        assertEquals(new Location(world, 8, 64, 8), location);
+        moveTicks(1);
+        verifySteps(TerrainRest.SETTLE_STEPS + 1);
+        assertEquals(lower, location);
+        // From there every tick steps again until it has settled on the new ground.
+        moveTicks(TerrainRest.SETTLE_STEPS);
+        verifySteps(TerrainRest.SETTLE_STEPS * 2 + 1);
+        moveTicks(1);
+        verifySteps(TerrainRest.SETTLE_STEPS * 2 + 1);
+    }
+
+    @Test
+    void forgettingTheRestBringsEveryGroundStepBackUntilItSettlesAgain() {
+        idleOnTerrain();
+        moveTicks(TerrainRest.SETTLE_STEPS + 2);
+        verifySteps(TerrainRest.SETTLE_STEPS);
+        // Its bone was reset, or its state swapped: nothing about the vehicle's place has changed.
+        controller.resetTerrainRest();
+        moveTicks(TerrainRest.SETTLE_STEPS);
+        verifySteps(TerrainRest.SETTLE_STEPS * 2);
+        verify(rotator, times(TerrainRest.SETTLE_STEPS * 2)).rotateToTarget(anyFloat(), anyFloat(), anyFloat(), anyFloat(), anyBoolean(), anyBoolean(), anyBoolean());
+        moveTicks(1);
+        verifySteps(TerrainRest.SETTLE_STEPS * 2);
+    }
+
+    @Test
+    void aSettledTerrainVehicleFoundSomewhereElseReadsTheGroundAgainAtOnce() {
+        idleOnTerrain();
+        moveTicks(TerrainRest.SETTLE_STEPS + 3);
+        verifySteps(TerrainRest.SETTLE_STEPS);
+        // Something other than the ground step moved it: it fell two blocks.
+        location = new Location(world, 8, 62, 8);
+        terrainResult(new TerrainFollowEngine.Result(location.clone(), new Vector(), new TerrainFollowMath.Tilt(0, 0)));
+        moveTicks(TerrainRest.SETTLE_STEPS);
+        verifySteps(TerrainRest.SETTLE_STEPS * 2);
+        moveTicks(1);
+        verifySteps(TerrainRest.SETTLE_STEPS * 2);
+    }
+
+    @Test
+    void anyoneAboardThrottleSpeedATowFireOrTheDebugViewKeepsEveryGroundStep() {
+        idleOnTerrain();
+        moveTicks(TerrainRest.SETTLE_STEPS + 1);
+        verifySteps(TerrainRest.SETTLE_STEPS);
+        int steps = TerrainRest.SETTLE_STEPS;
+
+        when(vehicle.getSeatHandler().hasPassengers()).thenReturn(true);
+        moveTicks(5);
+        verifySteps(steps += 5);
+        when(vehicle.getSeatHandler().hasPassengers()).thenReturn(false);
+        // Leaving again does not bring the old rest back: it settles from the start.
+        moveTicks(TerrainRest.SETTLE_STEPS);
+        verifySteps(steps += TerrainRest.SETTLE_STEPS);
+        moveTicks(1);
+        verifySteps(steps);
+
+        when(vehicle.isOnFire()).thenReturn(true);
+        moveTicks(3);
+        verifySteps(steps += 3);
+        when(vehicle.isOnFire()).thenReturn(false);
+        moveTicks(TerrainRest.SETTLE_STEPS + 1);
+        verifySteps(steps += TerrainRest.SETTLE_STEPS);
+
+        when(vehicle.getThrottle().getCurrent()).thenReturn(5);
+        moveTicks(3);
+        verifySteps(steps += 3);
+        when(vehicle.getThrottle().getCurrent()).thenReturn(0);
+        moveTicks(TerrainRest.SETTLE_STEPS + 1);
+        verifySteps(steps += TerrainRest.SETTLE_STEPS);
+
+        when(vehicle.getAccessPanel().getSpeed()).thenReturn(.05);
+        moveTicks(3);
+        verifySteps(steps += 3);
+        when(vehicle.getAccessPanel().getSpeed()).thenReturn(0d);
+        moveTicks(TerrainRest.SETTLE_STEPS + 1);
+        verifySteps(steps += TerrainRest.SETTLE_STEPS);
+
+        when(vehicle.hasTowHandler()).thenReturn(true);
+        moveTicks(2);
+        verifySteps(steps);
+        // An empty hitch changes nothing; something on it does.
+        when(vehicle.getTowHandler().isOccupied()).thenReturn(true);
+        moveTicks(3);
+        verifySteps(steps += 3);
+        when(vehicle.getTowHandler().isOccupied()).thenReturn(false);
+        moveTicks(TerrainRest.SETTLE_STEPS + 1);
+        verifySteps(steps += TerrainRest.SETTLE_STEPS);
+
+        Cache.terrainFollowDebug = true;
+        try {
+            moveTicks(4);
+            verifySteps(steps += 4);
+        } finally {
+            Cache.terrainFollowDebug = false;
+        }
+    }
+
+    @Test
+    void aGroundStepThatStillMovesOrTurnsTheVehicleNeverLetsItRest() {
+        component(Component.ENGINE, Engine.class);
+        park();
+        follow();
+        // Sliding: each step answers one spot further along.
+        terrain.when(() -> TerrainFollowEngine.step(eq(vehicle), any(VectorBone.class), any(Direction.class),
+                any(BaseController.class), any(TerrainFollowConfig.class))).thenAnswer(call ->
+                new TerrainFollowEngine.Result(location.clone().add(0, -.05, 0), new Vector(), new TerrainFollowMath.Tilt(0, 0)));
+        moveTicks(TerrainRest.SETTLE_STEPS * 2);
+        verifySteps(TerrainRest.SETTLE_STEPS * 2);
+        // An invalid entity gives no result and forgets any rest.
+        terrainResult(null);
+        moveTicks(2);
+        verifySteps(TerrainRest.SETTLE_STEPS * 2 + 2);
     }
 
     @Test

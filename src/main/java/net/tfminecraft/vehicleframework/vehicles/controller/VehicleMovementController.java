@@ -1,5 +1,6 @@
 package net.tfminecraft.vehicleframework.vehicles.controller;
 
+import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -8,6 +9,7 @@ import org.bukkit.util.Vector;
 import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.bones.BoneRotator;
 import net.tfminecraft.vehicleframework.bones.VectorBone;
+import net.tfminecraft.vehicleframework.cache.Cache;
 import net.tfminecraft.vehicleframework.enums.Animation;
 import net.tfminecraft.vehicleframework.enums.Component;
 import net.tfminecraft.vehicleframework.enums.Direction;
@@ -45,6 +47,8 @@ public class VehicleMovementController implements MovementInterface{
 	protected FloatController floatController = new FloatController();
 	protected ThrottleController throttleController = new ThrottleController();
 	protected RotateController rotateController = new RotateController();
+	/** When this state's ground step may be left out for a vehicle standing idle. */
+	private final TerrainRest terrainRest = new TerrainRest();
 	
 	
 	
@@ -256,20 +260,48 @@ public class VehicleMovementController implements MovementInterface{
 	 * The result of its MOVE step then depends on neither the heading bone nor the blocks around
 	 * it, so {@link #moveParked} can apply that result directly. Checked every tick: a driver,
 	 * throttle, a state change (water, open air) or a tow brings back the full step that tick.
+	 * A state that follows the terrain is never parked, because its step does read the blocks
+	 * under it; {@link TerrainRest} thins that step out instead once the vehicle has settled.
 	 */
 	boolean isParked() {
+		// The terrain rule first: a terrain vehicle is never parked, and its idle check runs once,
+		// in the ground step.
+		return !followsTerrain() && standsIdle();
+	}
+
+	/**
+	 * Forgets a settled terrain rest, so the ground step runs every tick again until the vehicle
+	 * has settled anew. For whatever changes the vehicle without going through that step: its
+	 * state swapped (the rest belongs to the ground it stood on in this state), or its bone reset
+	 * (the step's tilt smoothing has to bring it back, and a resting vehicle only steps once a
+	 * second).
+	 */
+	public void resetTerrainRest() {
+		terrainRest.reset();
+	}
+
+	/** For tests: this controller's rest. */
+	TerrainRest terrainRest() {
+		return terrainRest;
+	}
+
+	/** Whether this controller's state places the vehicle on the ground it reads every step. */
+	private boolean followsTerrain() {
+		if (state.isDefault()) {
+			return false;
+		}
+		TerrainFollowConfig follow = state.getTerrainFollow();
+		return follow != null && follow.isEnabled();
+	}
+
+	/** {@link #isParked} without the terrain rule: nothing aboard, driving, towing or burning. */
+	private boolean standsIdle() {
 		// The full step reads the vehicle's current state, which is this controller's.
 		if (v.getCurrentState() != state || state.getType() != State.GROUND) {
 			return false;
 		}
 		if (v.isTrain() || v.isDestroyed() || v.shouldFloat()) {
 			return false;
-		}
-		if (!state.isDefault()) {
-			TerrainFollowConfig follow = state.getTerrainFollow();
-			if (follow != null && follow.isEnabled()) {
-				return false;
-			}
 		}
 		if (v.hasComponent(Component.HARNESS)
 				|| !(v.hasComponent(Component.ENGINE) || v.hasComponent(Component.GEARED_ENGINE))) {
@@ -346,9 +378,32 @@ public class VehicleMovementController implements MovementInterface{
 		if (v.isTrain()) {
 			return false;
 		}
+		// The debug view draws the probes from inside the step, so it keeps every step. The ground
+		// engine log does not: with it on, a resting vehicle logs one step a second, not twenty.
+		boolean idle = !Cache.terrainFollowDebug && standsIdle();
+		Location before = idle ? e.getLocation() : null;
+		if (idle && terrainRest.skip(before.getX(), before.getY(), before.getZ())) {
+			// Settled and found where the last step left it: that step would put it here again.
+			Vector none = new Vector();
+			e.setVelocity(none);
+			propagate(none, dir);
+			animateMove(dir);
+			return true;
+		}
 		TerrainFollowEngine.Result result = TerrainFollowEngine.step(v, vector, dir, baseController, follow);
 		if (result == null) {
+			terrainRest.reset();
 			return true;
+		}
+		if (idle) {
+			TerrainFollowMath.Tilt tilt = result.tilt;
+			terrainRest.observe(
+					before.getX(), before.getY(), before.getZ(),
+					result.location.getX(), result.location.getY(), result.location.getZ(),
+					result.velocity.lengthSquared() > 0,
+					tilt != null, tilt == null ? 0 : tilt.pitchDeg, tilt == null ? 0 : tilt.rollDeg);
+		} else {
+			terrainRest.reset();
 		}
 		e.teleport(result.location);
 		e.setVelocity(result.velocity);
