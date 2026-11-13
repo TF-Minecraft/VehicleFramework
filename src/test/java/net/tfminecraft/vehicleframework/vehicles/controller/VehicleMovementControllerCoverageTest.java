@@ -645,7 +645,7 @@ class VehicleMovementControllerCoverageTest {
     }
 
     @Test
-    void anyoneAboardThrottleFireOrTheDebugViewKeepsEveryGroundStep() {
+    void anyoneAboardThrottleSpeedATowFireOrTheDebugViewKeepsEveryGroundStep() {
         idleOnTerrain();
         moveTicks(TerrainRest.SETTLE_STEPS + 1);
         verifySteps(TerrainRest.SETTLE_STEPS);
@@ -665,6 +665,31 @@ class VehicleMovementControllerCoverageTest {
         moveTicks(3);
         verifySteps(steps += 3);
         when(vehicle.isOnFire()).thenReturn(false);
+        moveTicks(TerrainRest.SETTLE_STEPS + 1);
+        verifySteps(steps += TerrainRest.SETTLE_STEPS);
+
+        when(vehicle.getThrottle().getCurrent()).thenReturn(5);
+        moveTicks(3);
+        verifySteps(steps += 3);
+        when(vehicle.getThrottle().getCurrent()).thenReturn(0);
+        moveTicks(TerrainRest.SETTLE_STEPS + 1);
+        verifySteps(steps += TerrainRest.SETTLE_STEPS);
+
+        when(vehicle.getAccessPanel().getSpeed()).thenReturn(.05);
+        moveTicks(3);
+        verifySteps(steps += 3);
+        when(vehicle.getAccessPanel().getSpeed()).thenReturn(0d);
+        moveTicks(TerrainRest.SETTLE_STEPS + 1);
+        verifySteps(steps += TerrainRest.SETTLE_STEPS);
+
+        when(vehicle.hasTowHandler()).thenReturn(true);
+        moveTicks(2);
+        verifySteps(steps);
+        // An empty hitch changes nothing; something on it does.
+        when(vehicle.getTowHandler().isOccupied()).thenReturn(true);
+        moveTicks(3);
+        verifySteps(steps += 3);
+        when(vehicle.getTowHandler().isOccupied()).thenReturn(false);
         moveTicks(TerrainRest.SETTLE_STEPS + 1);
         verifySteps(steps += TerrainRest.SETTLE_STEPS);
 
