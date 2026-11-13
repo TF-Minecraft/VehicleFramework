@@ -10,7 +10,7 @@ package net.tfminecraft.vehicleframework.vehicles.controller;
  * that nothing moves is seen within that time.
  */
 final class TerrainRest {
-	/** Still steps before the vehicle counts as settled; also lets the tilt smoothing finish. */
+	/** Still steps before the vehicle counts as settled; the tilt smoothing has all but finished by then, and the rechecks complete it. */
 	static final int SETTLE_STEPS = 20;
 	/** While settled, one tick in this many runs the full ground step. */
 	static final int RECHECK_TICKS = 20;

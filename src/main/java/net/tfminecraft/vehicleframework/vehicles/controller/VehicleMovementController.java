@@ -264,7 +264,9 @@ public class VehicleMovementController implements MovementInterface{
 	 * under it; {@link TerrainRest} thins that step out instead once the vehicle has settled.
 	 */
 	boolean isParked() {
-		return standsIdle() && !followsTerrain();
+		// The terrain rule first: a terrain vehicle is never parked, and its idle check runs once,
+		// in the ground step.
+		return !followsTerrain() && standsIdle();
 	}
 
 	/**
@@ -376,7 +378,8 @@ public class VehicleMovementController implements MovementInterface{
 		if (v.isTrain()) {
 			return false;
 		}
-		// The debug view draws the probes from inside the step, so it keeps every step.
+		// The debug view draws the probes from inside the step, so it keeps every step. The ground
+		// engine log does not: with it on, a resting vehicle logs one step a second, not twenty.
 		boolean idle = !Cache.terrainFollowDebug && standsIdle();
 		Location before = idle ? e.getLocation() : null;
 		if (idle && terrainRest.skip(before.getX(), before.getY(), before.getZ())) {

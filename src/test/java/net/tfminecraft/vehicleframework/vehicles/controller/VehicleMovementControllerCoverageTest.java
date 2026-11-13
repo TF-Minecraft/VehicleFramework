@@ -631,6 +631,27 @@ class VehicleMovementControllerCoverageTest {
     }
 
     @Test
+    void aRecheckThatFindsTheGroundChangedBringsEveryGroundStepBack() {
+        idleOnTerrain();
+        moveTicks(TerrainRest.SETTLE_STEPS);
+        verifySteps(TerrainRest.SETTLE_STEPS);
+        // A block went from under it. Nothing moved the vehicle, so only the recheck can notice.
+        Location lower = new Location(world, 8, 63, 8);
+        terrainResult(new TerrainFollowEngine.Result(lower, new Vector(), new TerrainFollowMath.Tilt(0, 0)));
+        moveTicks(TerrainRest.RECHECK_TICKS - 1);
+        verifySteps(TerrainRest.SETTLE_STEPS);
+        assertEquals(new Location(world, 8, 64, 8), location);
+        moveTicks(1);
+        verifySteps(TerrainRest.SETTLE_STEPS + 1);
+        assertEquals(lower, location);
+        // From there every tick steps again until it has settled on the new ground.
+        moveTicks(TerrainRest.SETTLE_STEPS);
+        verifySteps(TerrainRest.SETTLE_STEPS * 2 + 1);
+        moveTicks(1);
+        verifySteps(TerrainRest.SETTLE_STEPS * 2 + 1);
+    }
+
+    @Test
     void forgettingTheRestBringsEveryGroundStepBackUntilItSettlesAgain() {
         idleOnTerrain();
         moveTicks(TerrainRest.SETTLE_STEPS + 2);
