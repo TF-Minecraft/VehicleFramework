@@ -252,6 +252,30 @@ class VehicleControllersCoverageTest {
         handler.tick(); assertEquals(State.GROUND, handler.getCurrentState().getType());
     }
 
+    @Test void aStateSwapForgetsEveryStatesTerrainRest() {
+        Water f = new Water(); YamlConfiguration config = yaml(); config.createSection("floating");
+        StateHandler handler = new StateHandler(f.vehicle, new StateHandler(config));
+        f.grid.fill = p -> p.y < 64 ? Material.STONE : Material.AIR;
+        handler.tick(); assertEquals(State.GROUND, handler.getCurrentState().getType());
+        TerrainRest ground = handler.getVehicleState(State.GROUND).getMoveControls().terrainRest();
+        TerrainRest floating = handler.getVehicleState(State.FLOATING).getMoveControls().terrainRest();
+        for (TerrainRest rest : List.of(ground, floating)) {
+            for (int i = 0; i < TerrainRest.SETTLE_STEPS; i++) rest.observe(8, 64, 8, 8, 64, 8, false, false, 0f, 0f);
+            assertTrue(rest.settled());
+        }
+        // Staying in the same state leaves a rest alone.
+        handler.tick(); assertTrue(ground.settled()); assertTrue(floating.settled());
+        // Water rises over it: whatever either state had settled on is no longer the ground it stands on.
+        f.grid.fill = p -> p.y <= 66 ? Material.WATER : Material.AIR;
+        handler.tick(); assertEquals(State.FLOATING, handler.getCurrentState().getType());
+        assertFalse(ground.settled()); assertFalse(floating.settled());
+        // The same when it comes back to the very spot it rested on.
+        for (int i = 0; i < TerrainRest.SETTLE_STEPS; i++) ground.observe(8, 64, 8, 8, 64, 8, false, false, 0f, 0f);
+        f.grid.fill = p -> p.y < 64 ? Material.STONE : Material.AIR;
+        handler.tick(); assertEquals(State.GROUND, handler.getCurrentState().getType());
+        assertFalse(ground.settled()); assertFalse(ground.skip(8, 64, 8));
+    }
+
     @Test void stateTicksOnlyReadTheBlocksTheirConfiguredStatesNeed() {
         Water f = new Water();
         f.grid.fill = p -> p.y <= 66 ? Material.WATER : Material.AIR;

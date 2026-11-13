@@ -267,6 +267,22 @@ public class VehicleMovementController implements MovementInterface{
 		return standsIdle() && !followsTerrain();
 	}
 
+	/**
+	 * Forgets a settled terrain rest, so the ground step runs every tick again until the vehicle
+	 * has settled anew. For whatever changes the vehicle without going through that step: its
+	 * state swapped (the rest belongs to the ground it stood on in this state), or its bone reset
+	 * (the step's tilt smoothing has to bring it back, and a resting vehicle only steps once a
+	 * second).
+	 */
+	public void resetTerrainRest() {
+		terrainRest.reset();
+	}
+
+	/** For tests: this controller's rest. */
+	TerrainRest terrainRest() {
+		return terrainRest;
+	}
+
 	/** Whether this controller's state places the vehicle on the ground it reads every step. */
 	private boolean followsTerrain() {
 		if (state.isDefault()) {

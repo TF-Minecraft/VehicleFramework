@@ -302,7 +302,7 @@ class VehicleHandlersCoverageTest {
         YamlConfiguration config = yaml(); config.set("bone", "tow"); config.set("reversed", reversed);
         TowHandler handler = new TowHandler(vehicle, new TowHandler(config)); assertFalse(handler.isOccupied()); handler.tick(); handler.animate(Direction.FORWARD);
         handler.attach(trailer); handler.attach(vehicle); assertTrue(handler.isOccupied()); assertSame(trailer, handler.getTowPoint().getMountedVehicle());
-        verify(trailer).setParent(vehicle); verify(trailer.getBehaviourHandler().getRotator()).reset(); handler.tick();
+        verify(trailer).setParent(vehicle); verify(trailer.getBehaviourHandler().getRotator()).reset(); verify(trailer.getStateHandler()).resetTerrainRest(); handler.tick();
         ArgumentCaptor<Location> target = ArgumentCaptor.forClass(Location.class); verify(trailer.getEntity()).teleport(target.capture());
         assertEquals(reversed ? 90 : -90, target.getValue().getYaw()); assertEquals(handler.getTowLocation().toVector(), target.getValue().toVector());
         handler.animate(Direction.FORWARD); verify(trailer.getMoveControls()).animateMove(reversed ? Direction.BACKWARD : Direction.FORWARD);

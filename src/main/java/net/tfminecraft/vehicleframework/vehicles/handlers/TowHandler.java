@@ -71,6 +71,9 @@ public class TowHandler {
 		if(towPoint.isOccupied()) return;
 		towPoint.mount(target, v);
 		target.getBehaviourHandler().getRotator().reset();
+		// Its bone is level again: a vehicle resting on a slope must go back to stepping every tick,
+		// or the tilt would only come back one smoothing step a second.
+		target.getStateHandler().resetTerrainRest();
 	}
 	
 	public void unattach() {

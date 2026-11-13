@@ -185,7 +185,16 @@ public class StateHandler {
 				to,
 				reason,
 				next != null && next.isDefault()));
+		// A rest settled in the state it leaves, or in the one it returns to, is about other ground.
+		resetTerrainRest();
 		setState(s);
+	}
+
+	/** Every state's ground step runs each tick again; see {@link VehicleMovementController#resetTerrainRest}. */
+	public void resetTerrainRest() {
+		for (VehicleState each : states.values()) {
+			each.getMoveControls().resetTerrainRest();
+		}
 	}
 	
 	//Currentstate getters and methods

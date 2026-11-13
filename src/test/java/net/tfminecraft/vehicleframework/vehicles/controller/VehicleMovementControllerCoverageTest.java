@@ -631,6 +631,20 @@ class VehicleMovementControllerCoverageTest {
     }
 
     @Test
+    void forgettingTheRestBringsEveryGroundStepBackUntilItSettlesAgain() {
+        idleOnTerrain();
+        moveTicks(TerrainRest.SETTLE_STEPS + 2);
+        verifySteps(TerrainRest.SETTLE_STEPS);
+        // Its bone was reset, or its state swapped: nothing about the vehicle's place has changed.
+        controller.resetTerrainRest();
+        moveTicks(TerrainRest.SETTLE_STEPS);
+        verifySteps(TerrainRest.SETTLE_STEPS * 2);
+        verify(rotator, times(TerrainRest.SETTLE_STEPS * 2)).rotateToTarget(anyFloat(), anyFloat(), anyFloat(), anyFloat(), anyBoolean(), anyBoolean(), anyBoolean());
+        moveTicks(1);
+        verifySteps(TerrainRest.SETTLE_STEPS * 2);
+    }
+
+    @Test
     void aSettledTerrainVehicleFoundSomewhereElseReadsTheGroundAgainAtOnce() {
         idleOnTerrain();
         moveTicks(TerrainRest.SETTLE_STEPS + 3);
