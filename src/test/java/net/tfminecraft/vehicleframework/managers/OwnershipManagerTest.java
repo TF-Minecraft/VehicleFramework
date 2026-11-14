@@ -792,4 +792,66 @@ class OwnershipManagerTest {
 		tasks.getLast().run();
 		verify(staff).sendMessage("§cTakeover expired.");
 	}
+
+	@Test void conversionClearsAccessAndCanBeTakenOverOrReleased() {
+		ActiveVehicle v = vehicle(owner(kira));
+		v.getOwnerData().setWhiteList(new ArrayList<>(List.of("crew")));
+		v.getOwnerData().setWhiteListed(true); v.getOwnerData().setTicketsEnabled(true);
+		v.getOwnerData().setAccessGroups(Set.of(AccessGroup.ALLY));
+		assertFalse(manager.makeServer(staff, v));
+		manager.startServer(staff);
+		assertTrue(manager.makeServer(staff, v));
+		assertEquals("server", v.getOwnerData().getOwner());
+		assertTrue(v.getOwnerData().getWhiteList().isEmpty());
+		assertTrue(v.getOwnerData().getAccessGroups().isEmpty());
+		assertFalse(v.getOwnerData().isWhiteListed()); assertFalse(v.getOwnerData().isTicketsEnabled());
+		VehicleOwnershipChangeEvent pre = fired(VehicleOwnershipChangeEvent.class).getFirst();
+		assertEquals(OwnershipReason.SERVER, pre.getReason()); assertTrue(pre.isStaff());
+		assertFalse(OwnershipReason.SERVER.isSystem()); assertTrue(pre.getTarget().isEmpty());
+		assertTrue(fired(VehicleOwnershipChangedEvent.class).getFirst().isSuccess());
+		assertFalse(manager.claim(alex, v));
+		manager.startServer(staff); manager.makeServer(staff, v);
+		verify(staff).sendMessage("§cThat is already a server vehicle.");
+		manager.startTakeover(staff, null); manager.takeover(staff, v);
+		assertEquals(owner(warden), v.getOwnerData().getOwner());
+		assertEquals(OwnershipReason.TAKEOVER, fired(VehicleOwnershipChangeEvent.class).getLast().getReason());
+		v.getOwnerData().setOwner("server");
+		for (int slot : new int[]{0, 2, 4, 8, OwnershipGUIManager.FIRST_GROUP_SLOT}) manager.ownershipClick(menu(staff, v, slot));
+		verify(staff, times(5)).sendMessage(OwnershipActions.SERVER_ACCESS);
+		for (OwnershipReason reason : List.of(OwnershipReason.WHITELIST_ADD, OwnershipReason.WHITELIST_REMOVE,
+				OwnershipReason.WHITELIST_TOGGLE, OwnershipReason.TICKETS_TOGGLE, OwnershipReason.ALLY_ACCESS_TOGGLE)) {
+			assertEquals(Optional.of(OwnershipActions.SERVER_ACCESS), OwnershipActions.refusal(staff, v, reason));
+		}
+		manager.ownershipClick(menu(staff, v, 6));
+		assertEquals("none", v.getOwnerData().getOwner());
+	}
+
+	@Test void armingServerOrTakeoverDisarmsTheOther() {
+		ActiveVehicle v = vehicle(owner(kira));
+		manager.startTakeover(staff, null); manager.startServer(staff);
+		assertFalse(manager.takeover(staff, v));
+		assertEquals(owner(kira), v.getOwnerData().getOwner());
+		manager.startTakeover(staff, null);
+		assertFalse(manager.makeServer(staff, v));
+		assertEquals(owner(kira), v.getOwnerData().getOwner());
+	}
+
+	@Test void conversionRechecksActorSessionAndPermissionAndHonorsVeto() {
+		ActiveVehicle v = vehicle("none");
+		playing(staff, null); manager.startServer(staff);
+		verify(staff).sendMessage(OwnershipActions.NEED_CHARACTER);
+		playing(staff, warden); manager.startServer(staff);
+		when(staff.hasPermission("vf.admin")).thenReturn(false);
+		manager.makeServer(staff, v); verify(staff).sendMessage(OwnershipActions.NOT_ALLOWED);
+		when(staff.hasPermission("vf.admin")).thenReturn(true);
+		manager.startServer(staff); characters.when(() -> Characters.isCurrent(warden)).thenReturn(false);
+		manager.makeServer(staff, v); verify(staff).sendMessage(OwnershipManager.SESSION_CHANGED);
+		characters.when(() -> Characters.isCurrent(warden)).thenReturn(true);
+		manager.startServer(staff); playing(staff, null); manager.makeServer(staff, v);
+		verify(staff, times(2)).sendMessage(OwnershipActions.NEED_CHARACTER);
+		playing(staff, warden); manager.startServer(staff);
+		doAnswer(call -> { if (call.getArgument(0) instanceof VehicleOwnershipChangeEvent pre) pre.setCancelled(true); return null; }).when(plugins).callEvent(any(Event.class));
+		manager.makeServer(staff, v); assertEquals("none", v.getOwnerData().getOwner());
+	}
+
 }

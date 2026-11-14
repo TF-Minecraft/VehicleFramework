@@ -1,6 +1,7 @@
 package net.tfminecraft.vehicleframework.vehicles.handlers;
 
 import net.tfminecraft.vehicleframework.data.OwnerData;
+import net.tfminecraft.vehicleframework.api.VehicleOwners;
 import net.tfminecraft.vehicleframework.enums.SeatType;
 import net.tfminecraft.vehicleframework.ownership.AccessKey;
 
@@ -15,7 +16,7 @@ public final class VehicleTicketRules {
 
 	/** A {@code null} key (no identity) matches nobody. */
 	public static boolean ownerOrWhitelisted(OwnerData data, AccessKey key) {
-		if (data == null || key == null) {
+		if (data == null || key == null || VehicleOwners.isServer(data.getOwner())) {
 			return false;
 		}
 		if (key.owns(data.getOwner())) {
@@ -45,7 +46,8 @@ public final class VehicleTicketRules {
 	 * that would refuse them, a ticket only covers passenger seats.
 	 */
 	public static boolean mayEnter(OwnerData access, OwnerData tickets, boolean admitted, SeatType seat, boolean hasMatchingTicket) {
-		boolean ticketsEnabled = tickets != null && tickets.isTicketsEnabled();
+		if (access != null && VehicleOwners.isServer(access.getOwner())) return admitted;
+		boolean ticketsEnabled = tickets != null && !VehicleOwners.isServer(tickets.getOwner()) && tickets.isTicketsEnabled();
 		if (!admitted && gated(access)) {
 			return ticketsEnabled && seat == SeatType.PASSENGER && hasMatchingTicket;
 		}
@@ -66,15 +68,17 @@ public final class VehicleTicketRules {
 	}
 
 	public static boolean mayOpenSeatMenu(OwnerData access, OwnerData tickets, boolean admitted, boolean hasMatchingTicket) {
+		if (access != null && VehicleOwners.isServer(access.getOwner())) return admitted;
 		if (!gated(access) || admitted) {
 			return true;
 		}
-		return tickets != null && tickets.isTicketsEnabled() && hasMatchingTicket;
+		return tickets != null && !VehicleOwners.isServer(tickets.getOwner()) && tickets.isTicketsEnabled() && hasMatchingTicket;
 	}
 
 	/** Whether the vehicle's whitelist is enforced: switched on, on an owned vehicle. */
 	public static boolean gated(OwnerData access) {
 		return access != null
+				&& !VehicleOwners.isServer(access.getOwner())
 				&& access.isWhiteListed()
 				&& access.getOwner() != null
 				&& !access.getOwner().equalsIgnoreCase("none");

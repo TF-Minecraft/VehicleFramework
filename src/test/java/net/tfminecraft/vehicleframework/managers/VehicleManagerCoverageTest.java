@@ -799,7 +799,7 @@ class VehicleManagerCoverageTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"unload-failed", "storage-closed", "missing-save", "unknown-type", "spawn-failed", "missing-seat", "missing-rider", "player", "animal", "rejected-animal"})
+    @ValueSource(strings = {"unload-failed", "storage-closed", "missing-save", "unknown-type", "spawn-failed", "missing-seat", "missing-rider", "player", "server-denied", "animal", "rejected-animal"})
     void rejectedMountReloadEitherRetriesTheSavedSeatOrReportsWhyItCannot(String outcome) {
         Player player = player("Ryan"); ActiveVehicle old = vehicle("v"), fresh = vehicle("v"); register(old);
         VehiclePersistence persistence = persistence();
@@ -819,9 +819,13 @@ class VehicleManagerCoverageTest {
         UUID notifyId = player.getUniqueId(); bukkit.when(() -> Bukkit.getPlayer(notifyId)).thenReturn(player);
         when(fresh.addPassenger(rider, seat)).thenReturn(outcome.equals("rejected-animal") ? MountResult.REJECTED : MountResult.MOUNTED);
         if (outcome.equals("storage-closed")) storage.when(VehiclePersistence::current).thenReturn(persistence, (VehiclePersistence) null);
+        if (outcome.equals("server-denied")) fresh.getOwnerData().setOwner("server");
         manager.recoverRejectedMount(old, rider, "seat", player);
         assertEquals(1, scheduled.size()); scheduled.removeFirst().run();
-        if (Set.of("player", "animal", "rejected-animal").contains(outcome)) {
+        if (outcome.equals("server-denied")) {
+            verify(fresh, never()).addPassenger(any(), any());
+            verify(player).sendMessage("§cThis is a server vehicle.");
+        } else if (Set.of("player", "animal", "rejected-animal").contains(outcome)) {
             verify(fresh).addPassenger(rider, seat);
             assertSame(fresh, manager.get(fresh.getEntity()));
         } else if (outcome.equals("unload-failed")) {
@@ -1080,4 +1084,42 @@ class VehicleManagerCoverageTest {
         cooldown.setAccessible(true); cooldown.invoke(manager, null, vehicle("v"));
         assertTrue(map("ejectCooldown").isEmpty());
     }
+
+    @Test void serverAccessGatesClickSeatsMountAndEntityMenus() throws Exception {
+        ActiveVehicle v = vehicle("server-v"); Player player = player("Ryan"); register(v);
+        v.getOwnerData().setOwner("server");
+        PlayerInteractEntityEvent interact = interact(player, v.getEntity());
+        manager.vehicleInteract(interact); assertTrue(interact.isCancelled());
+        manager.seatInteract(player, v);
+        Seat seat = mock(Seat.class); when(seat.getType()).thenReturn(SeatType.PASSENGER);
+        when(v.getSeat("seat")).thenReturn(seat); when(v.getSeatHandler().getSeat("seat")).thenReturn(seat);
+        manager.mount(player, "seat", v); verify(v, never()).addPassenger(any(), any());
+        map("tempVehicle").put(player, v);
+        manager.seatSelect(click(player, v, VFGUI.SEAT_SELECTION, 0, item(Material.CYAN_CONCRETE, "seat")));
+        assertTrue(map("pendingEntityVehicle").isEmpty());
+        Entity animal = mock(Entity.class);
+        map("pendingEntityVehicle").put(player, v); map("pendingEntitySeat").put(player, "seat");
+        manager.vehicleInteract(interact(player, animal)); verify(v, never()).addPassenger(any(), any());
+        when(player.hasPermission("vf.server.use")).thenReturn(true);
+        manager.seatInteract(player, v);
+        verify(inventories.constructed().getFirst()).seatSelection(null, player, v, true);
+        when(v.addPassenger(player, seat)).thenReturn(MountResult.MOUNTED);
+        manager.mount(player, "seat", v); verify(v).addPassenger(player, seat);
+    }
+
+    @Test void serverConversionClickRunsBeforePreInteractAndDeckChecksLocomotive() throws Exception {
+        ActiveVehicle v = vehicle("server-v"); Player player = player("Ryan"); register(v);
+        when(player.hasPermission("vf.admin")).thenReturn(true);
+        when(persistence().saveLive(v)).thenReturn(true);
+        manager.getOwnershipManager().startServer(player);
+        PlayerInteractEntityEvent event = interact(player, v.getEntity()); manager.vehicleInteract(event);
+        assertTrue(event.isCancelled()); assertEquals("server", v.getOwnerData().getOwner());
+        verify(plugins, never()).callEvent(isA(VehiclePreInteractEvent.class));
+        when(player.hasPermission("vf.admin")).thenReturn(false);
+        ActiveVehicle car = vehicle("car"); register(car); when(car.ticketSource()).thenReturn(v);
+        Entity deck = mock(Entity.class); decks.when(() -> DeckBody.owner(deck)).thenReturn(car);
+        event = interact(player, deck); manager.vehicleInteract(event); assertTrue(event.isCancelled());
+        verify(player).sendMessage("§cThis is a server vehicle.");
+    }
+
 }

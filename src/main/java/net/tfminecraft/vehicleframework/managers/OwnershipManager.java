@@ -124,6 +124,7 @@ public class OwnershipManager implements Listener {
 			}
 			target = named.get();
 		}
+		pending.cancel(p, Kind.SERVER);
 		pending.start(p, Kind.TAKEOVER, null, actor.value().session(), target);
 		if (target.name() == null) {
 			p.sendMessage("§aRight-click a vehicle within 60 seconds to claim ownership.");
@@ -242,6 +243,54 @@ public class OwnershipManager implements Listener {
 		return true;
 	}
 
+	/** Arms the staff conversion under the current character session. */
+	public void startServer(Player p) {
+		Outcome<Actor> actor = OwnershipActions.actor(p);
+		if (actor.refusal() != null) {
+			p.sendMessage(actor.refusal());
+			return;
+		}
+		pending.cancel(p, Kind.TAKEOVER);
+		pending.start(p, Kind.SERVER, null, actor.value().session(), null);
+		p.sendMessage("§aRight-click a vehicle within 60 seconds to make it a server vehicle.");
+	}
+
+	/** Applies a pending server conversion through the ownership event and persistence pipeline. */
+	public boolean makeServer(Player p, ActiveVehicle v) {
+		Optional<Pending> taken = pending.take(p, Kind.SERVER);
+		if (taken.isEmpty()) return false;
+		if (!Permissions.isAdmin(p)) {
+			p.sendMessage(OwnershipActions.NOT_ALLOWED);
+			return true;
+		}
+		if (!PendingActions.stillCurrent(taken.get())) {
+			p.sendMessage(SESSION_CHANGED);
+			return true;
+		}
+		Outcome<Actor> actor = OwnershipActions.actor(p);
+		if (actor.refusal() != null) {
+			p.sendMessage(actor.refusal());
+			return true;
+		}
+		String previousOwner = v.getOwnerData().getOwner();
+		if (VehicleOwners.isServer(previousOwner)) {
+			p.sendMessage("§cThat is already a server vehicle.");
+			return true;
+		}
+		if (write(actor.value(), v, OwnershipReason.SERVER, null, null, data -> {
+			data.setOwner(VehicleOwners.SERVER);
+			data.setWhiteList(new ArrayList<>());
+			data.setWhiteListed(false);
+			data.setAccessGroups(null);
+			data.setTicketsEnabled(false);
+		}) == Result.OK) {
+			p.sendMessage("§e" + v.getName() + "§a is now a server vehicle.");
+			net.tfminecraft.vehicleframework.VFLogger.info("server-owned " + v.getUUID() + " (" + v.getId()
+					+ ") by " + p.getName() + ": " + previousOwner + " -> server");
+		}
+		return true;
+	}
+
 	/** Starts renaming with a name tag. */
 	@SuppressWarnings("deprecation")
 	public void startRename(Player p, ActiveVehicle v) {
@@ -270,6 +319,10 @@ public class OwnershipManager implements Listener {
 		ActiveVehicle v = menuVehicle(e, VFGUI.OWNERSHIP);
 		if (v == null) return;
 		Player p = (Player) e.getWhoClicked();
+		if (VehicleOwners.isServer(v.getOwnerData().getOwner()) && e.getSlot() != 6) {
+			p.sendMessage(OwnershipActions.SERVER_ACCESS);
+			return;
+		}
 		switch (e.getSlot()) {
 			case 0 -> {
 				if (change(p, v, OwnershipReason.WHITELIST_TOGGLE, null, null,

@@ -174,4 +174,19 @@ class VehicleTicketRulesTest {
 		access.setWhiteListed(true);
 		return access;
 	}
+
+	@Test void serverVehiclesIgnoreStaleAccessAndTickets() {
+		OwnerData data = new OwnerData(); data.setOwner("server");
+		data.setWhiteListed(true); data.setWhiteList(java.util.List.of("player_Alex")); data.setTicketsEnabled(true);
+		assertFalse(VehicleTicketRules.gated(data));
+		assertFalse(VehicleTicketRules.ownerOrWhitelisted(data, "Alex"));
+		assertFalse(VehicleTicketRules.mayEnter(data, data, false, SeatType.PASSENGER, true));
+		assertFalse(VehicleTicketRules.mayOpenSeatMenu(data, data, false, true));
+		assertTrue(VehicleTicketRules.mayEnter(data, data, true, SeatType.CAPTAIN, false));
+		assertTrue(VehicleTicketRules.mayOpenSeatMenu(data, data, true, false));
+		OwnerData car = new OwnerData(); car.setOwner("player_Other"); car.setWhiteListed(true);
+		assertFalse(VehicleTicketRules.mayEnter(car, data, false, SeatType.PASSENGER, true));
+		assertFalse(VehicleTicketRules.mayOpenSeatMenu(car, data, false, true));
+	}
+
 }

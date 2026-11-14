@@ -78,6 +78,7 @@ import net.tfminecraft.vehicleframework.managers.inventory.VFInventoryHolder;
 import net.tfminecraft.vehicleframework.managers.spawner.VehicleSpawner;
 import net.tfminecraft.vehicleframework.ownership.OwnerNames;
 import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
+import net.tfminecraft.vehicleframework.ownership.ServerVehicles;
 import net.tfminecraft.vehicleframework.protocol.PacketConverter;
 import net.tfminecraft.vehicleframework.tracks.RecorderLog;
 import net.tfminecraft.vehicleframework.tracks.TrainGhosts;
@@ -481,10 +482,11 @@ public class VehicleManager implements Listener{
 	    if(v.isPassenger(p, true)) {
 	    	return;
 	    }
+		if (!ServerVehicles.check(p, v)) return;
 		ActiveVehicle ticketSource = v.ticketSource();
 		boolean hasTicket = VehicleTicketItems.inventoryHas(
 				p, ticketSource.getOwnerData().getTicketId());
-		boolean admitted = OwnershipAccess.admits(v, OwnershipAccess.key(p));
+		boolean admitted = ServerVehicles.isServer(v) || OwnershipAccess.admits(v, OwnershipAccess.key(p));
 		if (!VehicleTicketRules.mayOpenSeatMenu(v.getOwnerData(), ticketSource.getOwnerData(), admitted, hasTicket)) {
 	    	p.sendMessage(ticketSource.getOwnerData().isTicketsEnabled()
 	    			? "§cYou need a ticket to board this vehicle."
@@ -518,6 +520,7 @@ public class VehicleManager implements Listener{
 			p.sendMessage("§cThe vehicle has been destroyed");
 			return;
 		}
+		if (!ServerVehicles.check(p, v)) return;
 		if(!isEntityAllowed(entity, v.getEntitySeatWhitelist())) {
 			p.sendMessage("§cThat creature cannot ride in this seat");
 			return;
@@ -635,13 +638,17 @@ public class VehicleManager implements Listener{
 		if(!vehicles.containsKey(entity)) return;
 		ActiveVehicle v = vehicles.get(entity);
 		// Admin takeover goes through the ownership events like any other change
-		if(ownership.takeover(p, v)) {
+		if(ownership.takeover(p, v) || ownership.makeServer(p, v)) {
 			e.setCancelled(true);
 			return;
 		}
 		VehiclePreInteractEvent preInteract = new VehiclePreInteractEvent(p, v);
 		Bukkit.getPluginManager().callEvent(preInteract);
 		if (preInteract.isCancelled()) {
+			e.setCancelled(true);
+			return;
+		}
+		if (!ServerVehicles.check(p, v)) {
 			e.setCancelled(true);
 			return;
 		}
@@ -969,9 +976,10 @@ public class VehicleManager implements Listener{
 		if (p == null || v == null || seat == null) {
 			return true;
 		}
+		if (!ServerVehicles.check(p, v)) return false;
 		ActiveVehicle source = v.ticketSource();
 		boolean has = VehicleTicketItems.inventoryHas(p, source.getOwnerData().getTicketId());
-		boolean admitted = OwnershipAccess.admits(v, OwnershipAccess.key(p));
+		boolean admitted = ServerVehicles.isServer(v) || OwnershipAccess.admits(v, OwnershipAccess.key(p));
 		if (VehicleTicketRules.mayEnter(v.getOwnerData(), source.getOwnerData(), admitted, seat.getType(), has)) {
 			return true;
 		}
@@ -1096,6 +1104,7 @@ public class VehicleManager implements Listener{
 		}
 		Entity rider = riderId == null ? null : Bukkit.getEntity(riderId);
 		if (rider instanceof Player player && player.isOnline()) {
+			if (!ServerVehicles.check(player, fresh)) return;
 			takeSeat(player, fresh, seat);
 			return;
 		}
@@ -1158,6 +1167,7 @@ public class VehicleManager implements Listener{
 		if(id == null) return;
 		Seat seat = v.getSeat(id);
 		
+		if (!ServerVehicles.check(p, v)) return;
 		// Occupied entity seat: click to dismount the entity and teleport it to the player
 		if(i.getType().equals(Material.GRAY_CONCRETE) && seat != null && seat.getType().equals(SeatType.ENTITY)) {
 			if(seat.isOccupied()) {

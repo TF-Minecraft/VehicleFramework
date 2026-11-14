@@ -51,6 +51,7 @@ public final class OwnershipAccess {
 
 	/** Whether the key owns the vehicle, is on its whitelist, or is in a group it admits. */
 	public static boolean admits(ActiveVehicle vehicle, AccessKey key) {
-		return VehicleTicketRules.ownerOrWhitelisted(vehicle.getOwnerData(), key) || GroupAccess.admits(vehicle, key);
+		return !ServerVehicles.isServer(vehicle)
+				&& (VehicleTicketRules.ownerOrWhitelisted(vehicle.getOwnerData(), key) || GroupAccess.admits(vehicle, key));
 	}
 }
