@@ -1080,4 +1080,42 @@ class VehicleManagerCoverageTest {
         cooldown.setAccessible(true); cooldown.invoke(manager, null, vehicle("v"));
         assertTrue(map("ejectCooldown").isEmpty());
     }
+
+    @Test void serverAccessGatesClickSeatsMountAndEntityMenus() throws Exception {
+        ActiveVehicle v = vehicle("server-v"); Player player = player("Ryan"); register(v);
+        v.getOwnerData().setOwner("server");
+        PlayerInteractEntityEvent interact = interact(player, v.getEntity());
+        manager.vehicleInteract(interact); assertTrue(interact.isCancelled());
+        manager.seatInteract(player, v);
+        Seat seat = mock(Seat.class); when(seat.getType()).thenReturn(SeatType.PASSENGER);
+        when(v.getSeat("seat")).thenReturn(seat); when(v.getSeatHandler().getSeat("seat")).thenReturn(seat);
+        manager.mount(player, "seat", v); verify(v, never()).addPassenger(any(), any());
+        map("tempVehicle").put(player, v);
+        manager.seatSelect(click(player, v, VFGUI.SEAT_SELECTION, 0, item(Material.CYAN_CONCRETE, "seat")));
+        assertTrue(map("pendingEntityVehicle").isEmpty());
+        Entity animal = mock(Entity.class);
+        map("pendingEntityVehicle").put(player, v); map("pendingEntitySeat").put(player, "seat");
+        manager.vehicleInteract(interact(player, animal)); verify(v, never()).addPassenger(any(), any());
+        when(player.hasPermission("vf.server.use")).thenReturn(true);
+        manager.seatInteract(player, v);
+        verify(inventories.constructed().getFirst()).seatSelection(null, player, v, true);
+        when(v.addPassenger(player, seat)).thenReturn(MountResult.MOUNTED);
+        manager.mount(player, "seat", v); verify(v).addPassenger(player, seat);
+    }
+
+    @Test void serverConversionClickRunsBeforePreInteractAndDeckChecksLocomotive() throws Exception {
+        ActiveVehicle v = vehicle("server-v"); Player player = player("Ryan"); register(v);
+        when(player.hasPermission("vf.admin")).thenReturn(true);
+        when(persistence().saveLive(v)).thenReturn(true);
+        manager.getOwnershipManager().startServer(player);
+        PlayerInteractEntityEvent event = interact(player, v.getEntity()); manager.vehicleInteract(event);
+        assertTrue(event.isCancelled()); assertEquals("server", v.getOwnerData().getOwner());
+        verify(plugins, never()).callEvent(isA(VehiclePreInteractEvent.class));
+        when(player.hasPermission("vf.admin")).thenReturn(false);
+        ActiveVehicle car = vehicle("car"); register(car); when(car.ticketSource()).thenReturn(v);
+        Entity deck = mock(Entity.class); decks.when(() -> DeckBody.owner(deck)).thenReturn(car);
+        event = interact(player, deck); manager.vehicleInteract(event); assertTrue(event.isCancelled());
+        verify(player).sendMessage("§cThis is a server vehicle.");
+    }
+
 }

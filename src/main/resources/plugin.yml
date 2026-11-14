@@ -11,3 +11,11 @@ commands:
   vf:
     useage: /<command>
     description: Vehicle Framework Command
+
+permissions:
+  vf.server.use:
+    description: Use server-owned vehicles.
+    default: op
+  vf.admin:
+    description: Administer vehicles and ownership.
+    default: op

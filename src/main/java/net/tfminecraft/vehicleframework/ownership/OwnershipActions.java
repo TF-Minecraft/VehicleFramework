@@ -31,6 +31,7 @@ public final class OwnershipActions {
 	public static final String UNAVAILABLE = "§cVehicle ownership changes are unavailable right now.";
 	public static final String NOT_OWNER = "§cYou do not own this vehicle.";
 	public static final String NOT_ALLOWED = "§cYou cannot change that on this vehicle.";
+	public static final String SERVER_ACCESS = "§cServer vehicles have no whitelist, tickets or group access.";
 	public static final String SAVE_FAILED = "§cCould not save the change. Nothing was changed.";
 
 	private OwnershipActions() {
@@ -91,6 +92,9 @@ public final class OwnershipActions {
 	 * source), or empty if they may. Fires {@link VehicleOwnershipEditCheckEvent}.
 	 */
 	public static Optional<String> refusal(Player player, ActiveVehicle vehicle, OwnershipReason reason) {
+		if (ServerVehicles.isServer(vehicle) && reason != OwnershipReason.CLEAR) {
+			return Optional.of(SERVER_ACCESS);
+		}
 		Outcome<Actor> actor = actor(player);
 		if (actor.refusal() != null) {
 			return Optional.of(actor.refusal());

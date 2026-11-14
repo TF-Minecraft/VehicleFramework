@@ -90,4 +90,15 @@ class VehicleOwnersTest {
 			assertTrue(reason.reason().isSystem());
 		}
 	}
+
+	@Test void serverOwnerIsCanonicalAndNeverPersonalOrClaimable() {
+		assertEquals("server", VehicleOwners.SERVER);
+		assertTrue(VehicleOwners.isServer("SeRvEr"));
+		assertFalse(VehicleOwners.isServer(null));
+		assertFalse(VehicleOwners.isUnowned("server"));
+		assertFalse(VehicleOwners.isCharacterOwner("server"));
+		assertFalse(VehicleOwners.isPersonalOwner("server"));
+		assertEquals(Optional.of("server"), VehicleOwners.canonical("SERVER"));
+	}
+
 }

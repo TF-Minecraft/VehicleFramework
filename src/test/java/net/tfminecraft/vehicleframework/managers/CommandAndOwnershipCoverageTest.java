@@ -230,7 +230,7 @@ class CommandAndOwnershipCoverageTest {
         }
         var console = mock(CommandSender.class);
         when(console.hasPermission("vf.admin")).thenReturn(true);
-        assertEquals(List.of("reload", "admin", "track"), tabs.onTabComplete(console, command, "vf", new String[]{""}));
+        assertEquals(List.of("reload", "admin", "track", "server"), tabs.onTabComplete(console, command, "vf", new String[]{""}));
         assertEquals(List.of("reload"), tabs.onTabComplete(console, command, "vf", new String[]{"RE"}));
         assertEquals(List.of("quarantine"), tabs.onTabComplete(console, command, "vf", new String[]{"admin", "Q"}));
         assertEquals(List.of("resync"), tabs.onTabComplete(console, command, "vf", new String[]{"track", "R"}));
@@ -445,4 +445,28 @@ class CommandAndOwnershipCoverageTest {
         doAnswer(call -> { lore.set(0, List.copyOf(call.getArgument(0))); return null; }).when(meta).setLore(anyList()); when(meta.getLore()).thenAnswer(call -> lore.get(0));
     }
     private <T extends AutoCloseable> T keep(T scope) { scopes.add(scope); return scope; }
+
+    @Test void serverCommandsAndCompletionAreStaffOnlyAndListStoredAndLiveVehicles() {
+        assertTrue(run(player, "server"));
+        verify(vehicles, never()).getOwnershipManager();
+        when(player.hasPermission("vf.admin")).thenReturn(true);
+        OwnershipManager manager = mock(OwnershipManager.class); when(vehicles.getOwnershipManager()).thenReturn(manager);
+        assertTrue(run(player, "server")); verify(manager).startServer(player);
+        assertTrue(run(player, "server", "bad"));
+        verify(player).sendMessage("§cUsage: /vf server [list]");
+        CommandSender console = mock(CommandSender.class); when(console.hasPermission("vf.admin")).thenReturn(true);
+        assertTrue(run(console, "server")); verify(console).sendMessage("§cOnly players can use this command.");
+        OwnedVehicleSummary stored = mock(OwnedVehicleSummary.class), live = mock(OwnedVehicleSummary.class);
+        when(stored.getName()).thenReturn("Stored"); when(stored.getLocation()).thenReturn(Optional.empty());
+        when(live.getName()).thenReturn("Live"); when(live.getLocation()).thenReturn(Optional.of(new Location(world, 1, 64, 2)));
+        when(vehicles.listOwnedVehicles("server")).thenReturn(List.of(stored, live));
+        assertTrue(run(console, "server", "list"));
+        verify(console).sendMessage("§eStored §7- §7location unknown (stored)");
+        verify(console).sendMessage("§eLive §7- §fworld 1, 64, 2");
+        TabCompletion tabs = new TabCompletion();
+        assertEquals(List.of("server"), tabs.onTabComplete(player, command, "vf", new String[]{"ser"}));
+        assertEquals(List.of("list"), tabs.onTabComplete(player, command, "vf", new String[]{"server", "l"}));
+        assertEquals(List.of("list"), tabs.onTabComplete(console, command, "vf", new String[]{"server", ""}));
+    }
+
 }

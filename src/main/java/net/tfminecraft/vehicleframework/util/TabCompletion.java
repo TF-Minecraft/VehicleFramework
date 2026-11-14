@@ -25,7 +25,8 @@ public class TabCompletion implements TabCompleter {
     private List<String> candidates(CommandSender sender, Command cmd, String[] args) {
         if (!(sender instanceof Player)) {
             if (!cmd.getName().equalsIgnoreCase("vf") || !Permissions.isAdmin(sender)) return List.of();
-            if (args.length == 1) return List.of("reload", "admin", "track");
+            if (args.length == 1) return List.of("reload", "admin", "track", "server");
+            if (args.length == 2 && args[0].equalsIgnoreCase("server")) return List.of("list");
             if (args.length == 2 && args[0].equalsIgnoreCase("admin")) return List.of("quarantine");
             if (args.length == 2 && args[0].equalsIgnoreCase("track")) return List.of("resync");
             return List.of();
@@ -43,12 +44,15 @@ public class TabCompletion implements TabCompleter {
                 }
 				if (Permissions.isAdmin(sender)) {
 					completions.add("takeover");
+					completions.add("server");
                     completions.add("reload");
                     completions.add("track");
                     completions.add("admin");
                 }
                 return completions;
             }
+
+            if (args[0].equalsIgnoreCase("server") && args.length == 2 && Permissions.isAdmin(sender)) return List.of("list");
 
             if (args[0].equalsIgnoreCase("admin") && args.length == 2 && Permissions.isAdmin(sender)) {
                 completions.add("quarantine");
