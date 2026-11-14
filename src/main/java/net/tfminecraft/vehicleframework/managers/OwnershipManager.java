@@ -283,7 +283,7 @@ public class OwnershipManager implements Listener {
 			data.setTicketsEnabled(false);
 		}) == Result.OK) {
 			p.sendMessage("§e" + v.getName() + "§a is now a server vehicle.");
-			net.tfminecraft.vehicleframework.VFLogger.log("server-owned " + v.getUUID() + " (" + v.getId()
+			net.tfminecraft.vehicleframework.VFLogger.info("server-owned " + v.getUUID() + " (" + v.getId()
 					+ ") by " + p.getName() + ": " + previousOwner + " -> server");
 		}
 		return true;
