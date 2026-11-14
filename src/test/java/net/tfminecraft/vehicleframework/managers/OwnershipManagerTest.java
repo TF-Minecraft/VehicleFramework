@@ -826,6 +826,16 @@ class OwnershipManagerTest {
 		assertEquals("none", v.getOwnerData().getOwner());
 	}
 
+	@Test void armingServerOrTakeoverDisarmsTheOther() {
+		ActiveVehicle v = vehicle(owner(kira));
+		manager.startTakeover(staff, null); manager.startServer(staff);
+		assertFalse(manager.takeover(staff, v));
+		assertEquals(owner(kira), v.getOwnerData().getOwner());
+		manager.startTakeover(staff, null);
+		assertFalse(manager.makeServer(staff, v));
+		assertEquals(owner(kira), v.getOwnerData().getOwner());
+	}
+
 	@Test void conversionRechecksActorSessionAndPermissionAndHonorsVeto() {
 		ActiveVehicle v = vehicle("none");
 		playing(staff, null); manager.startServer(staff);

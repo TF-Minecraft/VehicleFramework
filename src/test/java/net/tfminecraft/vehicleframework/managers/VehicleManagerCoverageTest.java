@@ -799,7 +799,7 @@ class VehicleManagerCoverageTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"unload-failed", "storage-closed", "missing-save", "unknown-type", "spawn-failed", "missing-seat", "missing-rider", "player", "animal", "rejected-animal"})
+    @ValueSource(strings = {"unload-failed", "storage-closed", "missing-save", "unknown-type", "spawn-failed", "missing-seat", "missing-rider", "player", "server-denied", "animal", "rejected-animal"})
     void rejectedMountReloadEitherRetriesTheSavedSeatOrReportsWhyItCannot(String outcome) {
         Player player = player("Ryan"); ActiveVehicle old = vehicle("v"), fresh = vehicle("v"); register(old);
         VehiclePersistence persistence = persistence();
@@ -819,9 +819,13 @@ class VehicleManagerCoverageTest {
         UUID notifyId = player.getUniqueId(); bukkit.when(() -> Bukkit.getPlayer(notifyId)).thenReturn(player);
         when(fresh.addPassenger(rider, seat)).thenReturn(outcome.equals("rejected-animal") ? MountResult.REJECTED : MountResult.MOUNTED);
         if (outcome.equals("storage-closed")) storage.when(VehiclePersistence::current).thenReturn(persistence, (VehiclePersistence) null);
+        if (outcome.equals("server-denied")) fresh.getOwnerData().setOwner("server");
         manager.recoverRejectedMount(old, rider, "seat", player);
         assertEquals(1, scheduled.size()); scheduled.removeFirst().run();
-        if (Set.of("player", "animal", "rejected-animal").contains(outcome)) {
+        if (outcome.equals("server-denied")) {
+            verify(fresh, never()).addPassenger(any(), any());
+            verify(player).sendMessage("§cThis is a server vehicle.");
+        } else if (Set.of("player", "animal", "rejected-animal").contains(outcome)) {
             verify(fresh).addPassenger(rider, seat);
             assertSame(fresh, manager.get(fresh.getEntity()));
         } else if (outcome.equals("unload-failed")) {

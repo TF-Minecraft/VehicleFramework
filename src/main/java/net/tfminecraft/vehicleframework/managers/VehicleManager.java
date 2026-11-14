@@ -1104,6 +1104,7 @@ public class VehicleManager implements Listener{
 		}
 		Entity rider = riderId == null ? null : Bukkit.getEntity(riderId);
 		if (rider instanceof Player player && player.isOnline()) {
+			if (!ServerVehicles.check(player, fresh)) return;
 			takeSeat(player, fresh, seat);
 			return;
 		}

@@ -124,6 +124,7 @@ public class OwnershipManager implements Listener {
 			}
 			target = named.get();
 		}
+		pending.cancel(p, Kind.SERVER);
 		pending.start(p, Kind.TAKEOVER, null, actor.value().session(), target);
 		if (target.name() == null) {
 			p.sendMessage("§aRight-click a vehicle within 60 seconds to claim ownership.");
@@ -249,6 +250,7 @@ public class OwnershipManager implements Listener {
 			p.sendMessage(actor.refusal());
 			return;
 		}
+		pending.cancel(p, Kind.TAKEOVER);
 		pending.start(p, Kind.SERVER, null, actor.value().session(), null);
 		p.sendMessage("§aRight-click a vehicle within 60 seconds to make it a server vehicle.");
 	}
