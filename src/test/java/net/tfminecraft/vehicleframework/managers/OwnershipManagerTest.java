@@ -802,6 +802,7 @@ class OwnershipManagerTest {
 		manager.startServer(staff);
 		assertTrue(manager.makeServer(staff, v));
 		assertEquals("server", v.getOwnerData().getOwner());
+		verify(v).closeStorage();
 		assertTrue(v.getOwnerData().getWhiteList().isEmpty());
 		assertTrue(v.getOwnerData().getAccessGroups().isEmpty());
 		assertFalse(v.getOwnerData().isWhiteListed()); assertFalse(v.getOwnerData().isTicketsEnabled());
@@ -852,6 +853,7 @@ class OwnershipManagerTest {
 		playing(staff, warden); manager.startServer(staff);
 		doAnswer(call -> { if (call.getArgument(0) instanceof VehicleOwnershipChangeEvent pre) pre.setCancelled(true); return null; }).when(plugins).callEvent(any(Event.class));
 		manager.makeServer(staff, v); assertEquals("none", v.getOwnerData().getOwner());
+		verify(v, never()).closeStorage();
 	}
 
 }

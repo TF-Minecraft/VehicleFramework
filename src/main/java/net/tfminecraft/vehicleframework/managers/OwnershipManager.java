@@ -284,6 +284,8 @@ public class OwnershipManager implements Listener {
 			data.setAccessGroups(null);
 			data.setTicketsEnabled(false);
 		}) == Result.OK) {
+			// Windows opened before the conversion would otherwise keep bypassing server access.
+			v.closeStorage();
 			p.sendMessage("§e" + v.getName() + "§a is now a server vehicle.");
 			net.tfminecraft.vehicleframework.VFLogger.info("server-owned " + v.getUUID() + " (" + v.getId()
 					+ ") by " + p.getName() + ": " + previousOwner + " -> server");
