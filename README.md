@@ -46,6 +46,23 @@ are reported separately. HTML/XML reports are written to `target/site/jacoco/`.
 The Build workflow runs verification on pull requests and pushes to `main` and
 uploads both test and coverage reports.
 
+## Server-owned vehicles
+
+Staff can run `/vf server` and right-click a vehicle within 60 seconds to convert it.
+`/vf server list` lists live and stored server vehicles (also available from console).
+Conversion clears the whitelist, group switches and tickets. These vehicles cannot be
+claimed. Use requires `vf.server.use` (default op) or `vf.admin`. Whitelists, group
+switches and tickets cannot be enabled on them. Revert with `/vf takeover [character]`
+or the staff ownership menu's release button.
+
+API consumers can recognize the case-insensitive owner value `server` with
+`VehicleOwners.isServer`; its display name is `Server`. It is neither unowned nor a
+personal/character owner. Conversion fires the usual ownership events with staff reason
+`SERVER`. The synchronous `ServerVehicleUseEvent` defaults to denied; listeners may
+call `setAllowed(true)` to admit a player without permission, for example for a side
+assigned by staff during a battle. Coupled cars also check their locomotive's access.
+`cleanup.keep-owners: [server]` protects these vehicles from configured cleanup.
+
 ## License
 
 Copyright (c) 2026 TF-Minecraft contributors.

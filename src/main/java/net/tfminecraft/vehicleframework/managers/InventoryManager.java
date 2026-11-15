@@ -22,6 +22,7 @@ import net.tfminecraft.vehicleframework.data.OwnerData;
 import net.tfminecraft.vehicleframework.ownership.AccessKey;
 import net.tfminecraft.vehicleframework.ownership.GroupAccess;
 import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
+import net.tfminecraft.vehicleframework.ownership.ServerVehicles;
 import net.tfminecraft.vehicleframework.ownership.OwnershipActions;
 import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
@@ -49,11 +50,13 @@ public class InventoryManager {
 	 * The vehicle's outside hold, if it has one and the player may open it: the owner, a group
 	 * the vehicle always admits (such as its faction), and while the owner has the whitelist
 	 * switched on, those on it and its groups. A ticket is not enough. Staff get in as for
-	 * seats: by takeover.
+	 * seats: by takeover. Server vehicles instead use their permission/event gate.
 	 */
 	public static Container outsideHold(Player p, ActiveVehicle v) {
 		Container hold = v.hasContainers() ? v.getContainerHandler().outside() : null;
 		if(hold == null) return null;
+		if (!ServerVehicles.mayAccess(p, v)) return null;
+		if (ServerVehicles.isServer(v)) return hold;
 		AccessKey key = OwnershipAccess.key(p);
 		OwnerData data = v.getOwnerData();
 		boolean owner = key != null && data != null && key.owns(data.getOwner());

@@ -18,6 +18,8 @@ public enum OwnershipReason {
 	GUILD_ACCESS_TOGGLE,
 	ALLY_ACCESS_TOGGLE,
 	VASSAL_ACCESS_TOGGLE,
+	/** Staff converted the vehicle to server ownership. */
+	SERVER,
 	MIGRATE,
 	RESTAMP,
 	RELEASE,

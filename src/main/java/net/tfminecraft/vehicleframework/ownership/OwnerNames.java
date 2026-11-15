@@ -22,6 +22,9 @@ public final class OwnerNames {
 
 	/** An owner value as text, such as "Kira" or, for staff, "Kira (Steve)". */
 	public static String owner(String owner, boolean staff) {
+		if (VehicleOwners.isServer(owner)) {
+			return "Server";
+		}
 		if (VehicleOwners.isUnowned(owner)) {
 			return "nobody";
 		}

@@ -23,7 +23,8 @@ public final class PendingActions {
 	public enum Kind {
 		WHITELIST_ADD("§cWhitelist entry timed out."),
 		RENAME("§cNaming timed out."),
-		TAKEOVER("§cTakeover expired.");
+		TAKEOVER("§cTakeover expired."),
+		SERVER("§cServer vehicle action expired.");
 
 		private final String timeoutMessage;
 

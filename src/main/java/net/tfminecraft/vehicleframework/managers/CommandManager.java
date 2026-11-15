@@ -138,6 +138,22 @@ public class CommandManager implements Listener, CommandExecutor{
 				sender.sendMessage("§cYou do not have access to this command!");
 				return true;
 			}
+			if(args[0].equalsIgnoreCase("server")) {
+				if (args.length == 2 && args[1].equalsIgnoreCase("list")) {
+					sender.sendMessage("§bServer vehicles:");
+					for (OwnedVehicleSummary vehicle : VehicleFramework.getVehicleManager().listOwnedVehicles(
+							net.tfminecraft.vehicleframework.api.VehicleOwners.SERVER)) {
+						sender.sendMessage("§e" + vehicle.getName() + " §7- " + formatVehicleLocation(vehicle.getLocation()));
+					}
+				} else if (args.length != 1) {
+					sender.sendMessage("§cUsage: /vf server [list]");
+				} else if (sender instanceof Player p) {
+					VehicleFramework.getVehicleManager().getOwnershipManager().startServer(p);
+				} else {
+					sender.sendMessage("§cOnly players can use this command.");
+				}
+				return true;
+			}
 			if(args[0].equalsIgnoreCase("takeover")) {
 				if(!(sender instanceof Player)) {
 					sender.sendMessage("§cOnly players can use this command.");

@@ -342,4 +342,15 @@ class InventoryManagerCoverageTest {
     }
     private static final class ItemState { Material type; String name; List<String> lore = List.of(); }
     private <T extends AutoCloseable> T keep(T scope) { scopes.add(scope); return scope; }
+
+    @Test void serverHoldRequiresPermissionEvenWithStaleWhitelist() {
+        when(vehicle.hasContainers()).thenReturn(true);
+        ContainerHandler containers = mock(ContainerHandler.class); when(vehicle.getContainerHandler()).thenReturn(containers);
+        Container hold = mock(Container.class); when(containers.outside()).thenReturn(hold);
+        when(owner.getOwner()).thenReturn("server");
+        assertNull(InventoryManager.outsideHold(player, vehicle));
+        when(player.hasPermission("vf.server.use")).thenReturn(true);
+        assertSame(hold, InventoryManager.outsideHold(player, vehicle));
+    }
+
 }

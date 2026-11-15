@@ -13,6 +13,7 @@ import net.tfminecraft.tlibs.character.CharacterRef;
  * <table>
  * <caption>Owner values</caption>
  * <tr><td>{@code char_<characterId>}</td><td>owned by that character</td></tr>
+ * <tr><td>{@code server}</td><td>server-owned; use requires permission or an event grant</td></tr>
  * <tr><td>{@code none}</td><td>unowned, claimable</td></tr>
  * <tr><td>{@code char_none}</td><td>faction vehicle without a leader character; matches nobody and
  * can never be claimed</td></tr>
@@ -23,6 +24,7 @@ import net.tfminecraft.tlibs.character.CharacterRef;
  * is the one captured when the entry was added.
  */
 public final class VehicleOwners {
+	public static final String SERVER = "server";
 	public static final String NONE = "none";
 	public static final String NO_CHARACTER = "char_none";
 	public static final String CHARACTER_PREFIX = "char_";
@@ -52,6 +54,11 @@ public final class VehicleOwners {
 		return owner == null || owner.isBlank() || owner.equalsIgnoreCase(NONE);
 	}
 
+	/** Whether the vehicle belongs to the server. */
+	public static boolean isServer(String owner) {
+		return SERVER.equalsIgnoreCase(owner);
+	}
+
 	/** Whether the value names a character. */
 	public static boolean isCharacterOwner(String owner) {
 		return characterId(owner).isPresent();
@@ -71,12 +78,15 @@ public final class VehicleOwners {
 	}
 
 	/**
-	 * The canonical form of a value that characters mode may write ({@code none}, {@code char_none}
-	 * or {@code char_<uuid>}), or empty for anything else.
+	 * The canonical form of a value that characters mode may write ({@code none}, {@code char_none},
+	 * {@code server} or {@code char_<uuid>}), or empty for anything else.
 	 */
 	public static Optional<String> canonical(String owner) {
 		if (owner == null) {
 			return Optional.empty();
+		}
+		if (isServer(owner)) {
+			return Optional.of(SERVER);
 		}
 		if (owner.equalsIgnoreCase(NONE)) {
 			return Optional.of(NONE);

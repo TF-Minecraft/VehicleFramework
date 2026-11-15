@@ -116,7 +116,7 @@ public final class GroupAccess {
 			return Optional.empty();
 		}
 		String owner = vehicle.getOwnerData().getOwner();
-		if (VehicleOwners.isUnowned(owner)) {
+		if (VehicleOwners.isUnowned(owner) || VehicleOwners.isServer(owner)) {
 			return Optional.empty();
 		}
 		return OwnershipStore.parseUuid(vehicle.getUUID()).map(id -> new Owned(id, owner));

@@ -65,4 +65,10 @@ class OwnerNamesTest {
 		OwnershipFixture.mode(OwnershipIdentity.CHARACTERS);
 		assertEquals("Hooded figure", OwnerNames.player(player));
 	}
+
+	@Test void serverDisplayIsTheSameForEveryone() {
+		assertEquals("Server", OwnerNames.owner("SERVER", true));
+		assertEquals("Server", OwnerNames.owner("server", false));
+	}
+
 }
