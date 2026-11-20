@@ -15,13 +15,16 @@ import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 
 public class Fragment {
+	/** A fragment lands within about 4 s; one still flying after 10 s is stuck where nobody sees it. */
+	static final int MAX_TICKS = 200;
 	private HitChecker checker = new HitChecker();
-	
+
 	public Fragment(ActiveVehicle vehicle, World world, Location loc, List<Entity> projectiles) {
 		ArmorStand armorStand = world.spawn(loc, ArmorStand.class, stand -> {
             stand.setInvisible(true);
             stand.setGravity(true); // Make sure they don't fall down
             stand.setSmall(true); // Makes them smaller, looks more like particles in motion
+            stand.setPersistent(false); // Never saved with the chunk
         });
         projectiles.add(armorStand);
 
@@ -40,6 +43,15 @@ public class Fragment {
         	int i = 0;
             @Override
             public void run() {
+            	// A fragment that flew out of the loaded area never lands, and reading its blocks
+            	// would load that chunk on the main thread every tick.
+            	Location at = armorStand.getLocation();
+            	if (i >= MAX_TICKS || !armorStand.isValid()
+            			|| !world.isChunkLoaded(at.getBlockX() >> 4, at.getBlockZ() >> 4)) {
+            		armorStand.remove();
+            		cancel();
+            		return;
+            	}
             	List<Entity> hits = checker.getHitEntities(armorStand, projectiles, 0.5);
             	if(hits.size() > 0) {
             		for(Entity e : hits) {

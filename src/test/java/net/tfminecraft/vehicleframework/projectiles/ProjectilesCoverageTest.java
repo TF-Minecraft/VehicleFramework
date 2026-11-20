@@ -232,6 +232,36 @@ public class ProjectilesCoverageTest {
   }
 
   @Test
+  void fragmentsAreNotSavedAndStopWhenStuckOutOfSight() {
+    ActiveVehicle source = r.vehicle();
+    when(source.getNearbyPlayers()).thenReturn(List.of());
+    new Fragment(source, r.world, new Location(r.world, 0, 200, 0), new ArrayList<>());
+    ArmorStand flying = (ArmorStand) r.spawned.getLast();
+    verify(flying).setPersistent(false);
+    r.ticks(Fragment.MAX_TICKS);
+    verify(flying, never()).remove();
+    r.tick();
+    verify(flying).remove();
+    assertEquals(0, r.pending());
+
+    new Fragment(source, r.world, new Location(r.world, 40, 200, 0), new ArrayList<>());
+    ArmorStand gone = (ArmorStand) r.spawned.getLast();
+    when(r.world.isChunkLoaded(2, 0)).thenReturn(false);
+    Block below = r.block(40, 199, 0);
+    r.ticks(20);
+    verify(gone).remove();
+    verify(below, never()).getType();
+    assertEquals(0, r.pending());
+
+    new Fragment(source, r.world, new Location(r.world, 80, 200, 0), new ArrayList<>());
+    ArmorStand unloaded = (ArmorStand) r.spawned.getLast();
+    when(unloaded.isValid()).thenReturn(false);
+    r.tick();
+    verify(unloaded).remove();
+    assertEquals(0, r.pending());
+  }
+
+  @Test
   void livingTargetsReceiveDirectDamageOrConfiguredExplosions() {
     LivingEntity target = r.entity(LivingEntity.class, new Location(r.world, .5, 64.5, 2));
     r.rayTargets.add(target);
@@ -370,6 +400,7 @@ public class ProjectilesCoverageTest {
       oldProjectiles = new ArrayList<>(Cache.projectiles);
       Cache.projectiles.clear();
       when(world.getName()).thenReturn("weapons");
+      when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
       when(world.getUID()).thenReturn(UUID.randomUUID());
       when(world.getBlockAt(anyInt(), anyInt(), anyInt()))
           .thenAnswer(c -> block(c.getArgument(0), c.getArgument(1), c.getArgument(2)));
