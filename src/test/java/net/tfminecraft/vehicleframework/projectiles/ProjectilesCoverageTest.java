@@ -198,6 +198,7 @@ public class ProjectilesCoverageTest {
 
   @Test
   void fragmentsBurnVehiclesTrailAndStopOnImpactOrDeath() {
+    when(r.world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
     ActiveVehicle source = r.vehicle();
     Player observer = r.entity(Player.class, new Location(r.world, 0, 64, 0));
     when(source.getNearbyPlayers()).thenReturn(List.of(observer));
@@ -233,6 +234,7 @@ public class ProjectilesCoverageTest {
 
   @Test
   void fragmentsAreNotSavedAndStopWhenStuckOutOfSight() {
+    when(r.world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
     ActiveVehicle source = r.vehicle();
     when(source.getNearbyPlayers()).thenReturn(List.of());
     new Fragment(source, r.world, new Location(r.world, 0, 200, 0), new ArrayList<>());
@@ -400,7 +402,6 @@ public class ProjectilesCoverageTest {
       oldProjectiles = new ArrayList<>(Cache.projectiles);
       Cache.projectiles.clear();
       when(world.getName()).thenReturn("weapons");
-      when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
       when(world.getUID()).thenReturn(UUID.randomUUID());
       when(world.getBlockAt(anyInt(), anyInt(), anyInt()))
           .thenAnswer(c -> block(c.getArgument(0), c.getArgument(1), c.getArgument(2)));
