@@ -255,6 +255,16 @@ public class ProjectilesCoverageTest {
     verify(below, never()).getType();
     assertEquals(0, r.pending());
 
+    // Inside a loaded chunk, but the impact check would read x 112 in the unloaded chunk next to it.
+    new Fragment(source, r.world, new Location(r.world, 111.5, 200, 8.5), new ArrayList<>());
+    ArmorStand border = (ArmorStand) r.spawned.getLast();
+    when(r.world.isChunkLoaded(7, 0)).thenReturn(false);
+    Block across = r.block(112, 200, 8);
+    r.ticks(20);
+    verify(border).remove();
+    verify(across, never()).getType();
+    assertEquals(0, r.pending());
+
     new Fragment(source, r.world, new Location(r.world, 80, 200, 0), new ArrayList<>());
     ArmorStand unloaded = (ArmorStand) r.spawned.getLast();
     when(unloaded.isValid()).thenReturn(false);

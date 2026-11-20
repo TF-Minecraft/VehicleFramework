@@ -44,10 +44,8 @@ public class Fragment {
             @Override
             public void run() {
             	// A fragment that flew out of the loaded area never lands, and reading its blocks
-            	// would load that chunk on the main thread every tick.
-            	Location at = armorStand.getLocation();
-            	if (i >= MAX_TICKS || !armorStand.isValid()
-            			|| !world.isChunkLoaded(at.getBlockX() >> 4, at.getBlockZ() >> 4)) {
+            	// would load those chunks on the main thread every tick.
+            	if (i >= MAX_TICKS || !armorStand.isValid() || !impactChunksLoaded(world, armorStand.getLocation())) {
             		armorStand.remove();
             		cancel();
             		return;
@@ -73,5 +71,16 @@ public class Fragment {
                 i++;
             }
         }.runTaskTimer(VehicleFramework.plugin, 0L, 1L); // Run every tick to simulate the trail
+	}
+
+	/** The impact check reads the blocks one step around the fragment, so up to four chunks. */
+	static boolean impactChunksLoaded(World world, Location at) {
+		int x = at.getBlockX(), z = at.getBlockZ();
+		for (int cx = (x - 1) >> 4; cx <= (x + 1) >> 4; cx++) {
+			for (int cz = (z - 1) >> 4; cz <= (z + 1) >> 4; cz++) {
+				if (!world.isChunkLoaded(cx, cz)) return false;
+			}
+		}
+		return true;
 	}
 }
