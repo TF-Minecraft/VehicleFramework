@@ -198,6 +198,7 @@ public class ProjectilesCoverageTest {
 
   @Test
   void fragmentsBurnVehiclesTrailAndStopOnImpactOrDeath() {
+    when(r.world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
     ActiveVehicle source = r.vehicle();
     Player observer = r.entity(Player.class, new Location(r.world, 0, 64, 0));
     when(source.getNearbyPlayers()).thenReturn(List.of(observer));
@@ -229,6 +230,47 @@ public class ProjectilesCoverageTest {
     when(another.isDead()).thenReturn(true);
     r.tick();
     verify(another).remove();
+  }
+
+  @Test
+  void fragmentsAreNotSavedAndStopWhenStuckOutOfSight() {
+    when(r.world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+    ActiveVehicle source = r.vehicle();
+    when(source.getNearbyPlayers()).thenReturn(List.of());
+    new Fragment(source, r.world, new Location(r.world, 0, 200, 0), new ArrayList<>());
+    ArmorStand flying = (ArmorStand) r.spawned.getLast();
+    verify(flying).setPersistent(false);
+    r.ticks(Fragment.MAX_TICKS);
+    verify(flying, never()).remove();
+    r.tick();
+    verify(flying).remove();
+    assertEquals(0, r.pending());
+
+    new Fragment(source, r.world, new Location(r.world, 40, 200, 0), new ArrayList<>());
+    ArmorStand gone = (ArmorStand) r.spawned.getLast();
+    when(r.world.isChunkLoaded(2, 0)).thenReturn(false);
+    Block below = r.block(40, 199, 0);
+    r.ticks(20);
+    verify(gone).remove();
+    verify(below, never()).getType();
+    assertEquals(0, r.pending());
+
+    // Inside a loaded chunk, but the impact check would read x 112 in the unloaded chunk next to it.
+    new Fragment(source, r.world, new Location(r.world, 111.5, 200, 8.5), new ArrayList<>());
+    ArmorStand border = (ArmorStand) r.spawned.getLast();
+    when(r.world.isChunkLoaded(7, 0)).thenReturn(false);
+    Block across = r.block(112, 200, 8);
+    r.ticks(20);
+    verify(border).remove();
+    verify(across, never()).getType();
+    assertEquals(0, r.pending());
+
+    new Fragment(source, r.world, new Location(r.world, 80, 200, 0), new ArrayList<>());
+    ArmorStand unloaded = (ArmorStand) r.spawned.getLast();
+    when(unloaded.isValid()).thenReturn(false);
+    r.tick();
+    verify(unloaded).remove();
+    assertEquals(0, r.pending());
   }
 
   @Test
