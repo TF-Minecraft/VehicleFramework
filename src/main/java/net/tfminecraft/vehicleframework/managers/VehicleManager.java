@@ -113,6 +113,7 @@ public class VehicleManager implements Listener{
 	public static final String NOT_ALLOWED_PAINT = "§cThe owner has not allowed you to paint this vehicle.";
 	public static final String NOT_ALLOWED_TOW = "§cThe owner has not allowed you to tow this vehicle.";
 	public static final String NOT_ALLOWED_TOWING = "§cThe owner has not allowed you to hitch anything to this vehicle.";
+	public static final String NOT_ALLOWED_UNHITCH = "§cThe owner has not allowed you to unhitch this vehicle.";
 	// Checkpoints run every 5 minutes; the SQLite backup copy runs on every 6th.
 	static final int BACKUP_EVERY_CHECKPOINTS = 6;
 	private int checkpoints;
@@ -596,6 +597,15 @@ public class VehicleManager implements Listener{
 		return false;
 	}
 
+	/** Either side of a hitch may release it: whoever may handle the towing vehicle or the towed one. */
+	private boolean mayUnhitch(Player p, ActiveVehicle v) {
+		ActiveVehicle towed = v.getTowHandler().getTowPoint().getMountedVehicle();
+		if (mayHandle(p, v) || towed != null && mayHandle(p, towed)) return true;
+		p.sendMessage(NOT_ALLOWED_UNHITCH);
+		p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+		return false;
+	}
+
 	public void towSelect(Player p, ActiveVehicle v) {
 		if (!mayTow(p, v, NOT_ALLOWED_TOW)) return;
 		if(tow.containsKey(p)) {
@@ -737,6 +747,10 @@ public class VehicleManager implements Listener{
 					return;
 				} else if(v.isTrain()){
 					if (!mayTow(p, v, NOT_ALLOWED_TOWING)) return;
+					if (!mayTow(p, tow.get(p), NOT_ALLOWED_TOW)) {
+						tow.remove(p);
+						return;
+					}
 					boolean success = tow.get(p).getBehaviourHandler().getTrainHandler().attach(p, v);
 					if(success) tow.remove(p);
 					return;
@@ -746,7 +760,7 @@ public class VehicleManager implements Listener{
 					return;
 				}
 			} else if(!tow.containsKey(p) && v.hasTowHandler() && v.getTowHandler().isOccupied()) {
-				if (!mayTow(p, v, NOT_ALLOWED_TOWING)) return;
+				if (!mayUnhitch(p, v)) return;
 				v.getTowHandler().unattach();
 				p.sendMessage("§eStopped towing");
 				p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BIT, 1f, 1f);

@@ -394,11 +394,39 @@ class VehicleManagerCoverageTest {
         when(v.hasTowHandler()).thenReturn(outcome.equals("detach"));
         when(v.getTowHandler().isOccupied()).thenReturn(true);
         when(v.isTrain()).thenReturn(outcome.equals("train-attach"));
+        when(v.getTowHandler().getTowPoint().getMountedVehicle()).thenReturn(null);
         if (outcome.equals("train-attach")) manager.towSelect(player, selected);
         manager.vehicleInteract(interact(player, v.getEntity()));
-        verify(player).sendMessage(VehicleManager.NOT_ALLOWED_TOWING);
+        verify(player).sendMessage(outcome.equals("detach") ? VehicleManager.NOT_ALLOWED_UNHITCH : VehicleManager.NOT_ALLOWED_TOWING);
         verify(selected.getTrainHandler(), never()).attach(any(), any());
         verify(v.getTowHandler(), never()).unattach();
+    }
+
+    @Test
+    void theTowedVehiclesSideMayUnhitchItFromACartTheyCannotUse() {
+        ActiveVehicle cart = vehicle("cart"), gun = vehicle("gun"); Player player = player("Ryan"); register(cart);
+        when(player.isSneaking()).thenReturn(true);
+        cart.getOwnerData().setWhiteListed(true); cart.getOwnerData().setOwner("player_Other");
+        gun.getOwnerData().setWhiteListed(true); gun.getOwnerData().setOwner("player_Ryan");
+        when(cart.hasTowHandler()).thenReturn(true); when(cart.isTowable()).thenReturn(false);
+        when(cart.getTowHandler().isOccupied()).thenReturn(true);
+        when(cart.getTowHandler().getTowPoint().getMountedVehicle()).thenReturn(gun);
+        manager.vehicleInteract(interact(player, cart.getEntity()));
+        verify(cart.getTowHandler()).unattach();
+        verify(player, never()).sendMessage(VehicleManager.NOT_ALLOWED_UNHITCH);
+    }
+
+    @Test
+    void trainCouplingDropsASelectedCarThePlayerNoLongerMayUse() throws Exception {
+        ActiveVehicle car = vehicle("car"), selected = vehicle("selected"); Player player = player("Ryan"); register(car);
+        when(player.isSneaking()).thenReturn(true);
+        when(car.hasTowHandler()).thenReturn(false); when(car.isTowable()).thenReturn(false); when(car.isTrain()).thenReturn(true);
+        selected.getOwnerData().setWhiteListed(true); selected.getOwnerData().setOwner("player_Ryan");
+        manager.towSelect(player, selected);
+        selected.getOwnerData().setOwner("player_Other");
+        manager.vehicleInteract(interact(player, car.getEntity()));
+        verify(player).sendMessage(VehicleManager.NOT_ALLOWED_TOW); assertTrue(map("tow").isEmpty());
+        verify(selected.getBehaviourHandler().getTrainHandler(), never()).attach(any(), any());
     }
 
     @Test
