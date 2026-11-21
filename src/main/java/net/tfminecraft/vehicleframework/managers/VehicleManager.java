@@ -110,6 +110,10 @@ public class VehicleManager implements Listener{
 	public static final String TICKET_NEEDED = "§cYou need a ticket for this vehicle.";
 	public static final String TICKET_PASSENGER_ONLY = "§cA ticket only lets you ride in a passenger seat.";
 	public static final String NOT_ALLOWED_ABOARD = "§cThe owner has not allowed you aboard this vehicle.";
+	public static final String NOT_ALLOWED_PAINT = "§cThe owner has not allowed you to paint this vehicle.";
+	public static final String NOT_ALLOWED_TOW = "§cThe owner has not allowed you to tow this vehicle.";
+	public static final String NOT_ALLOWED_TOWING = "§cThe owner has not allowed you to hitch anything to this vehicle.";
+	public static final String NOT_ALLOWED_UNHITCH = "§cThe owner has not allowed you to unhitch this vehicle.";
 	// Checkpoints run every 5 minutes; the SQLite backup copy runs on every 6th.
 	static final int BACKUP_EVERY_CHECKPOINTS = 6;
 	private int checkpoints;
@@ -508,6 +512,7 @@ public class VehicleManager implements Listener{
 	}
 	
 	public void skinInteract(Player p, ActiveVehicle v) {
+		if (!mayPaint(p, v)) return;
 	    inv.skinSelection(null, p, v, true);
 	    tempVehicle.put(p, v);
 	}
@@ -569,7 +574,40 @@ public class VehicleManager implements Listener{
 		ownership.startTakeover(p, targetName);
 	}
 
+	/**
+	 * Paint and towing follow the rule for the captain's seat: anyone while the whitelist is off,
+	 * otherwise the owner, whitelisted players and admitted groups. A ticket does not count.
+	 */
+	static boolean mayHandle(Player p, ActiveVehicle v) {
+		if (!ServerVehicles.mayAccess(p, v)) return false;
+		boolean admitted = ServerVehicles.isServer(v) || OwnershipAccess.admits(v, OwnershipAccess.key(p));
+		return VehicleTicketRules.mayEnter(v.getOwnerData(), v.ticketSource().getOwnerData(), admitted, SeatType.CAPTAIN, false);
+	}
+
+	private boolean mayPaint(Player p, ActiveVehicle v) {
+		if (mayHandle(p, v)) return true;
+		p.sendMessage(NOT_ALLOWED_PAINT);
+		return false;
+	}
+
+	private boolean mayTow(Player p, ActiveVehicle v, String refusal) {
+		if (mayHandle(p, v)) return true;
+		p.sendMessage(refusal);
+		p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+		return false;
+	}
+
+	/** Either side of a hitch may release it: whoever may handle the towing vehicle or the towed one. */
+	private boolean mayUnhitch(Player p, ActiveVehicle v) {
+		ActiveVehicle towed = v.getTowHandler().getTowPoint().getMountedVehicle();
+		if (mayHandle(p, v) || towed != null && mayHandle(p, towed)) return true;
+		p.sendMessage(NOT_ALLOWED_UNHITCH);
+		p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+		return false;
+	}
+
 	public void towSelect(Player p, ActiveVehicle v) {
+		if (!mayTow(p, v, NOT_ALLOWED_TOW)) return;
 		if(tow.containsKey(p)) {
 			p.sendMessage("§7Deselected "+tow.get(p).getName()+" §7for towing");
 			tow.remove(p);
@@ -580,6 +618,7 @@ public class VehicleManager implements Listener{
 	}
 	
 	public void towAttach(Player p, ActiveVehicle v) {
+		if (!mayTow(p, v, NOT_ALLOWED_TOWING)) return;
 		TowHandler h = v.getTowHandler();
 		if(h.isOccupied()) {
 			p.sendMessage("§cThis vehicle is already towing something");
@@ -587,6 +626,10 @@ public class VehicleManager implements Listener{
 			return;
 		}
 		ActiveVehicle selected = tow.get(p);
+		if (!mayTow(p, selected, NOT_ALLOWED_TOW)) {
+			tow.remove(p);
+			return;
+		}
 		if(h.getTowLocation().distanceSquared(selected.getEntity().getLocation()) > 16) {
 			p.sendMessage("§cThis vehicle is too far away");
 			p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
@@ -703,6 +746,11 @@ public class VehicleManager implements Listener{
 					towAttach(p, v);
 					return;
 				} else if(v.isTrain()){
+					if (!mayTow(p, v, NOT_ALLOWED_TOWING)) return;
+					if (!mayTow(p, tow.get(p), NOT_ALLOWED_TOW)) {
+						tow.remove(p);
+						return;
+					}
 					boolean success = tow.get(p).getBehaviourHandler().getTrainHandler().attach(p, v);
 					if(success) tow.remove(p);
 					return;
@@ -712,6 +760,7 @@ public class VehicleManager implements Listener{
 					return;
 				}
 			} else if(!tow.containsKey(p) && v.hasTowHandler() && v.getTowHandler().isOccupied()) {
+				if (!mayUnhitch(p, v)) return;
 				v.getTowHandler().unattach();
 				p.sendMessage("§eStopped towing");
 				p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BIT, 1f, 1f);
@@ -1238,6 +1287,7 @@ public class VehicleManager implements Listener{
 	    	p.sendMessage("Vehicle is destroyed");
 	    	return;
 	    }
+		if (!mayPaint(p, v)) return;
 		
 		NamespacedKey key = new NamespacedKey(VehicleFramework.plugin, "vf_skin_id");
 		String skinId = i.getItemMeta().getPersistentDataContainer().get(key, PersistentDataType.STRING);

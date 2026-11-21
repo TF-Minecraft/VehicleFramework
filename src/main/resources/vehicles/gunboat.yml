@@ -6,7 +6,7 @@ gunboat:
         model_data: 7411
     skins:
         gunboat:
-            name: "Guboat"
+            name: "Gunboat"
             model: gunboat
     death:
         template: ship
