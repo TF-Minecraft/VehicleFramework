@@ -365,6 +365,43 @@ class VehicleManagerCoverageTest {
     }
 
     @Test
+    void towingNeedsCaptainAccessToTheTowedAndTheTowingVehicle() throws Exception {
+        Player player = player("Ryan"); ActiveVehicle cart = vehicle("cart"), gun = vehicle("gun");
+        Location towLocation = cart.getLocation(); when(cart.getTowHandler().getTowLocation()).thenReturn(towLocation);
+        gun.getOwnerData().setWhiteListed(true); gun.getOwnerData().setOwner("player_Other");
+        // A ticket only covers passenger seats, so it does not let a player tow.
+        gun.getOwnerData().setTicketsEnabled(true);
+        tickets.when(() -> VehicleTicketItems.inventoryHas(any(), any())).thenReturn(true);
+        manager.towSelect(player, gun);
+        verify(player).sendMessage(VehicleManager.NOT_ALLOWED_TOW); assertTrue(map("tow").isEmpty());
+        gun.getOwnerData().addToWhiteList("player_Ryan"); manager.towSelect(player, gun);
+        assertSame(gun, map("tow").get(player));
+        cart.getOwnerData().setWhiteListed(true); cart.getOwnerData().setOwner("player_Other");
+        manager.towAttach(player, cart); verify(player).sendMessage(VehicleManager.NOT_ALLOWED_TOWING);
+        // Access to the selected vehicle gone since it was selected: the selection is dropped.
+        cart.getOwnerData().setOwner("player_Ryan"); gun.getOwnerData().removeFromWhiteList("player_Ryan");
+        manager.towAttach(player, cart);
+        verify(player, times(2)).sendMessage(VehicleManager.NOT_ALLOWED_TOW); assertTrue(map("tow").isEmpty());
+        verify(cart.getTowHandler(), never()).attach(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"train-attach", "detach"})
+    void hitchingToOrUnhitchingFromAVehicleWithoutAccessIsRefused(String outcome) {
+        ActiveVehicle v = vehicle("v"), selected = vehicle("selected"); Player player = player("Ryan"); register(v);
+        when(player.isSneaking()).thenReturn(true);
+        v.getOwnerData().setWhiteListed(true); v.getOwnerData().setOwner("player_Other");
+        when(v.hasTowHandler()).thenReturn(outcome.equals("detach"));
+        when(v.getTowHandler().isOccupied()).thenReturn(true);
+        when(v.isTrain()).thenReturn(outcome.equals("train-attach"));
+        if (outcome.equals("train-attach")) manager.towSelect(player, selected);
+        manager.vehicleInteract(interact(player, v.getEntity()));
+        verify(player).sendMessage(VehicleManager.NOT_ALLOWED_TOWING);
+        verify(selected.getTrainHandler(), never()).attach(any(), any());
+        verify(v.getTowHandler(), never()).unattach();
+    }
+
+    @Test
     void persistenceFailuresPreserveLiveVehiclesAndSuccessfulUnloadRemovesThem() {
         ActiveVehicle v = vehicle("v"); register(v);
         assertFalse(manager.unload(null)); assertFalse(manager.persistDestroy(null));
@@ -676,6 +713,27 @@ class VehicleManagerCoverageTest {
             when(v.changeSkin("blue")).thenReturn(true); manager.skinSelect(event);
             verify(inventories.constructed().getFirst()).skinSelection(player.getOpenInventory().getTopInventory(), player, v, false);
         }
+    }
+
+    @Test
+    void paintNeedsTheSameAccessAsTheCaptainSeat() {
+        ActiveVehicle v = vehicle("v"); Player player = player("Ryan");
+        v.getOwnerData().setWhiteListed(true); v.getOwnerData().setOwner("player_Other");
+        v.getOwnerData().setTicketsEnabled(true);
+        tickets.when(() -> VehicleTicketItems.inventoryHas(any(), any())).thenReturn(true);
+        manager.skinInteract(player, v);
+        verify(player).sendMessage(VehicleManager.NOT_ALLOWED_PAINT);
+        verify(inventories.constructed().getFirst(), never()).skinSelection(any(), any(), any(), anyBoolean());
+        v.getOwnerData().addToWhiteList("player_Ryan"); manager.skinInteract(player, v);
+        verify(inventories.constructed().getFirst()).skinSelection(null, player, v, true);
+        // Access gone since the menu opened: the click changes nothing.
+        v.getOwnerData().removeFromWhiteList("player_Ryan");
+        manager.skinSelect(click(player, v, VFGUI.SKIN_SELECTION, 0, item(Material.GREEN_CONCRETE, "blue")));
+        verify(player, times(2)).sendMessage(VehicleManager.NOT_ALLOWED_PAINT);
+        verify(v, never()).changeSkin(anyString());
+        // With the whitelist off anyone may paint, as anyone may board.
+        v.getOwnerData().setWhiteListed(false); manager.skinInteract(player, v);
+        verify(inventories.constructed().getFirst(), times(2)).skinSelection(null, player, v, true);
     }
 
     @ParameterizedTest
