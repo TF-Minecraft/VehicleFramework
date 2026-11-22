@@ -734,9 +734,14 @@ class VehicleManagerCoverageTest {
         doReturn(item(Material.COAL, null)).when(event).getCurrentItem();
         manager.skinSelect(event); verify(player).sendMessage("§cThat skin is not available.");
         doReturn(item(Material.GREEN_CONCRETE, "blue")).when(event).getCurrentItem();
+        net.tfminecraft.vehicleframework.vehicles.handlers.skins.VehicleSkin blue = mock(net.tfminecraft.vehicleframework.vehicles.handlers.skins.VehicleSkin.class);
+        when(v.getSkinHandler().getSkins()).thenReturn(new HashMap<>(Map.of("blue", blue)));
         try (MockedStatic<SkinHandler> skins = mockStatic(SkinHandler.class)) {
             manager.skinSelect(event); verify(player, times(2)).sendMessage("§cThat skin is not available.");
             skins.when(() -> SkinHandler.isModelAvailable(any(net.tfminecraft.vehicleframework.vehicles.handlers.skins.VehicleSkin.class))).thenReturn(true);
+            // Someone else's website skin: painting rights alone are not enough.
+            manager.skinSelect(event); verify(player).sendMessage(VehicleManager.NOT_YOUR_SKIN); verify(v, never()).changeSkin(anyString());
+            when(blue.mayUse(player)).thenReturn(true);
             manager.skinSelect(event); verify(player).sendMessage("§cCould not change skin.");
             when(v.changeSkin("blue")).thenReturn(true); manager.skinSelect(event);
             verify(inventories.constructed().getFirst()).skinSelection(player.getOpenInventory().getTopInventory(), player, v, false);

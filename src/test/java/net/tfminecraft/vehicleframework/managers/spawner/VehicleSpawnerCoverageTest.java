@@ -30,6 +30,7 @@ import net.tfminecraft.vehicleframework.test.RegistryFixture;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.Vehicle;
 import net.tfminecraft.vehicleframework.vehicles.handlers.SkinHandler;
+import net.tfminecraft.vehicleframework.vehicles.handlers.skins.VehicleSkin;
 
 class VehicleSpawnerCoverageTest {
     private final List<AutoCloseable> scopes = new ArrayList<>();
@@ -89,14 +90,28 @@ class VehicleSpawnerCoverageTest {
         models.verify(() -> ModelEngineAPI.createActiveModel("blue_model"));
     }
 
-    @Test void missingSavedSkinAndUnloadedModelAreRejectedBeforeAnyEntityExists() {
-        assertNull(new VehicleSpawner().spawn(location, template, manager, snapshot("removed")));
+    @Test void unloadedModelIsRejectedBeforeAnyEntityExists() {
         models.when(() -> ModelEngineAPI.getBlueprint("red_model")).thenReturn(null);
         assertNull(new VehicleSpawner().spawn(location, template, manager, null));
+        // A config skin keeps its old rule: a missing model is reported, never swapped for another skin.
+        models.when(() -> ModelEngineAPI.getBlueprint("blue_model")).thenReturn(null);
+        assertNull(new VehicleSpawner().spawn(location, template, manager, snapshot("blue")));
         verify(world, never()).spawn(any(Location.class), eq(ArmorStand.class));
         assertTrue(vehicles.constructed().isEmpty());
-        verify(logger).warning(contains("Missing vehicle skin/model: removed"));
         verify(logger).warning(contains("Missing vehicle skin/model: red"));
+        verify(logger).warning(contains("Missing vehicle skin/model: blue"));
+    }
+
+    @Test void removedSavedSkinFallsBackToTheDefaultSkin() {
+        // A website skin that was revoked (or never existed here) must not strand the vehicle.
+        assertNotNull(new VehicleSpawner().spawn(location, template, manager, snapshot("removed")));
+        models.verify(() -> ModelEngineAPI.createActiveModel("red_model"));
+        template.getSkinHandler().addPlayerSkin(new VehicleSkin("mine", "Mine", "mine_model", UUID.randomUUID()));
+        models.when(() -> ModelEngineAPI.getBlueprint("mine_model")).thenReturn(null);
+        assertNotNull(new VehicleSpawner().spawn(location, template, manager, snapshot("mine")));
+        models.verify(() -> ModelEngineAPI.createActiveModel("red_model"), times(2));
+        models.verify(() -> ModelEngineAPI.createActiveModel("mine_model"), never());
+        models.when(() -> ModelEngineAPI.getBlueprint("mine_model")).thenCallRealMethod();
     }
 
     @Test void missingMythicTemplateReportsTheConfiguredNameWithoutCreatingAFallbackEntity() {

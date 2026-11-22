@@ -258,7 +258,7 @@ class VehiclePayloadCoverageTest {
         Location location = spy(new Location(world, -16.5, 64, -0.5, 45, 0));
         doReturn(world).when(location).getWorld();
         when(v.getEntity().getLocation()).thenReturn(location);
-        when(v.getSkinHandler().getCurrentSkin().getId()).thenReturn("blue");
+        when(v.getSkinHandler().getSavedSkinId()).thenReturn("blue");
         when(v.getOwnerData().getOwner()).thenReturn("player_Alice");
         return v;
     }

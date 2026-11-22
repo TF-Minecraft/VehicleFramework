@@ -21,6 +21,7 @@ import net.tfminecraft.vehicleframework.loaders.AmmunitionLoader;
 import net.tfminecraft.vehicleframework.loaders.ConfigLoader;
 import net.tfminecraft.vehicleframework.loaders.FuelLoader;
 import net.tfminecraft.vehicleframework.loaders.TrainsLoader;
+import net.tfminecraft.vehicleframework.loaders.PlayerSkinLoader;
 import net.tfminecraft.vehicleframework.loaders.VehicleLoader;
 import net.tfminecraft.vehicleframework.loaders.WeaponTemplateLoader;
 import net.tfminecraft.vehicleframework.loaders.ArmorTemplateLoader;
@@ -242,6 +243,7 @@ public class VehicleFramework extends JavaPlugin{
 		File folder = new File(getDataFolder(), "vehicles");
 		VFLogger.info("Loading vehicles...");
 		vehicleLoader.reload(folder);
+		loadPlayerSkins();
 		
     	folder = new File(getDataFolder(), "ammunition");
 		VFLogger.info("Loading ammunition...");
@@ -324,6 +326,15 @@ public class VehicleFramework extends JavaPlugin{
 
 	public static VehicleFramework getInstance() {
 		return plugin;
+	}
+
+	/** Re-reads player-skins.yml into the loaded vehicles; spawned vehicles stay loaded. */
+	public PlayerSkinLoader.Result loadPlayerSkins() {
+		PlayerSkinLoader.Result result = PlayerSkinLoader.apply(
+				new File(getDataFolder(), PlayerSkinLoader.FILE_NAME), VehicleLoader.get());
+		VFLogger.info("Loaded " + result.loaded + " player vehicle skin(s)"
+				+ (result.skipped > 0 ? ", skipped " + result.skipped : ""));
+		return result;
 	}
 
 	public void reload() {

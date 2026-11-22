@@ -344,15 +344,29 @@ public class InventoryManager {
 	public void skinSelection(Inventory i, Player p, ActiveVehicle v, boolean open) {
 		if(open) {
 			i = VehicleFramework.plugin.getServer().createInventory(new VFInventoryHolder(v.getUUID(), VFGUI.SKIN_SELECTION), 27, "§7Select Skin");
+		} else {
+			// The list depends on the viewer and the current skin, so a refresh can be shorter.
+			i.clear();
 		}
-		int x = 0;
 		String currentId = v.getSkinHandler().getCurrentSkin().getId();
+		List<VehicleSkin> shown = new ArrayList<>();
+		VehicleSkin currentSkin = null;
 		for(VehicleSkin skin : v.getSkinHandler().getSkins().values()) {
-			if (!SkinHandler.isModelAvailable(skin) && !skin.getId().equalsIgnoreCase(currentId)) {
+			boolean current = skin.getId().equalsIgnoreCase(currentId);
+			if (!current && (!SkinHandler.isModelAvailable(skin) || !skin.mayUse(p))) {
 				continue;
 			}
-			i.setItem(x, getSkinItem(skin, currentId, v.getIcon()));
-			x++;
+			if (current) currentSkin = skin;
+			shown.add(skin);
+		}
+		if (shown.size() > i.getSize()) {
+			// Too many to show: keep the current skin in the last slot if it would be cut off.
+			boolean cut = currentSkin != null && shown.indexOf(currentSkin) >= i.getSize();
+			shown = new ArrayList<>(shown.subList(0, cut ? i.getSize() - 1 : i.getSize()));
+			if (cut) shown.add(currentSkin);
+		}
+		for(int x = 0; x < shown.size(); x++) {
+			i.setItem(x, getSkinItem(shown.get(x), currentId, v.getIcon()));
 		}
 		//i.setItem(26, createDismountButton());
 		int slotn = 0;

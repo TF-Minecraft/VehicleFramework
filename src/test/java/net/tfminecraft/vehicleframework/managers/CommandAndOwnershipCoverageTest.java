@@ -170,6 +170,17 @@ class CommandAndOwnershipCoverageTest {
         assertTrue(run(console, "reload")); verify(plugin, times(2)).reload();
     }
 
+    @Test void skinsReloadReadsOnlyPlayerSkinsAndReportsTheResult() {
+        when(player.hasPermission("vf.admin")).thenReturn(true);
+        when(plugin.loadPlayerSkins()).thenReturn(new PlayerSkinLoader.Result(3, 0, false),
+                new PlayerSkinLoader.Result(2, 1, false), new PlayerSkinLoader.Result(0, 0, true));
+        assertTrue(run(player, "skins", "reload")); verify(player).sendMessage("§aLoaded 3 player skin(s).");
+        assertTrue(run(player, "skins", "reload")); verify(player).sendMessage("§aLoaded 2 player skin(s), skipped 1 (see log).");
+        assertTrue(run(player, "skins", "reload")); verify(player).sendMessage("§cCould not read player-skins.yml; kept the loaded player skins.");
+        verify(plugin, never()).reload();
+        assertFalse(run(player, "skins")); assertFalse(run(player, "skins", "other"));
+    }
+
     @Test void trackCommandDelegatesItsArgumentsAndResult() {
         String[] args = {"track", "list"}; MockedStatic<TrackCommands> tracks = keep(mockStatic(TrackCommands.class));
         tracks.when(() -> TrackCommands.handle(player, args)).thenReturn(true);
