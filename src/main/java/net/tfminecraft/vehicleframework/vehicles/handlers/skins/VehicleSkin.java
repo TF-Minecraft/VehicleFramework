@@ -1,7 +1,9 @@
 package net.tfminecraft.vehicleframework.vehicles.handlers.skins;
 
+import java.util.UUID;
+
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.permissions.Permissible;
+import org.bukkit.entity.Player;
 
 public class VehicleSkin {
 	private String id;
@@ -9,6 +11,8 @@ public class VehicleSkin {
 	private String model;
 	/** Blank means anyone who may paint the vehicle may pick this skin. */
 	private String permission;
+	/** The account that uploaded a website skin; only that player may pick it. */
+	private UUID owner;
 	/** Loaded from player-skins.yml (website uploads) rather than the vehicle's own config. */
 	private boolean playerSkin;
 
@@ -19,12 +23,13 @@ public class VehicleSkin {
 		permission = blankToNull(config.getString("permission"));
 	}
 
-	public VehicleSkin(String id, String name, String model, String permission, boolean playerSkin) {
+	/** A website skin, owned by the account that uploaded it. */
+	public VehicleSkin(String id, String name, String model, UUID owner) {
 		this.id = id;
 		this.name = name == null || name.isBlank() ? id : name;
 		this.model = model;
-		this.permission = blankToNull(permission);
-		this.playerSkin = playerSkin;
+		this.owner = owner;
+		this.playerSkin = true;
 	}
 
 	private static String blankToNull(String value) {
@@ -47,12 +52,20 @@ public class VehicleSkin {
 		return permission;
 	}
 
+	public UUID getOwner() {
+		return owner;
+	}
+
 	public boolean isPlayerSkin() {
 		return playerSkin;
 	}
 
-	/** True when the skin has no permission, or the painter holds it. */
-	public boolean mayUse(Permissible painter) {
+	/**
+	 * A website skin: only its uploader, by account (ops and wildcard permissions do not count).
+	 * A config skin: anyone, or holders of its permission when it has one.
+	 */
+	public boolean mayUse(Player painter) {
+		if (playerSkin) return owner != null && painter != null && owner.equals(painter.getUniqueId());
 		if (permission == null) return true;
 		return painter != null && painter.hasPermission(permission);
 	}

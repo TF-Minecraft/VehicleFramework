@@ -344,6 +344,9 @@ public class InventoryManager {
 	public void skinSelection(Inventory i, Player p, ActiveVehicle v, boolean open) {
 		if(open) {
 			i = VehicleFramework.plugin.getServer().createInventory(new VFInventoryHolder(v.getUUID(), VFGUI.SKIN_SELECTION), 27, "§7Select Skin");
+		} else {
+			// The list depends on the viewer and the current skin, so a refresh can be shorter.
+			i.clear();
 		}
 		int x = 0;
 		String currentId = v.getSkinHandler().getCurrentSkin().getId();

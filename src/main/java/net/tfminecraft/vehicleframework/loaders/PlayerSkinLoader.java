@@ -3,6 +3,7 @@ package net.tfminecraft.vehicleframework.loaders;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 import org.bukkit.configuration.ConfigurationSection;
@@ -25,7 +26,7 @@ import net.tfminecraft.vehicleframework.vehicles.handlers.skins.VehicleSkin;
  *   vehicle: karve
  *   name: "Sunrise"
  *   model: vskin_drumleaf_sunrise
- *   permission: armourshop.submission.drumleaf_sunrise
+ *   owner: 3f2a7c1e-...   # the uploader's account UUID
  * </pre>
  */
 public final class PlayerSkinLoader {
@@ -87,9 +88,13 @@ public final class PlayerSkinLoader {
 		if (vehicle == null) return "unknown vehicle '" + vehicleId + "'";
 		String model = section.getString("model");
 		if (model == null || model.isBlank()) return "no model";
-		String permission = section.getString("permission");
-		if (permission == null || permission.isBlank()) return "no permission (player skins are owner-only)";
-		VehicleSkin skin = new VehicleSkin(key, section.getString("name"), model.trim(), permission, true);
+		UUID owner;
+		try {
+			owner = UUID.fromString(section.getString("owner", "").trim());
+		} catch (IllegalArgumentException e) {
+			return "owner must be the uploader's UUID (player skins are owner-only)";
+		}
+		VehicleSkin skin = new VehicleSkin(key, section.getString("name"), model.trim(), owner);
 		if (!vehicle.getSkinHandler().addPlayerSkin(skin)) {
 			return "vehicle '" + vehicleId + "' already has a skin with this id";
 		}

@@ -23,6 +23,12 @@ public class SkinHandler {
 	private VehicleSkin currentSkin;
 	/** The skin a vehicle falls back to when its saved skin is gone (the vehicle's model key). */
 	private String defaultSkinId;
+	/**
+	 * The skin id saved with the vehicle. It differs from the current skin while a missing skin
+	 * is shown as the default, so a skin that is only briefly unavailable (a ModelEngine reload,
+	 * an unreadable player-skins.yml) comes back on the next load instead of being overwritten.
+	 */
+	private String savedSkinId;
 	
 	// Insertion order: config skins first, player skins after them. Spawned vehicles share this map.
 	private HashMap<String, VehicleSkin> skins = new LinkedHashMap<>();
@@ -50,6 +56,7 @@ public class SkinHandler {
 			skins.put(key, skin);
 		}
 		defaultSkinId = model;
+		savedSkinId = model;
 		currentSkin = skins.get(model);
 	}
 	
@@ -60,6 +67,7 @@ public class SkinHandler {
 		// The spawner already resolved (and logged) the same fallback.
 		VehicleSkin resolved = another.resolve(skin, false);
 		currentSkin = resolved != null ? resolved : skins.get(skin);
+		savedSkinId = skin != null ? skin : defaultSkinId;
 	}
 
 	/**
@@ -124,7 +132,14 @@ public class SkinHandler {
 		VehicleSkin skin = skins.get(id);
 		if (!isModelAvailable(skin)) return null;
 		currentSkin = skin;
+		savedSkinId = skin.getId();
 		return currentSkin.getModel();
+	}
+
+	/** The skin id to save: the painted skin, even while a missing one is shown as the default. */
+	public String getSavedSkinId() {
+		if (savedSkinId != null) return savedSkinId;
+		return currentSkin == null ? null : currentSkin.getId();
 	}
 
 	public VehicleSkin getCurrentSkin() {

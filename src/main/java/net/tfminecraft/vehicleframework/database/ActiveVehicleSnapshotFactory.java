@@ -107,7 +107,7 @@ public final class ActiveVehicleSnapshotFactory {
 		vehicleData.put("id", v.getId());
 		vehicleData.put("name", v.getName());
 		vehicleData.put("yaw", (double) v.getEntity().getLocation().getYaw());
-		vehicleData.put("skin", v.getSkinHandler().getCurrentSkin().getId());
+		vehicleData.put("skin", v.getSkinHandler().getSavedSkinId());
 		vehicleData.put("owner", v.getOwnerData().getOwner());
 		vehicleData.put("whitelisted", v.getOwnerData().isWhiteListed());
 		vehicleData.put("ticketsEnabled", v.getOwnerData().isTicketsEnabled());

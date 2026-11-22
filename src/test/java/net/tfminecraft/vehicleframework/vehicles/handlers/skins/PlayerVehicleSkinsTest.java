@@ -60,8 +60,10 @@ class PlayerVehicleSkinsTest {
         return new SkinHandler("karve", config);
     }
 
+    private static final java.util.UUID OWNER = java.util.UUID.fromString("b58b582f-c305-3ce8-8e43-02a2a84b297d");
+
     private static VehicleSkin player(String id) {
-        return new VehicleSkin(id, "Skin " + id, "vskin_" + id, "armourshop.submission." + id, true);
+        return new VehicleSkin(id, "Skin " + id, "vskin_" + id, OWNER);
     }
 
     @Test void skinsReadTheirPermissionAndOnlyHoldersMayUseThem() {
@@ -73,10 +75,19 @@ class PlayerVehicleSkinsTest {
         when(owner.hasPermission("vf.skin.gold")).thenReturn(true);
         assertTrue(open.mayUse(null)); assertTrue(open.mayUse(other));
         assertTrue(gold.mayUse(owner)); assertFalse(gold.mayUse(other)); assertFalse(gold.mayUse(null));
-        VehicleSkin unnamed = new VehicleSkin("plain", " ", "plain_model", " ", true);
+        VehicleSkin unnamed = new VehicleSkin("plain", " ", "plain_model", OWNER);
         assertEquals("plain", unnamed.getName()); assertNull(unnamed.getPermission()); assertTrue(unnamed.isPlayerSkin());
-        assertEquals("plain", new VehicleSkin("plain", null, "m", null, false).getName());
-        assertEquals("Skin a", player("a").getName()); assertEquals("vskin_a", player("a").getModel());
+        assertEquals("plain", new VehicleSkin("plain", null, "m", OWNER).getName());
+        assertEquals("Skin a", player("a").getName()); assertEquals("vskin_a", player("a").getModel()); assertEquals(OWNER, player("a").getOwner());
+    }
+
+    @Test void websiteSkinsBelongToTheUploaderOnlyNotToOpsOrWildcards() {
+        Player uploader = mock(Player.class), op = mock(Player.class);
+        when(uploader.getUniqueId()).thenReturn(OWNER);
+        when(op.getUniqueId()).thenReturn(java.util.UUID.randomUUID()); when(op.hasPermission(anyString())).thenReturn(true); when(op.isOp()).thenReturn(true);
+        VehicleSkin skin = player("sunrise");
+        assertTrue(skin.mayUse(uploader)); assertFalse(skin.mayUse(op)); assertFalse(skin.mayUse(null));
+        assertFalse(new VehicleSkin("orphan", "Orphan", "m", null).mayUse(uploader));
     }
 
     @Test void playerSkinsAreAddedAfterConfigSkinsAndRemovedWithoutTouchingThem() {
@@ -84,8 +95,8 @@ class PlayerVehicleSkinsTest {
         assertTrue(skins.addPlayerSkin(player("sunrise")));
         assertTrue(skins.addPlayerSkin(player("sunrise")), "a reload may replace the same player skin");
         assertFalse(skins.addPlayerSkin(null));
-        assertFalse(skins.addPlayerSkin(new VehicleSkin("x", "X", "x", null, false)), "only website skins go through here");
-        assertFalse(skins.addPlayerSkin(new VehicleSkin("karve_gold", "Fake", "vskin_fake", "p", true)), "a config skin id is never overwritten");
+        assertFalse(skins.addPlayerSkin(skins.getSkins().get("karve")), "only website skins go through here");
+        assertFalse(skins.addPlayerSkin(new VehicleSkin("karve_gold", "Fake", "vskin_fake", OWNER)), "a config skin id is never overwritten");
         assertEquals(List.of("karve", "karve_gold", "sunrise"), List.copyOf(skins.getSkins().keySet()));
         assertEquals(1, skins.removePlayerSkins());
         assertEquals(List.of("karve", "karve_gold"), List.copyOf(skins.getSkins().keySet()));
@@ -120,7 +131,13 @@ class PlayerVehicleSkinsTest {
     @Test void spawnedVehiclesStartOnTheResolvedSkinAndShareTheMap() {
         SkinHandler template = karveSkins();
         ActiveVehicle vehicle = mock(ActiveVehicle.class);
-        assertEquals("karve", new SkinHandler(vehicle, "revoked", template).getCurrentSkin().getId());
+        SkinHandler fallback = new SkinHandler(vehicle, "revoked", template);
+        assertEquals("karve", fallback.getCurrentSkin().getId());
+        assertEquals("revoked", fallback.getSavedSkinId(), "a briefly missing skin is not overwritten by the default");
+        assertEquals("karve", new SkinHandler(vehicle, null, template).getSavedSkinId());
+        assertEquals("karve", template.getSavedSkinId());
+        assertEquals("karve", fallback.changeSkin("karve"));
+        assertEquals("karve", fallback.getSavedSkinId(), "repainting replaces the saved skin");
         SkinHandler spawned = new SkinHandler(vehicle, "karve_gold", template);
         assertEquals("karve_gold", spawned.getCurrentSkin().getId());
         template.addPlayerSkin(player("late"));
@@ -128,7 +145,10 @@ class PlayerVehicleSkinsTest {
         verify(logger, never()).warning(anyString());
         YamlConfiguration config = new YamlConfiguration();
         config.set("blue.model", "blue_model");
-        assertNull(new SkinHandler(vehicle, "revoked", new SkinHandler("absent", config)).getCurrentSkin());
+        SkinHandler none = new SkinHandler(vehicle, "revoked", new SkinHandler("absent", config));
+        assertNull(none.getCurrentSkin()); assertEquals("revoked", none.getSavedSkinId());
+        SkinHandler empty = new SkinHandler(vehicle, null, new SkinHandler(null, config));
+        assertNull(empty.getSavedSkinId());
     }
 
     private Map<String, Vehicle> registry(SkinHandler karve) {
@@ -144,30 +164,30 @@ class PlayerVehicleSkinsTest {
         karve.addPlayerSkin(player("stale"));
         File file = temp.resolve("player-skins.yml").toFile();
         Files.writeString(file.toPath(), String.join("\n",
-                "vskin_sunrise: {vehicle: karve, name: Sunrise, model: vskin_sunrise, permission: armourshop.submission.sunrise}",
+                "vskin_sunrise: {vehicle: karve, name: Sunrise, model: vskin_sunrise, owner: " + OWNER + "}",
                 "not_a_section: 5",
-                "Bad-Id: {vehicle: karve, model: m, permission: p}",
-                "no_vehicle: {model: m, permission: p}",
-                "unknown_vehicle: {vehicle: zeppelin, model: m, permission: p}",
-                "no_model: {vehicle: karve, model: ' ', permission: p}",
-                "no_model_at_all: {vehicle: karve, permission: p}",
-                "no_permission: {vehicle: karve, model: m}",
-                "blank_permission: {vehicle: karve, model: m, permission: ' '}",
-                "karve_gold: {vehicle: karve, model: m, permission: p}",
+                "Bad-Id: {vehicle: karve, model: m, owner: " + OWNER + "}",
+                "no_vehicle: {model: m, owner: " + OWNER + "}",
+                "unknown_vehicle: {vehicle: zeppelin, model: m, owner: " + OWNER + "}",
+                "no_model: {vehicle: karve, model: ' ', owner: " + OWNER + "}",
+                "no_model_at_all: {vehicle: karve, owner: " + OWNER + "}",
+                "no_owner: {vehicle: karve, model: m, permission: p}",
+                "bad_owner: {vehicle: karve, model: m, owner: someone}",
+                "karve_gold: {vehicle: karve, model: m, owner: " + OWNER + "}",
                 ""));
         PlayerSkinLoader.Result result = PlayerSkinLoader.apply(file, registry(karve));
         assertEquals(1, result.loaded); assertEquals(9, result.skipped); assertFalse(result.fileError);
         assertEquals(List.of("karve", "karve_gold", "vskin_sunrise"), List.copyOf(karve.getSkins().keySet()));
         VehicleSkin sunrise = karve.getSkins().get("vskin_sunrise");
-        assertEquals("Sunrise", sunrise.getName()); assertEquals("armourshop.submission.sunrise", sunrise.getPermission());
+        assertEquals("Sunrise", sunrise.getName()); assertEquals(OWNER, sunrise.getOwner());
         verify(logger).warning(contains("'not_a_section': not a section"));
         verify(logger).warning(contains("'Bad-Id': id must be"));
         verify(logger).warning(contains("'no_vehicle': unknown vehicle 'null'"));
         verify(logger).warning(contains("'unknown_vehicle': unknown vehicle 'zeppelin'"));
         verify(logger).warning(contains("'no_model': no model"));
         verify(logger).warning(contains("'no_model_at_all': no model"));
-        verify(logger).warning(contains("'no_permission': no permission"));
-        verify(logger).warning(contains("'blank_permission': no permission"));
+        verify(logger).warning(contains("'no_owner': owner must be the uploader's UUID"));
+        verify(logger).warning(contains("'bad_owner': owner must be the uploader's UUID"));
         verify(logger).warning(contains("'karve_gold': vehicle 'karve' already has a skin with this id"));
     }
 

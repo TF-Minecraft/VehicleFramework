@@ -106,7 +106,7 @@ class VehicleSpawnerCoverageTest {
         // A website skin that was revoked (or never existed here) must not strand the vehicle.
         assertNotNull(new VehicleSpawner().spawn(location, template, manager, snapshot("removed")));
         models.verify(() -> ModelEngineAPI.createActiveModel("red_model"));
-        template.getSkinHandler().addPlayerSkin(new VehicleSkin("mine", "Mine", "mine_model", "armourshop.submission.mine", true));
+        template.getSkinHandler().addPlayerSkin(new VehicleSkin("mine", "Mine", "mine_model", UUID.randomUUID()));
         models.when(() -> ModelEngineAPI.getBlueprint("mine_model")).thenReturn(null);
         assertNotNull(new VehicleSpawner().spawn(location, template, manager, snapshot("mine")));
         models.verify(() -> ModelEngineAPI.createActiveModel("red_model"), times(2));
