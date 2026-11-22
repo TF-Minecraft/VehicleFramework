@@ -55,6 +55,10 @@ public final class PlayerSkinLoader {
 	 */
 	public static Result apply(File file, Map<String, Vehicle> vehicles) {
 		YamlConfiguration config = new YamlConfiguration();
+		if (file != null && file.exists() && !file.isFile()) {
+			VFLogger.log(file.getName() + " is not a file; keeping the loaded player skins");
+			return new Result(0, 0, true);
+		}
 		if (file != null && file.isFile()) {
 			try {
 				config.load(file);

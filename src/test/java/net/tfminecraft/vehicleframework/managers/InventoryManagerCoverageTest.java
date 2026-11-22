@@ -333,6 +333,11 @@ class InventoryManagerCoverageTest {
         keep(mockStatic(SkinHandler.class)).when(() -> SkinHandler.isModelAvailable(any(VehicleSkin.class))).thenReturn(true);
         manager.skinSelection(null, player, vehicle, true); Inventory inventory = created.get(0);
         assertEquals("s26", tag(inventory.getItem(26), "vf_skin_id"));
+        // A current skin past the last slot takes that slot instead.
+        when(skins.getCurrentSkin()).thenReturn(choices.get("s29"));
+        manager.skinSelection(inventory, player, vehicle, false);
+        assertEquals("s25", tag(inventory.getItem(25), "vf_skin_id"));
+        assertEquals("s29", tag(inventory.getItem(26), "vf_skin_id"));
     }
 
     private VehicleSkin skin(String id, String name) {

@@ -203,5 +203,11 @@ class PlayerVehicleSkinsTest {
         PlayerSkinLoader.Result gone = PlayerSkinLoader.apply(file, registry(karve));
         assertEquals(0, gone.loaded); assertFalse(gone.fileError); assertFalse(karve.getSkins().containsKey("kept"));
         assertEquals(0, PlayerSkinLoader.apply(null, registry(karve)).loaded);
+        // A folder where the file should be is unreadable too, not an empty list.
+        karve.addPlayerSkin(player("kept"));
+        Files.createDirectory(file.toPath());
+        assertTrue(PlayerSkinLoader.apply(file, registry(karve)).fileError);
+        assertTrue(karve.getSkins().containsKey("kept"));
+        verify(logger).warning(contains("player-skins.yml is not a file; keeping the loaded player skins"));
     }
 }
