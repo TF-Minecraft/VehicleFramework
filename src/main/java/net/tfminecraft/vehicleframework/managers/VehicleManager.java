@@ -95,6 +95,7 @@ import net.tfminecraft.vehicleframework.vehicles.VehicleHealthDecay;
 import net.tfminecraft.vehicleframework.vehicles.component.Harness;
 import net.tfminecraft.vehicleframework.vehicles.handlers.container.Container;
 import net.tfminecraft.vehicleframework.vehicles.handlers.SkinHandler;
+import net.tfminecraft.vehicleframework.vehicles.handlers.skins.VehicleSkin;
 import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleTicketInteract;
 import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleTicketItems;
 import net.tfminecraft.vehicleframework.vehicles.handlers.VehicleTicketRules;
@@ -111,6 +112,7 @@ public class VehicleManager implements Listener{
 	public static final String TICKET_PASSENGER_ONLY = "§cA ticket only lets you ride in a passenger seat.";
 	public static final String NOT_ALLOWED_ABOARD = "§cThe owner has not allowed you aboard this vehicle.";
 	public static final String NOT_ALLOWED_PAINT = "§cThe owner has not allowed you to paint this vehicle.";
+	public static final String NOT_YOUR_SKIN = "§cYou do not own this skin.";
 	public static final String NOT_ALLOWED_TOW = "§cThe owner has not allowed you to tow this vehicle.";
 	public static final String NOT_ALLOWED_TOWING = "§cThe owner has not allowed you to hitch anything to this vehicle.";
 	public static final String NOT_ALLOWED_UNHITCH = "§cThe owner has not allowed you to unhitch this vehicle.";
@@ -1295,8 +1297,13 @@ public class VehicleManager implements Listener{
 			p.sendMessage("§cAlready using this skin");
 			return;
 		}
-		if (skinId == null || !SkinHandler.isModelAvailable(v.getSkinHandler().getSkins().get(skinId))) {
+		VehicleSkin chosen = skinId == null ? null : v.getSkinHandler().getSkins().get(skinId);
+		if (chosen == null || !SkinHandler.isModelAvailable(chosen)) {
 			p.sendMessage("§cThat skin is not available.");
+			return;
+		}
+		if (!chosen.mayUse(p)) {
+			p.sendMessage(NOT_YOUR_SKIN);
 			return;
 		}
 		if (!v.changeSkin(skinId)) {

@@ -28,7 +28,7 @@ public class VehicleSpawner {
 		Entity e = null;
 		try {
 			String skinId = i == null ? v.getSkinHandler().getCurrentSkin().getId() : i.getSkin();
-			VehicleSkin skin = v.getSkinHandler().getSkins().get(skinId);
+			VehicleSkin skin = v.getSkinHandler().resolveSpawnSkin(skinId);
 			if (skin == null || !SkinHandler.isModelAvailable(skin)) {
 				throw new IllegalArgumentException("Missing vehicle skin/model: " + skinId);
 			}

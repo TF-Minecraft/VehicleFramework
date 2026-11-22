@@ -311,8 +311,33 @@ class InventoryManagerCoverageTest {
         ActiveWeapon weapon = mock(ActiveWeapon.class); when(weapon.getId()).thenReturn(id); when(weapon.getName()).thenReturn(id);
         HealthData health = new HealthData(100, 10, 40); when(weapon.getHealthData()).thenReturn(health); return weapon;
     }
+    @Test void skinMenuHidesOtherPlayersSkinsButKeepsTheCurrentOne() {
+        SkinHandler skins = mock(SkinHandler.class); when(vehicle.getSkinHandler()).thenReturn(skins);
+        VehicleSkin active = skin("current", "Current"), mine = skin("mine", "Mine"), theirs = skin("theirs", "Theirs");
+        when(active.mayUse(player)).thenReturn(false); when(theirs.mayUse(player)).thenReturn(false);
+        when(skins.getCurrentSkin()).thenReturn(active);
+        HashMap<String, VehicleSkin> choices = new LinkedHashMap<>(); choices.put("current", active); choices.put("theirs", theirs); choices.put("mine", mine);
+        when(skins.getSkins()).thenReturn(choices);
+        keep(mockStatic(SkinHandler.class)).when(() -> SkinHandler.isModelAvailable(any(VehicleSkin.class))).thenReturn(true);
+        manager.skinSelection(null, player, vehicle, true); Inventory inventory = created.get(0);
+        assertEquals("current", tag(inventory.getItem(0), "vf_skin_id"));
+        assertEquals("mine", tag(inventory.getItem(1), "vf_skin_id"));
+        assertEquals(Material.GRAY_STAINED_GLASS_PANE, inventory.getItem(2).getType());
+    }
+
+    @Test void skinMenuStopsAtTheLastSlot() {
+        SkinHandler skins = mock(SkinHandler.class); when(vehicle.getSkinHandler()).thenReturn(skins);
+        HashMap<String, VehicleSkin> choices = new LinkedHashMap<>();
+        for (int n = 0; n < 30; n++) choices.put("s" + n, skin("s" + n, "S" + n));
+        when(skins.getCurrentSkin()).thenReturn(choices.get("s0")); when(skins.getSkins()).thenReturn(choices);
+        keep(mockStatic(SkinHandler.class)).when(() -> SkinHandler.isModelAvailable(any(VehicleSkin.class))).thenReturn(true);
+        manager.skinSelection(null, player, vehicle, true); Inventory inventory = created.get(0);
+        assertEquals("s26", tag(inventory.getItem(26), "vf_skin_id"));
+    }
+
     private VehicleSkin skin(String id, String name) {
-        VehicleSkin skin = mock(VehicleSkin.class); when(skin.getId()).thenReturn(id); when(skin.getName()).thenReturn(name); return skin;
+        VehicleSkin skin = mock(VehicleSkin.class); when(skin.getId()).thenReturn(id); when(skin.getName()).thenReturn(name);
+        when(skin.mayUse(any())).thenReturn(true); return skin;
     }
     private Inventory inventory(int size, InventoryHolder holder) {
         Inventory inventory = mock(Inventory.class); ItemStack[] contents = new ItemStack[size];

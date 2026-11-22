@@ -27,6 +27,7 @@ import net.tfminecraft.vehicleframework.ownership.OwnershipAccess;
 import net.tfminecraft.vehicleframework.ownership.OwnershipActions;
 import net.tfminecraft.vehicleframework.ownership.OwnershipMode;
 import net.tfminecraft.vehicleframework.VFLogger;
+import net.tfminecraft.vehicleframework.loaders.PlayerSkinLoader;
 import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.weapons.ammunition.Ammunition;
@@ -171,6 +172,14 @@ public class CommandManager implements Listener, CommandExecutor{
 			}
 			if(args[0].equalsIgnoreCase("admin") && args.length == 2 && args[1].equalsIgnoreCase("quarantine")) {
 				QuarantineCommand.list(sender);
+				return true;
+			}
+			if(args[0].equalsIgnoreCase("skins") && args.length == 2 && args[1].equalsIgnoreCase("reload")) {
+				// Player skins only: unlike /vf reload this never unloads spawned vehicles.
+				PlayerSkinLoader.Result result = VehicleFramework.getInstance().loadPlayerSkins();
+				sender.sendMessage(result.fileError
+						? "§cCould not read " + PlayerSkinLoader.FILE_NAME + "; kept the loaded player skins."
+						: "§aLoaded " + result.loaded + " player skin(s)" + (result.skipped > 0 ? ", skipped " + result.skipped + " (see log)" : "") + ".");
 				return true;
 			}
 			if(args[0].equalsIgnoreCase("reload") && args.length == 1) {

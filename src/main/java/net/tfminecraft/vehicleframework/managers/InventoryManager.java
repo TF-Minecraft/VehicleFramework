@@ -348,9 +348,11 @@ public class InventoryManager {
 		int x = 0;
 		String currentId = v.getSkinHandler().getCurrentSkin().getId();
 		for(VehicleSkin skin : v.getSkinHandler().getSkins().values()) {
-			if (!SkinHandler.isModelAvailable(skin) && !skin.getId().equalsIgnoreCase(currentId)) {
+			boolean current = skin.getId().equalsIgnoreCase(currentId);
+			if (!current && (!SkinHandler.isModelAvailable(skin) || !skin.mayUse(p))) {
 				continue;
 			}
+			if (x >= i.getSize()) break;
 			i.setItem(x, getSkinItem(skin, currentId, v.getIcon()));
 			x++;
 		}
