@@ -68,9 +68,13 @@ public class ScoreboardController {
 		shown.put(p.getUniqueId(), new Shown(title, scores, board, obj));
 	}
 
-	/** Whether the player still shows that sidebar: on its board, with nothing else put in its slot. */
+	/**
+	 * Whether the player still shows that sidebar: on its board, with nothing else put in its slot.
+	 * Compared with equals: the server hands out a new objective wrapper on every call.
+	 */
 	private static boolean showing(Player p, Shown last) {
-		return p.getScoreboard() == last.board() && last.board().getObjective(DisplaySlot.SIDEBAR) == last.objective();
+		return Objects.equals(p.getScoreboard(), last.board())
+				&& Objects.equals(last.board().getObjective(DisplaySlot.SIDEBAR), last.objective());
 	}
 
 	/** The sidebar's lines from the bottom up, without the divider above them. */

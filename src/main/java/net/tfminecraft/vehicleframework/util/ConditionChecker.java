@@ -23,9 +23,17 @@ public class ConditionChecker {
 		boolean test(ActiveVehicle vehicle);
 	}
 
-	private static final Condition FALSE = vehicle -> false;
+	/** Always false. Each instance is its own object, so the two markers below stay distinct. */
+	private static final class Never implements Condition {
+		@Override
+		public boolean test(ActiveVehicle vehicle) {
+			return false;
+		}
+	}
+
+	private static final Condition FALSE = new Never();
 	/** In an OR list, an entry without a type ends the list as false whatever came after it. */
-	private static final Condition END_FALSE = vehicle -> false;
+	private static final Condition END_FALSE = new Never();
 	private static final Set<String> BOOLEAN_TYPES = Set.of("lift", "passengers", "is_passenger", "has_fuel");
 
 	public static boolean checkConditions(ActiveVehicle vehicle, List<String> conditions) {

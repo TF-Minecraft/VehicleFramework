@@ -442,15 +442,17 @@ class VehicleControllersCoverageTest {
         when(viewer.getUniqueId()).thenReturn(UUID.randomUUID()); when(other.getUniqueId()).thenReturn(UUID.randomUUID());
         ScoreboardManager manager = mock(ScoreboardManager.class);
         keep(mockStatic(Bukkit.class)).when(Bukkit::getScoreboardManager).thenReturn(manager);
-        List<Scoreboard> boards = new ArrayList<>(); Map<Scoreboard, Objective> sidebars = new IdentityHashMap<>();
+        // Like CraftBukkit, every lookup hands out a new objective wrapper, equal to the others for the same objective.
+        List<Scoreboard> boards = new ArrayList<>(); Map<Scoreboard, Object> sidebars = new IdentityHashMap<>();
         when(manager.getNewScoreboard()).thenAnswer(call -> {
-            Objective objective = mock(Objective.class, RETURNS_DEEP_STUBS); Scoreboard[] board = new Scoreboard[1];
+            Object registered = new Object(); Scoreboard[] board = new Scoreboard[1];
             board[0] = mock(Scoreboard.class, invocation -> switch (invocation.getMethod().getName()) {
-                case "registerNewObjective" -> objective;
-                case "getObjective" -> invocation.getArgument(0) == DisplaySlot.SIDEBAR ? sidebars.get(board[0]) : null;
+                case "registerNewObjective" -> objectiveWrapper(registered);
+                case "getObjective" -> invocation.getArgument(0) == DisplaySlot.SIDEBAR && sidebars.get(board[0]) != null
+                        ? objectiveWrapper(sidebars.get(board[0])) : null;
                 default -> RETURNS_DEFAULTS.answer(invocation);
             });
-            sidebars.put(board[0], objective); boards.add(board[0]); return board[0]; });
+            sidebars.put(board[0], registered); boards.add(board[0]); return board[0]; });
         Scoreboard[] shown = new Scoreboard[1];
         doAnswer(call -> { shown[0] = call.getArgument(0); return null; }).when(viewer).setScoreboard(any());
         when(viewer.getScoreboard()).thenAnswer(call -> shown[0]);
@@ -463,11 +465,33 @@ class VehicleControllersCoverageTest {
         when(vehicle.getName()).thenReturn("Cart II"); controller.scoreboard(viewer); assertEquals(3, boards.size(), "the title changed");
         verify(boards.get(2)).registerNewObjective("vehicleDummy", Criteria.DUMMY, "Cart II");
         shown[0] = mock(Scoreboard.class); controller.scoreboard(viewer); assertEquals(4, boards.size(), "another plugin replaced the board");
-        sidebars.put(boards.get(3), mock(Objective.class));
+        controller.scoreboard(viewer); assertEquals(4, boards.size(), "a fresh but equal sidebar wrapper still counts as shown");
+        sidebars.put(boards.get(3), new Object());
         controller.scoreboard(viewer); assertEquals(5, boards.size(), "something else took the sidebar");
-        controller.removeScoreboard(viewer); controller.scoreboard(viewer); assertEquals(6, boards.size(), "boarding again");
-        controller.scoreboard(other); assertEquals(7, boards.size(), "each rider has a board of their own");
-        controller.scoreboard(viewer); assertEquals(7, boards.size());
+        sidebars.put(boards.get(4), null);
+        controller.scoreboard(viewer); assertEquals(6, boards.size(), "the sidebar slot was cleared");
+        controller.removeScoreboard(viewer); controller.scoreboard(viewer); assertEquals(7, boards.size(), "boarding again");
+        controller.scoreboard(other); assertEquals(8, boards.size(), "each rider has a board of their own");
+        controller.scoreboard(viewer); assertEquals(8, boards.size());
+    }
+
+    /** An objective wrapper as the server hands them out: a new object each time, equal by the objective it wraps. */
+    private static Objective objectiveWrapper(Object handle) {
+        return (Objective) java.lang.reflect.Proxy.newProxyInstance(Objective.class.getClassLoader(),
+                new Class<?>[] {Objective.class}, new ObjectiveHandle(handle));
+    }
+
+    private record ObjectiveHandle(Object handle) implements java.lang.reflect.InvocationHandler {
+        @Override public Object invoke(Object proxy, java.lang.reflect.Method method, Object[] args) {
+            return switch (method.getName()) {
+                case "equals" -> args[0] != null && java.lang.reflect.Proxy.isProxyClass(args[0].getClass())
+                        && java.lang.reflect.Proxy.getInvocationHandler(args[0]) instanceof ObjectiveHandle other && other.handle == handle;
+                case "hashCode" -> System.identityHashCode(handle);
+                case "toString" -> "objective";
+                case "getScore" -> mock(Score.class);
+                default -> null;
+            };
+        }
     }
 
     private static YamlConfiguration yaml() { return new YamlConfiguration(); }
