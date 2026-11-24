@@ -802,7 +802,7 @@ class VehicleManagerCoverageTest {
     void harnessSuffocationCreativePassengersAndVehicleDamageHaveSeparateRules() {
         Player player = player("Ryan"); ActiveVehicle v = vehicle("v"); register(v);
         EntityDamageEvent damage = mock(EntityDamageEvent.class); when(damage.getEntity()).thenReturn(player); when(damage.getCause()).thenReturn(DamageCause.SUFFOCATION);
-        when(v.isPassenger(player, SeatType.HARNESS)).thenReturn(true); manager.damagePassenger(damage); verify(damage).setCancelled(true);
+        seated(player); when(v.isPassenger(player, SeatType.HARNESS)).thenReturn(true); manager.damagePassenger(damage); verify(damage).setCancelled(true);
         VFEntityDamageEvent direct = new VFEntityDamageEvent(v.getEntity(), null, "FIRE", 12); manager.damageVehicle(direct); assertTrue(direct.isCancelled()); verify(v).damage("FIRE", 12);
         when(player.getGameMode()).thenReturn(GameMode.CREATIVE);
         VFEntityDamageEvent passenger = new VFEntityDamageEvent(player, null, "FIRE", 12); manager.damageVehicle(passenger); assertTrue(passenger.isCancelled());
@@ -832,7 +832,7 @@ class VehicleManagerCoverageTest {
     @Test
     void damageBridgePublishesCustomEventAndDamagesOnlyUncancelledLivingEntities() {
         Player player = player("Ryan"); ActiveVehicle v = vehicle("v"); register(v);
-        when(v.isPassenger(player, true)).thenReturn(true);
+        seated(player); when(v.isPassenger(player, true)).thenReturn(true);
         EntityDamageEvent event = mock(EntityDamageEvent.class); when(event.getEntity()).thenReturn(player); when(event.getCause()).thenReturn(DamageCause.FIRE); when(event.getDamage()).thenReturn(8d);
         Player igniter = player("Ann"); org.bukkit.damage.DamageSource source = mock(org.bukkit.damage.DamageSource.class);
         when(source.getCausingEntity()).thenReturn(igniter); when(event.getDamageSource()).thenReturn(source);
@@ -845,7 +845,7 @@ class VehicleManagerCoverageTest {
     @Test
     void redirectedDamageNamesTheHitterOrTheProjectileShooter() {
         Player player = player("Ryan"); ActiveVehicle v = vehicle("v"); register(v);
-        when(v.isPassenger(player, true)).thenReturn(true);
+        seated(player); when(v.isPassenger(player, true)).thenReturn(true);
         Player attacker = player("Ann");
         Arrow arrow = mock(Arrow.class); when(arrow.getShooter()).thenReturn(attacker);
         Arrow dispensed = mock(Arrow.class);
@@ -859,6 +859,30 @@ class VehicleManagerCoverageTest {
             damager.verify(() -> Damager.damage(player, 6), times(3));
         }
         assertEquals(List.of(attacker, attacker, dispensed), damagers);
+    }
+
+    /** Puts the entity in a seat, as mounting does; the vehicles' passenger answers are stubbed. */
+    private static void seated(Entity entity) {
+        new Seat(SeatType.PASSENGER, "seat").mount(entity);
+    }
+
+    @Test
+    void damageToAnEntityInNoSeatSkipsBothPassengerSearches() {
+        Player player = player("Ryan"); ActiveVehicle v = vehicle("v"); register(v);
+        // Stubbed answers that no real seat backs: no seat holds this entity, so neither search runs.
+        when(v.isPassenger(player, SeatType.HARNESS)).thenReturn(true); when(v.isPassenger(player, true)).thenReturn(true);
+        EntityDamageEvent damage = mock(EntityDamageEvent.class); when(damage.getEntity()).thenReturn(player); when(damage.getCause()).thenReturn(DamageCause.SUFFOCATION);
+        manager.damagePassenger(damage);
+        verify(v, never()).isPassenger(any(Entity.class), any(SeatType.class)); verify(v, never()).isPassenger(any(Entity.class), anyBoolean());
+        verify(damage, never()).setCancelled(anyBoolean()); verify(plugins, never()).callEvent(any(VFEntityDamageEvent.class));
+        // A vehicle's own entity holds no seat and still gets the damage bridge.
+        Entity chassis = v.getEntity();
+        EntityDamageEvent hull = mock(EntityDamageEvent.class); when(hull.getEntity()).thenReturn(chassis); when(hull.getCause()).thenReturn(DamageCause.FIRE);
+        when(hull.getDamageSource()).thenReturn(mock(org.bukkit.damage.DamageSource.class));
+        try (MockedStatic<Damager> damager = mockStatic(Damager.class)) { manager.damagePassenger(hull); }
+        verify(plugins).callEvent(any(VFEntityDamageEvent.class));
+        // Once seated, the harness rule applies as before.
+        seated(player); manager.damagePassenger(damage); verify(damage).setCancelled(true);
     }
 
     private EntityDamageByEntityEvent hitBy(Entity victim, Entity damager, DamageCause cause) {
@@ -1150,7 +1174,7 @@ class VehicleManagerCoverageTest {
     @Test
     void damageAdapterFailureIsReportedWithoutEscapingTheEventHandler() {
         ActiveVehicle v = vehicle("v"); Player player = player("Ryan"); register(v);
-        when(v.isPassenger(player, true)).thenReturn(true);
+        seated(player); when(v.isPassenger(player, true)).thenReturn(true);
         EntityDamageEvent event = mock(EntityDamageEvent.class); when(event.getEntity()).thenReturn(player);
         when(event.getCause()).thenReturn(DamageCause.FIRE); when(event.getDamage()).thenReturn(4d);
         when(event.getDamageSource()).thenReturn(mock(org.bukkit.damage.DamageSource.class));

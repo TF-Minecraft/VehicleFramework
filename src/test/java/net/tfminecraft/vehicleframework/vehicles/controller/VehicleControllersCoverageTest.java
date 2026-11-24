@@ -363,6 +363,137 @@ class VehicleControllersCoverageTest {
         when(board.getObjective("vehicleDummy")).thenReturn(objective); controller.removeScoreboard(viewer); verify(objective).unregister();
     }
 
+    @Test void floatScanStopsOnceTheWaterShareIsSettled() {
+        Water f = new Water(); when(f.entity.getBoundingBox()).thenReturn(new BoundingBox(0, 64, 0, 3.9, 66, 3.9));
+        FloatController controller = new FloatController();
+        // 4 x 4 columns over two layers: 32 samples, 35% of them is 11.2.
+        f.grid.fill = p -> Material.AIR;
+        assertFalse(controller.touchesWater(f.vehicle));
+        verify(f.grid.world, times(21)).getBlockAt(anyInt(), anyInt(), anyInt());
+        f.grid.fill = p -> p.y == 64 ? Material.WATER : Material.AIR; clearInvocations(f.grid.world);
+        assertTrue(controller.touchesWater(f.vehicle));
+        verify(f.grid.world, times(12)).getBlockAt(anyInt(), anyInt(), anyInt());
+        assertNull(FloatController.settledWaterShare(11, 1, 32)); assertEquals(Boolean.TRUE, FloatController.settledWaterShare(12, 0, 32));
+        assertEquals(Boolean.FALSE, FloatController.settledWaterShare(0, 11, 32)); assertNull(FloatController.settledWaterShare(0, 12, 32));
+    }
+
+    @Test void floatScanGivesTheFullCountsAnswerForAnyBoxAndWater() {
+        Random random = new Random(20261124);
+        for (int round = 0; round < 400; round++) {
+            Water f = new Water(); double x = random.nextDouble() * 2, z = random.nextDouble() * 2, y = 64 + random.nextDouble();
+            BoundingBox box = new BoundingBox(x, y, z, x + .2 + random.nextDouble() * 4, y + .3 + random.nextDouble() * 3, z + .2 + random.nextDouble() * 4);
+            when(f.entity.getBoundingBox()).thenReturn(box);
+            int salt = random.nextInt(), wet = random.nextInt(256);
+            f.grid.fill = p -> ((p.x * 73856093 ^ p.y * 19349663 ^ p.z * 83492791 ^ salt) & 0xff) < wet ? Material.WATER : Material.AIR;
+            assertEquals(fullFloatCount(f, box), new FloatController().touchesWater(f.vehicle), "round " + round);
+        }
+    }
+
+    /** The float check as it read every sample: deep water at the centre, or 35% of the box's two layers. */
+    private static boolean fullFloatCount(Water f, BoundingBox box) {
+        if (net.tfminecraft.vehicleframework.util.LocationChecker.hasDeepWaterAtCentre(f.location.getBlock())) return true;
+        int minY = (int) Math.floor(box.getMinY()), midY = (int) Math.floor((box.getMinY() + box.getMaxY()) / 2.0), water = 0, samples = 0;
+        for (int y : new int[] {minY, midY}) {
+            for (int x = (int) Math.floor(box.getMinX()); x <= (int) Math.floor(box.getMaxX()); x++) {
+                for (int z = (int) Math.floor(box.getMinZ()); z <= (int) Math.floor(box.getMaxZ()); z++) {
+                    samples++;
+                    if (net.tfminecraft.vehicleframework.util.LocationChecker.isLiquidOrWater(f.grid.block(x, y, z))) water++;
+                }
+            }
+        }
+        return samples > 0 && (double) water / samples >= .35;
+    }
+
+    @Test void aParkedAirshipSkipsItsBlockReadsForUnderASecondUnlessItMoves() {
+        Water f = new Water(); YamlConfiguration config = yaml(); config.createSection("floating"); config.createSection("flying"); config.createSection("ground");
+        StateHandler handler = new StateHandler(f.vehicle, new StateHandler(config));
+        when(f.vehicle.getStateHandler()).thenReturn(handler); when(f.vehicle.getCurrentState()).thenAnswer(c -> handler.getCurrentState());
+        when(f.vehicle.hasComponent(Component.ENGINE)).thenReturn(true); when(f.vehicle.hasComponent(Component.BALLOON)).thenReturn(true);
+        when(f.vehicle.getThrottle().getCurrent()).thenReturn(0); when(f.vehicle.getAccessPanel().getSpeed()).thenReturn(0d);
+        long[] tick = {0}; when(f.vehicle.getTicks()).thenAnswer(c -> tick[0]);
+        f.grid.fill = p -> p.y < 64 ? Material.STONE : Material.AIR;
+        handler.tick(); assertEquals(State.GROUND, handler.getCurrentState().getType());
+        VehicleMovementController ground = handler.getCurrentState().getMoveControls();
+        assertTrue(ground.isParked(), "its float scan found no water here");
+        // Water rises around it: a parked, empty, motionless airship may see that up to a second late.
+        f.grid.fill = p -> p.y <= 66 ? Material.WATER : Material.AIR;
+        for (tick[0] = 1; tick[0] < ParkedRest.RECHECK_TICKS; tick[0]++) {
+            clearInvocations(f.grid.world, f.entity);
+            handler.tick(); assertTrue(ground.isParked());
+            assertEquals(State.GROUND, handler.getCurrentState().getType());
+            verify(f.grid.world, never()).getBlockAt(anyInt(), anyInt(), anyInt()); verify(f.grid.world, never()).getBlockAt(any(Location.class));
+            verify(f.entity, never()).getBoundingBox();
+        }
+        handler.tick(); assertEquals(State.FLOATING, handler.getCurrentState().getType(), "seen a second after the last read");
+        // Back on dry ground the swap forgot the rest; settle again, then move it.
+        f.grid.fill = p -> p.y < 64 ? Material.STONE : Material.AIR;
+        handler.tick(); assertEquals(State.GROUND, handler.getCurrentState().getType()); assertFalse(ground.parkedRestHolds());
+        assertTrue(ground.isParked()); tick[0]++; assertTrue(ground.parkedRestHolds());
+        f.location.add(.5, 0, 0); clearInvocations(f.grid.world);
+        handler.tick(); verify(f.grid.world, atLeastOnce()).getBlockAt(anyInt(), anyInt(), anyInt());
+        assertTrue(ground.isParked()); tick[0]++; assertTrue(ground.parkedRestHolds());
+        handler.resetParkedRest(); assertFalse(ground.parkedRestHolds(), "damage: read again next tick");
+        clearInvocations(f.grid.world); handler.tick(); verify(f.grid.world, atLeastOnce()).getBlockAt(anyInt(), anyInt(), anyInt());
+    }
+
+    @Test void scoreboardIsOnlyBuiltAndSentAgainWhenItsTextChangesOrThePlayerStopsShowingIt() {
+        ActiveVehicle vehicle = mock(ActiveVehicle.class, RETURNS_DEEP_STUBS); Player viewer = mock(Player.class), other = mock(Player.class);
+        when(vehicle.getName()).thenReturn("Cart"); when(vehicle.getId()).thenReturn("cart"); when(vehicle.getComponents()).thenReturn(List.of());
+        when(viewer.getUniqueId()).thenReturn(UUID.randomUUID()); when(other.getUniqueId()).thenReturn(UUID.randomUUID());
+        ScoreboardManager manager = mock(ScoreboardManager.class);
+        keep(mockStatic(Bukkit.class)).when(Bukkit::getScoreboardManager).thenReturn(manager);
+        // Like CraftBukkit, every lookup hands out a new objective wrapper, equal to the others for the same objective.
+        List<Scoreboard> boards = new ArrayList<>(); Map<Scoreboard, Object> sidebars = new IdentityHashMap<>();
+        when(manager.getNewScoreboard()).thenAnswer(call -> {
+            Object registered = new Object(); Scoreboard[] board = new Scoreboard[1];
+            board[0] = mock(Scoreboard.class, invocation -> switch (invocation.getMethod().getName()) {
+                case "registerNewObjective" -> objectiveWrapper(registered);
+                case "getObjective" -> invocation.getArgument(0) == DisplaySlot.SIDEBAR && sidebars.get(board[0]) != null
+                        ? objectiveWrapper(sidebars.get(board[0])) : null;
+                default -> RETURNS_DEFAULTS.answer(invocation);
+            });
+            sidebars.put(board[0], registered); boards.add(board[0]); return board[0]; });
+        Scoreboard[] shown = new Scoreboard[1];
+        doAnswer(call -> { shown[0] = call.getArgument(0); return null; }).when(viewer).setScoreboard(any());
+        when(viewer.getScoreboard()).thenAnswer(call -> shown[0]);
+        ScoreboardController controller = new ScoreboardController(vehicle);
+        controller.scoreboard(viewer); assertEquals(1, boards.size()); assertSame(boards.get(0), shown[0]);
+        controller.scoreboard(viewer); controller.scoreboard(viewer);
+        assertEquals(1, boards.size(), "same text on the board the player shows"); verify(viewer, times(1)).setScoreboard(any());
+        when(vehicle.getId()).thenReturn("cart_two"); controller.scoreboard(viewer); assertEquals(2, boards.size(), "a line changed");
+        controller.scoreboard(viewer); assertEquals(2, boards.size());
+        when(vehicle.getName()).thenReturn("Cart II"); controller.scoreboard(viewer); assertEquals(3, boards.size(), "the title changed");
+        verify(boards.get(2)).registerNewObjective("vehicleDummy", Criteria.DUMMY, "Cart II");
+        shown[0] = mock(Scoreboard.class); controller.scoreboard(viewer); assertEquals(4, boards.size(), "another plugin replaced the board");
+        controller.scoreboard(viewer); assertEquals(4, boards.size(), "a fresh but equal sidebar wrapper still counts as shown");
+        sidebars.put(boards.get(3), new Object());
+        controller.scoreboard(viewer); assertEquals(5, boards.size(), "something else took the sidebar");
+        sidebars.put(boards.get(4), null);
+        controller.scoreboard(viewer); assertEquals(6, boards.size(), "the sidebar slot was cleared");
+        controller.removeScoreboard(viewer); controller.scoreboard(viewer); assertEquals(7, boards.size(), "boarding again");
+        controller.scoreboard(other); assertEquals(8, boards.size(), "each rider has a board of their own");
+        controller.scoreboard(viewer); assertEquals(8, boards.size());
+    }
+
+    /** An objective wrapper as the server hands them out: a new object each time, equal by the objective it wraps. */
+    private static Objective objectiveWrapper(Object handle) {
+        return (Objective) java.lang.reflect.Proxy.newProxyInstance(Objective.class.getClassLoader(),
+                new Class<?>[] {Objective.class}, new ObjectiveHandle(handle));
+    }
+
+    private record ObjectiveHandle(Object handle) implements java.lang.reflect.InvocationHandler {
+        @Override public Object invoke(Object proxy, java.lang.reflect.Method method, Object[] args) {
+            return switch (method.getName()) {
+                case "equals" -> args[0] != null && java.lang.reflect.Proxy.isProxyClass(args[0].getClass())
+                        && java.lang.reflect.Proxy.getInvocationHandler(args[0]) instanceof ObjectiveHandle other && other.handle == handle;
+                case "hashCode" -> System.identityHashCode(handle);
+                case "toString" -> "objective";
+                case "getScore" -> mock(Score.class);
+                default -> null;
+            };
+        }
+    }
+
     private static YamlConfiguration yaml() { return new YamlConfiguration(); }
     private record Cell(int x, int y, int z) {}
     private static final class Grid {

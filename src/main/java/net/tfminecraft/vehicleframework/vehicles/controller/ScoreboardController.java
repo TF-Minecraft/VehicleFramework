@@ -2,7 +2,11 @@ package net.tfminecraft.vehicleframework.vehicles.controller;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -33,12 +37,48 @@ public class ScoreboardController {
 		vehicle = v;
 	}
 	
+	/**
+	 * The sidebar last sent to each rider: its title, its lines and the board they are on. Riders'
+	 * keys call {@link #scoreboard} every tick, so a board is only built and sent again when its
+	 * text changed or the player no longer shows it.
+	 */
+	private final Map<UUID, Shown> shown = new HashMap<>();
+
+	private record Shown(String title, List<String> lines, Scoreboard board, Objective objective) {}
+
 	@SuppressWarnings("deprecation")
 	public void scoreboard(Player p) {
+		String title = vehicle.getName();
+		List<String> scores = lines(p);
+		Shown last = shown.get(p.getUniqueId());
+		if (last != null && Objects.equals(last.title(), title) && last.lines().equals(scores) && showing(p, last)) return;
 		ScoreboardManager manager = Bukkit.getScoreboardManager();
 		Scoreboard board = manager.getNewScoreboard();
-		Objective obj = board.registerNewObjective("vehicleDummy", Criteria.DUMMY, vehicle.getName());
+		Objective obj = board.registerNewObjective("vehicleDummy", Criteria.DUMMY, title);
 		obj.setDisplaySlot(DisplaySlot.SIDEBAR);
+		int i = 0;
+		for(String score : scores) {
+			Score s = obj.getScore(score);
+			s.setScore(i);
+			i++;
+		}
+		Score scoreDivider = obj.getScore(ChatColor.RED + "=-=-=-=-=-=-=-=-=-=-=");
+		scoreDivider.setScore(i);
+		p.setScoreboard(board);
+		shown.put(p.getUniqueId(), new Shown(title, scores, board, obj));
+	}
+
+	/**
+	 * Whether the player still shows that sidebar: on its board, with nothing else put in its slot.
+	 * Compared with equals: the server hands out a new objective wrapper on every call.
+	 */
+	private static boolean showing(Player p, Shown last) {
+		return Objects.equals(p.getScoreboard(), last.board())
+				&& Objects.equals(last.board().getObjective(DisplaySlot.SIDEBAR), last.objective());
+	}
+
+	/** The sidebar's lines from the bottom up, without the divider above them. */
+	private List<String> lines(Player p) {
 		List<String> scores = new ArrayList<>();
 		scores.add("§fType: §e"+Text.capitalize(new String(vehicle.getId()).replace("_", " ")));
 		int i = 0;
@@ -88,18 +128,11 @@ public class ScoreboardController {
 			}
 		}
 		Collections.reverse(scores);
-		i = 0;
-		for(String score : scores) {
-			Score s = obj.getScore(score);
-			s.setScore(i);
-			i++;
-		}
-		Score scoreDivider = obj.getScore(ChatColor.RED + "=-=-=-=-=-=-=-=-=-=-=");
-		scoreDivider.setScore(i);
-		p.setScoreboard(board);
+		return scores;
 	}
 	
 	public void removeScoreboard(Player p) {
+		shown.remove(p.getUniqueId());
 		Scoreboard board = p.getScoreboard();
 		Objective obj = board.getObjective("vehicleDummy");
 		if(obj != null) obj.unregister();

@@ -1,8 +1,11 @@
 package net.tfminecraft.vehicleframework.vehicles.seat;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -13,6 +16,14 @@ import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.weapons.ActiveWeapon;
 
 public class Seat {
+	/**
+	 * How many seats each entity holds, in every vehicle. Damage events ask whether the damaged
+	 * entity rides anything, and almost none do; an entity missing here holds no seat. A seat whose
+	 * vehicle is dropped without dismounting it (a removed vehicle leaves its harness seats as they
+	 * are) only leaves its entry behind, which costs the full search and never a wrong answer. The
+	 * keys are weak, so such an entry goes once nothing else holds the entity.
+	 */
+	private static final Map<Entity, Integer> SEATED = Collections.synchronizedMap(new WeakHashMap<>());
 	private HashMap<Player, Long> cooldown = new HashMap<>();
 	//Set when vehicle is active
 	private Entity e;
@@ -66,9 +77,15 @@ public class Seat {
 		v.setParent(parent);
 	}
 	
+	/** Whether any seat holds this entity; false means no vehicle has it as a passenger. */
+	public static boolean isSeatedAnywhere(Entity entity) {
+		return entity != null && SEATED.containsKey(entity);
+	}
+
 	public void mount(Entity entity) {
 		if(e != null) return;
 		e = entity;
+		if (entity != null) SEATED.merge(entity, 1, Integer::sum);
 		if(hasWeapon() && e instanceof Player) {
 			Player p = (Player) e;
 			currentWeapon = 0;
@@ -77,6 +94,7 @@ public class Seat {
 	}
 	
 	public void dismount() {
+		if (e != null) SEATED.computeIfPresent(e, (entity, seats) -> seats == 1 ? null : seats - 1);
 		e = null;
 		if(hasWeapon()) {
 			getWeapon().disconnect();

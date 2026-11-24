@@ -512,6 +512,112 @@ class VehicleMovementControllerCoverageTest {
         assertTrue(controller.isParked());
     }
 
+    /** An airship (engine and balloon, floating) parked on the ground, whose float scan finds no water. */
+    private FloatController airship() {
+        component(Component.ENGINE, Engine.class);
+        Balloon balloon = component(Component.BALLOON, Balloon.class);
+        when(balloon.getLift()).thenReturn(.25);
+        when(balloon.getDelta()).thenReturn(.12);
+        when(vehicle.shouldFloat()).thenReturn(true);
+        park();
+        FloatController floats = this.floats.constructed().getFirst();
+        // Without water the float step hands the velocity back as it is.
+        doAnswer(call -> call.getArgument(1)).when(floats).calculateFloat(any(), any());
+        return floats;
+    }
+
+    @Test
+    void parkedAirshipOnDryGroundGetsTheFullStepsBalloonClimbAndScansOnce() {
+        FloatController floats = airship();
+        Vector full = fullStep();
+        assertEquals(new Vector(0, .12, 0), full);
+        verify(floats).calculateFloat(eq(vehicle), any());
+        clearInvocations(floats);
+        assertEquals(full, parkedStep());
+        // isParked scanned once; the step itself reused that scan and never ran the float step.
+        verify(floats, times(1)).touchesWater(vehicle);
+        verify(floats, never()).calculateFloat(any(), any());
+        Balloon balloon = (Balloon) vehicle.getComponent(Component.BALLOON);
+        when(balloon.getLift()).thenReturn(-.3);
+        assertEquals(fullStep(), parkedStep());
+        assertEquals(-.3, velocity.getY());
+    }
+
+    @Test
+    void parkedAirshipTouchingWaterOrWithoutABalloonKeepsTheFullStep() {
+        FloatController floats = airship();
+        when(floats.touchesWater(vehicle)).thenReturn(true);
+        assertFalse(controller.isParked());
+        assertFalse(controller.parkedRestHolds());
+        controller.input(player, Input.MOVE);
+        verify(floats).calculateFloat(eq(vehicle), any());
+        when(floats.touchesWater(vehicle)).thenReturn(false);
+        wakes(() -> when(vehicle.hasComponent(Component.BALLOON)).thenReturn(false),
+                () -> when(vehicle.hasComponent(Component.BALLOON)).thenReturn(true));
+        wakes(() -> when(vehicle.hasParent()).thenReturn(true), () -> when(vehicle.hasParent()).thenReturn(false));
+        wakes(() -> when(state.isBreakState()).thenReturn(true), () -> when(state.isBreakState()).thenReturn(false));
+    }
+
+    @Test
+    void parkedAirshipReusesItsScanForUnderASecondWhileNothingChanges() {
+        FloatController floats = airship();
+        assertFalse(controller.parkedRestHolds(), "nothing scanned yet");
+        assertTrue(controller.isParked());
+        verify(floats, times(1)).touchesWater(vehicle);
+        for (long tick = 1; tick < ParkedRest.RECHECK_TICKS; tick++) {
+            when(vehicle.getTicks()).thenReturn(tick);
+            assertTrue(controller.parkedRestHolds());
+            assertTrue(controller.isParked());
+        }
+        verify(floats, times(1)).touchesWater(vehicle);
+        when(vehicle.getTicks()).thenReturn((long) ParkedRest.RECHECK_TICKS);
+        assertFalse(controller.parkedRestHolds(), "a second on, everything is read again");
+        assertTrue(controller.isParked());
+        verify(floats, times(2)).touchesWater(vehicle);
+        assertTrue(controller.parkedRestHolds());
+        location.add(0, -.01, 0);
+        assertFalse(controller.parkedRestHolds(), "it moved");
+        assertTrue(controller.isParked());
+        verify(floats, times(3)).touchesWater(vehicle);
+        controller.resetParkedRest();
+        assertFalse(controller.parkedRestHolds(), "damaged");
+        assertTrue(controller.isParked());
+        controller.resetTerrainRest();
+        assertFalse(controller.parkedRestHolds(), "towed or swapped state");
+        assertTrue(controller.isParked());
+        verify(floats, times(5)).touchesWater(vehicle);
+    }
+
+    @Test
+    void anyoneBoardingThrottleTowOrFireMakesTheAirshipReadEverythingAgain() {
+        FloatController floats = airship();
+        rescans(floats, () -> when(vehicle.getSeatHandler().hasPassengers()).thenReturn(true),
+                () -> when(vehicle.getSeatHandler().hasPassengers()).thenReturn(false));
+        var throttle = vehicle.getThrottle();
+        rescans(floats, () -> when(throttle.getCurrent()).thenReturn(5), () -> when(throttle.getCurrent()).thenReturn(0));
+        rescans(floats, () -> when(vehicle.getAccessPanel().getSpeed()).thenReturn(.05),
+                () -> when(vehicle.getAccessPanel().getSpeed()).thenReturn(0d));
+        when(vehicle.hasTowHandler()).thenReturn(true);
+        rescans(floats, () -> when(vehicle.getTowHandler().isOccupied()).thenReturn(true),
+                () -> when(vehicle.getTowHandler().isOccupied()).thenReturn(false));
+        rescans(floats, () -> when(vehicle.isOnFire()).thenReturn(true), () -> when(vehicle.isOnFire()).thenReturn(false));
+        rescans(floats, () -> when(state.getType()).thenReturn(State.FLYING), () -> when(state.getType()).thenReturn(State.GROUND));
+    }
+
+    /** While the change lasts nothing is reused; after it, the first parked tick scans again. */
+    private void rescans(FloatController floats, Runnable change, Runnable undo) {
+        assertTrue(controller.isParked());
+        assertTrue(controller.parkedRestHolds());
+        change.run();
+        assertFalse(controller.parkedRestHolds());
+        assertFalse(controller.isParked());
+        undo.run();
+        assertFalse(controller.parkedRestHolds());
+        clearInvocations(floats);
+        assertTrue(controller.isParked());
+        verify(floats).touchesWater(vehicle);
+    }
+
     @Test
     void matureTrainUsesSplineTickWhileFreshTrainUsesSpawnVelocity() {
         when(vehicle.isTrain()).thenReturn(true);

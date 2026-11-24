@@ -1,6 +1,7 @@
 package net.tfminecraft.vehicleframework.vehicles.handlers;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
@@ -27,6 +28,8 @@ import net.tfminecraft.vehicleframework.vehicles.component.Wings;
 public class ComponentHandler {
 
 	private List<VehicleComponent> components = new ArrayList<>();
+	/** The types in {@link #components}, which only the constructors fill; asked many times a tick. */
+	private final EnumSet<Component> types = EnumSet.noneOf(Component.class);
 	
 	public ComponentHandler(ConfigurationSection config) {
 		Set<String> set = config.getKeys(false);
@@ -66,6 +69,7 @@ public class ComponentHandler {
 			}
 		}
 		linkPump();
+		for(VehicleComponent c : components) types.add(c.getType());
 	}
 
 	/** Gives a sinkable hull the vehicle's pump, which keeps water out of it. */
@@ -152,6 +156,7 @@ public class ComponentHandler {
 			}
 		}
 		linkPump();
+		for(VehicleComponent c : components) types.add(c.getType());
 	}
 	
 	public void damage(String cause, double a) {
@@ -161,10 +166,7 @@ public class ComponentHandler {
 	}
 	
 	public boolean hasComponent(Component c) {
-		for(VehicleComponent component : components) {
-			if(component.getType().equals(c)) return true;
-		}
-		return false;
+		return types.contains(c);
 	}
 	
 	public List<VehicleComponent> getComponents(){

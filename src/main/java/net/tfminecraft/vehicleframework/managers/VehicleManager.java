@@ -852,14 +852,18 @@ public class VehicleManager implements Listener{
 			}
 		}
 		if(damagedEntities.contains(entity)) return;
-		for (Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
-        	ActiveVehicle v = entry.getValue();
-            if(v.isPassenger(entity, SeatType.HARNESS)) {
-            	if(e.getCause().equals(DamageCause.SUFFOCATION)) e.setCancelled(true);
-            	return;
-            }
-        }
-		if(!(vehicles.containsKey(entity) || getByPassenger(entity) != null)) return;
+		// Both searches below look for the entity in a seat; most damaged entities hold none.
+		boolean seated = Seat.isSeatedAnywhere(entity);
+		if (seated) {
+			for (Map.Entry<Entity, ActiveVehicle> entry : vehicles.entrySet()) {
+	        	ActiveVehicle v = entry.getValue();
+	            if(v.isPassenger(entity, SeatType.HARNESS)) {
+	            	if(e.getCause().equals(DamageCause.SUFFOCATION)) e.setCancelled(true);
+	            	return;
+	            }
+	        }
+		}
+		if(!(vehicles.containsKey(entity) || (seated && getByPassenger(entity) != null))) return;
 		VFEntityDamageEvent event = new VFEntityDamageEvent(e.getEntity(), attackerOf(e), e.getCause().toString(), e.getDamage());
         Bukkit.getPluginManager().callEvent(event);
         if (!event.isCancelled()) {

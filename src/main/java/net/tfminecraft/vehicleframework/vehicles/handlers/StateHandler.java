@@ -98,7 +98,16 @@ public class StateHandler {
 	// Tick
 	public void tick() {
 	    if (state != null) state.getMoveControls().setAnimation();
-	    
+	    // A parked floating vehicle that has not moved since a full read found it on dry ground,
+	    // under a second ago, stays on the ground without reading again.
+	    if (state == null || !state.getMoveControls().parkedRestHolds()) swapByBlocks();
+
+	    if (state != null && state.isBreakState()) {
+	    	vehicle.applyBreakBraking();
+	    }
+	}
+
+	private void swapByBlocks() {
 	    Entity e = vehicle.getEntity();
 	    BoundingBox box = e.getBoundingBox();
 
@@ -126,10 +135,6 @@ public class StateHandler {
 	        swapState(State.FLYING, "air");
 	    } else {
 	        swapState(State.GROUND, "ground");
-	    }
-
-	    if (state != null && state.isBreakState()) {
-	    	vehicle.applyBreakBraking();
 	    }
 	}
 
@@ -188,6 +193,13 @@ public class StateHandler {
 		// A rest settled in the state it leaves, or in the one it returns to, is about other ground.
 		resetTerrainRest();
 		setState(s);
+	}
+
+	/** A parked floating vehicle reads the blocks under it again next tick; see {@link VehicleMovementController#parkedRestHolds}. */
+	public void resetParkedRest() {
+		for (VehicleState each : states.values()) {
+			each.getMoveControls().resetParkedRest();
+		}
 	}
 
 	/** Every state's ground step runs each tick again; see {@link VehicleMovementController#resetTerrainRest}. */

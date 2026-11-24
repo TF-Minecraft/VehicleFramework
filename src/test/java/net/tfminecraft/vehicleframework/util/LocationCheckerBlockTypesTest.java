@@ -1,12 +1,15 @@
 package net.tfminecraft.vehicleframework.util;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.atMost;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
@@ -63,6 +66,24 @@ class LocationCheckerBlockTypesTest {
 		assertFalse(LocationChecker.isLiquidOrWater(unknown));
 		assertFalse(LocationChecker.isWaterBlock(unknown));
 		verify(unknown, times(2)).getBlockData();
+	}
+
+	@Test
+	void inAirReadsTheBlockOnceWithTheSameAnswers() {
+		for (Material type : new Material[] {Material.AIR, Material.LIGHT, Material.WATER, Material.KELP, Material.SHORT_GRASS, Material.STONE}) {
+			for (boolean passable : new boolean[] {true, false}) {
+				Block block = block(type, mock(BlockData.class), false);
+				when(block.isPassable()).thenReturn(passable);
+				Location at = mock(Location.class);
+				when(at.getBlock()).thenReturn(block);
+				// The old reading: air or light, else passable and not one of the water types.
+				boolean water = type == Material.WATER || type == Material.KELP;
+				boolean expected = type == Material.AIR || type == Material.LIGHT || (passable && !water);
+				assertEquals(expected, LocationChecker.isInAir(at), type + " passable=" + passable);
+				verify(at, times(1)).getBlock();
+				verify(block, atMost(1)).getType();
+			}
+		}
 	}
 
 	private static Block block(Material type, BlockData data, boolean liquid) {

@@ -49,6 +49,8 @@ public class VehicleMovementController implements MovementInterface{
 	protected RotateController rotateController = new RotateController();
 	/** When this state's ground step may be left out for a vehicle standing idle. */
 	private final TerrainRest terrainRest = new TerrainRest();
+	/** When a parked floating vehicle may skip its water and state reads. */
+	private final ParkedRest parkedRest = new ParkedRest();
 	
 	
 	
@@ -262,11 +264,51 @@ public class VehicleMovementController implements MovementInterface{
 	 * throttle, a state change (water, open air) or a tow brings back the full step that tick.
 	 * A state that follows the terrain is never parked, because its step does read the blocks
 	 * under it; {@link TerrainRest} thins that step out instead once the vehicle has settled.
+	 * <p>
+	 * A floating vehicle with a balloon (the airships) parks too while its float scan finds no
+	 * water: the balloon then sets the vertical speed as in {@link #moveParked}, and the scan
+	 * changes nothing. That scan, and the state checks, are reused for up to a second while it
+	 * stands still; see {@link ParkedRest}.
 	 */
 	boolean isParked() {
 		// The terrain rule first: a terrain vehicle is never parked, and its idle check runs once,
 		// in the ground step.
-		return !followsTerrain() && standsIdle();
+		if (followsTerrain() || !standsIdle(true)) {
+			parkedRest.reset();
+			return false;
+		}
+		return !v.shouldFloat() || restsDry();
+	}
+
+	/** For a floating vehicle: no water touches it, by a scan taken where it still stands, under a second ago. */
+	private boolean restsDry() {
+		Location here = v.getEntity().getLocation();
+		long now = v.getTicks();
+		if (parkedRest.holds(here, now)) {
+			return true;
+		}
+		if (floatController.touchesWater(v)) {
+			parkedRest.reset();
+			return false;
+		}
+		parkedRest.settle(here, now);
+		return true;
+	}
+
+	/**
+	 * Whether this tick may keep a parked floating vehicle on the ground without reading the blocks
+	 * under it: it still stands idle exactly where a full read found it dry, under a second ago.
+	 * Asked by {@link net.tfminecraft.vehicleframework.vehicles.handlers.StateHandler#tick} before
+	 * this tick's step, which then gets the same answer.
+	 */
+	public boolean parkedRestHolds() {
+		return parkedRest.isSettled() && v.shouldFloat() && !followsTerrain() && standsIdle(true)
+				&& parkedRest.holds(v.getEntity().getLocation(), v.getTicks());
+	}
+
+	/** Makes the next tick read the blocks under a parked floating vehicle again. */
+	public void resetParkedRest() {
+		parkedRest.reset();
 	}
 
 	/**
@@ -274,10 +316,11 @@ public class VehicleMovementController implements MovementInterface{
 	 * has settled anew. For whatever changes the vehicle without going through that step: its
 	 * state swapped (the rest belongs to the ground it stood on in this state), or its bone reset
 	 * (the step's tilt smoothing has to bring it back, and a resting vehicle only steps once a
-	 * second).
+	 * second). A parked floating vehicle's rest is forgotten too.
 	 */
 	public void resetTerrainRest() {
 		terrainRest.reset();
+		parkedRest.reset();
 	}
 
 	/** For tests: this controller's rest. */
@@ -296,11 +339,23 @@ public class VehicleMovementController implements MovementInterface{
 
 	/** {@link #isParked} without the terrain rule: nothing aboard, driving, towing or burning. */
 	private boolean standsIdle() {
+		return standsIdle(false);
+	}
+
+	/**
+	 * {@link #standsIdle()}, and with {@code allowFloat} also a floating vehicle with a balloon. Its
+	 * float scan is left to the caller; a child vehicle or a break state never reaches the parked step.
+	 */
+	private boolean standsIdle(boolean allowFloat) {
 		// The full step reads the vehicle's current state, which is this controller's.
 		if (v.getCurrentState() != state || state.getType() != State.GROUND) {
 			return false;
 		}
-		if (v.isTrain() || v.isDestroyed() || v.shouldFloat()) {
+		if (v.isTrain() || v.isDestroyed()) {
+			return false;
+		}
+		if (v.shouldFloat() && !(allowFloat && v.hasComponent(Component.BALLOON)
+				&& !v.hasParent() && !state.isBreakState())) {
 			return false;
 		}
 		if (v.hasComponent(Component.HARNESS)
