@@ -151,6 +151,9 @@ public class ActiveVehicle {
 	protected List<String> entitySeatWhitelist = new ArrayList<>();
 	
 	protected List<Player> nearby = new ArrayList<>();
+
+	/** Ticks this vehicle has run, for checks reused over a few ticks. */
+	private long ticks;
 	
 	public ActiveVehicle(Vehicle stored, Entity e, ActiveModel m, VehicleManager manager, IncompleteVehicle i) {
 		spawnTime = System.currentTimeMillis();
@@ -590,6 +593,7 @@ public class ActiveVehicle {
 	}
 	
 	public void tick() {
+		ticks++;
 		behaviourHandler.tick(this);
 		edgePaused = pausedAtLoadedEdge();
 		if (!edgePaused) stateHandler.tick();
@@ -666,6 +670,11 @@ public class ActiveVehicle {
 		return edgePaused;
 	}
 
+	/** How many times {@link #tick} has run. */
+	public long getTicks() {
+		return ticks;
+	}
+
 	public void updateNearby() {
 		nearby.clear();
 		for(Player p : Bukkit.getOnlinePlayers()) {
@@ -690,6 +699,7 @@ public class ActiveVehicle {
 	//Damage
 	public void damage(String cause, double a) {
 		if(cause.equalsIgnoreCase("suffocation")) return;
+		stateHandler.resetParkedRest();
 		weaponHandler.damage(cause, a);
 		componentHandler.damage(cause, a);
 		updateBoard();

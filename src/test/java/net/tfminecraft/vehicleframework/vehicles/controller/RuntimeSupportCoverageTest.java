@@ -8,6 +8,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.logging.*;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
@@ -72,6 +73,18 @@ class RuntimeSupportCoverageTest {
         assertEquals(List.of(front, rear), panel.getRotators()); assertSame(rear, panel.getRotator("REAR")); assertNull(panel.getRotator("missing"));
         panel.setTurnRate(3); assertEquals(0, panel.getTurnRate()); panel.setSpeed(.4); assertEquals(.4, panel.getSpeed()); assertEquals(3, panel.getTurnRate());
         panel.setReverse(true); assertTrue(panel.isReverse()); panel.setSpeed(0); assertEquals(0, panel.getTurnRate());
+    }
+
+    @Test void seatedAnywhereFollowsEverySeatAnEntityHoldsUntilItLeavesTheLast() {
+        Entity rider = mock(Entity.class), other = mock(Entity.class);
+        Seat bench = new Seat(SeatType.PASSENGER, "bench"), harness = new Seat(SeatType.HARNESS, "harness");
+        assertFalse(Seat.isSeatedAnywhere(rider)); assertFalse(Seat.isSeatedAnywhere(null));
+        bench.mount((Entity) null); assertFalse(bench.isOccupied()); bench.dismount();
+        bench.mount(rider); harness.mount(rider); assertTrue(Seat.isSeatedAnywhere(rider));
+        bench.mount(other); assertFalse(Seat.isSeatedAnywhere(other), "an occupied seat takes nobody else");
+        bench.dismount(); assertTrue(Seat.isSeatedAnywhere(rider), "still in the harness seat");
+        bench.dismount(); assertTrue(Seat.isSeatedAnywhere(rider), "an empty seat changes nothing");
+        harness.dismount(); assertFalse(Seat.isSeatedAnywhere(rider));
     }
 
     @Test void weaponRoutingConnectsMatchingSeatsAndOnlyDispatchesTheCurrentPlayersInputs() {

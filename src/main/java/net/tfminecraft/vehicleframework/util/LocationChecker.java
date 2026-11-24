@@ -117,8 +117,9 @@ public class LocationChecker {
 	}
 	
 	public static boolean isInAir(Location loc) {
-		if(air.contains(loc.getBlock().getType()) || (loc.getBlock().isPassable() && !water.contains(loc.getBlock().getType()))) return true;
-		return false;
+		Block block = loc.getBlock();
+		Material type = block.getType();
+		return air.contains(type) || (block.isPassable() && !water.contains(type));
 	}
 	
 	public static boolean isOnGround(Location loc) {

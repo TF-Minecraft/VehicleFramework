@@ -18,6 +18,8 @@ public class RotationTarget {
 	private BoneRotator rotator;
 	private String rotatorOverride;
 	private List<String> conditions = new ArrayList<>();
+	/** {@link #conditions} parsed once (at load, or on first use) and shared by copies; they are tested every tick. */
+	private ConditionChecker.Condition parsedConditions;
 	private float yaw;
 	private float pitch;
 	private float roll;
@@ -33,6 +35,7 @@ public class RotationTarget {
 	public RotationTarget(ConfigurationSection config) {
 		rotatorOverride = config.getString("rotator", "none");
 		conditions = config.getStringList("conditions");
+		parsedConditions = ConditionChecker.compile(conditions);
 		yaw = (float) config.getDouble("yaw", 0);
 		if(config.contains("yaw")) shouldYaw = true;
 		pitch = (float) config.getDouble("pitch", 0);
@@ -55,6 +58,7 @@ public class RotationTarget {
 			if(override != null) this.rotator = override;
 		}
 		conditions = another.getConditions();
+		parsedConditions = another.parsedConditions;
 		yaw = another.getYaw();
 		pitch = another.getPitch();
 		roll = another.getRoll();
@@ -68,7 +72,8 @@ public class RotationTarget {
 	}
 	
 	private boolean checkConditions(ActiveVehicle vehicle) {
-		return ConditionChecker.checkConditions(vehicle, conditions);
+		if (parsedConditions == null) parsedConditions = ConditionChecker.compile(conditions);
+		return parsedConditions.test(vehicle);
 	}
 	
 	//Every tick

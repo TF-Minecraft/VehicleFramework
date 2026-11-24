@@ -193,6 +193,11 @@ public class FloatController {
 		return type == Material.AIR || type == Material.CAVE_AIR || type == Material.VOID_AIR;
 	}
 
+	/** Whether the float step would act on this vehicle: it floats and enough water touches it. */
+	boolean touchesWater(ActiveVehicle v) {
+		return checkFloat(v);
+	}
+
 	private boolean checkFloat(ActiveVehicle v) {
 		if (!v.shouldFloat()) {
 			return false;
@@ -220,6 +225,11 @@ public class FloatController {
 		// A box under two blocks tall samples one layer twice; count it twice without reading it again.
 		int layers = midY == minY ? 1 : 2;
 		int weight = 3 - layers;
+		// Every column is sampled twice in all, so the total is known before reading a block.
+		int total = 2 * Math.max(0, maxX - minX + 1) * Math.max(0, maxZ - minZ + 1);
+		// The last sample always settles the share; a box without samples has none.
+		Boolean settled = null;
+		scan:
 		for (int layer = 0; layer < layers; layer++) {
 			int y = layer == 0 ? minY : midY;
 			for (int x = minX; x <= maxX; x++) {
@@ -228,11 +238,23 @@ public class FloatController {
 					if (isWaterBlock(world.getBlockAt(x, y, z))) {
 						waterCount += weight;
 					}
+					// The share only grows as water is found, so stop once the rest cannot change the answer.
+					settled = settledWaterShare(waterCount, total - sampleCount, total);
+					if (settled != null) break scan;
 				}
 			}
 		}
+		return Boolean.TRUE.equals(settled);
+	}
 
-		return sampleCount > 0 && ((double) waterCount / sampleCount) >= 0.35;
+	/**
+	 * Whether the water share of the box is decided with {@code unread} samples still to come: true
+	 * when it already reaches 35%, false when it cannot even if all the rest were water, else null.
+	 */
+	static Boolean settledWaterShare(int water, int unread, int total) {
+		if ((double) water / total >= 0.35) return Boolean.TRUE;
+		if ((double) (water + unread) / total < 0.35) return Boolean.FALSE;
+		return null;
 	}
 
 	private boolean isWaterBlock(Block block) {

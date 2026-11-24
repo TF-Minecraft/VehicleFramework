@@ -1,86 +1,134 @@
 package net.tfminecraft.vehicleframework.util;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
-import net.tfminecraft.vehicleframework.VehicleFramework;
 import net.tfminecraft.vehicleframework.enums.Component;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.component.Engine;
 import net.tfminecraft.vehicleframework.vehicles.component.Wings;
 import net.tfminecraft.vehicleframework.vehicles.component.propulsion.Throttle;
 
+/**
+ * Vehicle conditions written as text in the vehicle files. Each text is parsed into a
+ * {@link Condition} that only reads the vehicle, so rotation targets, which test theirs every tick,
+ * parse them once. A malformed condition parses to one that is always false.
+ */
 public class ConditionChecker {
-	public static boolean checkConditions(ActiveVehicle vehicle, List<String> conditions) {
-        for (String condition : conditions) {
-            if (condition == null) return false;
-            int start = condition.indexOf('(');
-            if (start <= 0 || !condition.endsWith(")")) return false;
-            String type = condition.substring(0, start).trim();
-            String value = condition.substring(start + 1, condition.length() - 1).trim();
-            if (!checkCondition(vehicle, type, value)) return false;
-        }
-        return true;
-	}
-	
-	public static boolean checkCondition(ActiveVehicle vehicle, String type, String value) {
-        if (type == null || value == null || value.isBlank()) return false;
-        type = type.trim();
-        value = value.trim();
-        if (java.util.Set.of("lift", "passengers", "is_passenger", "has_fuel").contains(type.toLowerCase(java.util.Locale.ROOT))
-                && !value.equalsIgnoreCase("true") && !value.equalsIgnoreCase("false")) return false;
-		if(type.equalsIgnoreCase("state")) {
-			if(!vehicle.getStateHandler().getCurrentState().getType().toString().equalsIgnoreCase(value)) return false;
-		} else if(type.equalsIgnoreCase("lift")) {
-			if(!vehicle.hasComponent(Component.WINGS)) return false;
-			Wings wings = (Wings) vehicle.getComponent(Component.WINGS);
-			if(!vehicle.hasComponent(Component.ENGINE)) return false;
-			Engine engine = (Engine) vehicle.getComponent(Component.ENGINE);
-			double lift = wings.getLift() * engine.getSpeed();
-            double throttleFactor = Math.max(0, engine.getThrottle().getCurrent()) / 100.0;
-            lift *= throttleFactor;
-			if(lift < 0.49 && value.equalsIgnoreCase("true")) return false;
-			if(lift >= 0.49 && value.equalsIgnoreCase("false")) return false;
-		} else if(type.equalsIgnoreCase("passengers")) {
-			if(!(vehicle.getSeatHandler().hasPassengers() == Boolean.parseBoolean(value))) return false;
-		} else if(type.equalsIgnoreCase("seat_filled")) {
-			if(vehicle.getAccessPanel().getSeat(value) == null || !vehicle.getAccessPanel().getSeat(value).isOccupied()) return false;
-		} else if(type.equalsIgnoreCase("seat_empty")) {
-			if(vehicle.getAccessPanel().getSeat(value) == null || vehicle.getAccessPanel().getSeat(value).isOccupied()) return false;
-		} else if(type.equalsIgnoreCase("is_passenger")) {
-			boolean passenger = vehicle.hasParent();
-			if(value.equalsIgnoreCase("true") && !passenger) return false;
-			if(value.equalsIgnoreCase("false") && passenger) return false;
-		} else if(type.equalsIgnoreCase("has_fuel")) {
-			boolean hasFuel = vehicle.hasFuel();
-			if(value.equalsIgnoreCase("true") && !hasFuel) return false;
-			if(value.equalsIgnoreCase("false") && hasFuel) return false;
-		} else if(type.equalsIgnoreCase("throttle_less_than")) {
-			Throttle throttle = vehicle.getThrottle();
-			if(throttle == null) return false;
-			int amount = throttle.getCurrent();
-			try { if(amount > Integer.parseInt(value)) return false; } catch (NumberFormatException invalid) { return false; }
-			return true;
-		} else if(type.equalsIgnoreCase("throttle_more_than")) {
-			Throttle throttle = vehicle.getThrottle();
-			if(throttle == null) return false;
-			int amount = throttle.getCurrent();
-			try { if(amount < Integer.parseInt(value)) return false; } catch (NumberFormatException invalid) { return false; }
-			return true;
-		} else if(type.equalsIgnoreCase("OR")) {
-			if(!orStatement(vehicle, value)) return false;
-		} else if(type.equalsIgnoreCase("AND")) {
-			if(!andStatement(vehicle, value)) return false;
-		} else if(type.equalsIgnoreCase("health_percent")) {
-			return checkHealthPercent(vehicle, value);
-		} else {
-            return false;
-        }
-		return true;
+	/** A parsed condition. */
+	@FunctionalInterface
+	public interface Condition {
+		boolean test(ActiveVehicle vehicle);
 	}
 
-	private static boolean checkHealthPercent(ActiveVehicle vehicle, String value) {
+	private static final Condition FALSE = vehicle -> false;
+	/** In an OR list, an entry without a type ends the list as false whatever came after it. */
+	private static final Condition END_FALSE = vehicle -> false;
+	private static final Set<String> BOOLEAN_TYPES = Set.of("lift", "passengers", "is_passenger", "has_fuel");
+
+	public static boolean checkConditions(ActiveVehicle vehicle, List<String> conditions) {
+		return compile(conditions).test(vehicle);
+	}
+
+	/** Conditions written as {@code type(value)}; all must hold, tested in order. */
+	public static Condition compile(List<String> conditions) {
+		List<Condition> parts = new ArrayList<>(conditions.size());
+		for (String condition : conditions) {
+			Condition part = compileEntry(condition);
+			parts.add(part);
+			// Nothing after an entry that is always false is ever tested.
+			if (part == FALSE) break;
+		}
+		return allOf(parts);
+	}
+
+	private static Condition compileEntry(String condition) {
+		if (condition == null) return FALSE;
+		int start = condition.indexOf('(');
+		if (start <= 0 || !condition.endsWith(")")) return FALSE;
+		String type = condition.substring(0, start).trim();
+		String value = condition.substring(start + 1, condition.length() - 1).trim();
+		return compile(type, value);
+	}
+
+	public static boolean checkCondition(ActiveVehicle vehicle, String type, String value) {
+		return compile(type, value).test(vehicle);
+	}
+
+	public static Condition compile(String type, String value) {
+		if (type == null || value == null || value.isBlank()) return FALSE;
+		String kind = type.trim();
+		String arg = value.trim();
+		if (BOOLEAN_TYPES.contains(kind.toLowerCase(Locale.ROOT))
+				&& !arg.equalsIgnoreCase("true") && !arg.equalsIgnoreCase("false")) return FALSE;
+		boolean isTrue = arg.equalsIgnoreCase("true");
+		boolean isFalse = arg.equalsIgnoreCase("false");
+		if (kind.equalsIgnoreCase("state")) {
+			return vehicle -> vehicle.getStateHandler().getCurrentState().getType().toString().equalsIgnoreCase(arg);
+		} else if (kind.equalsIgnoreCase("lift")) {
+			return vehicle -> {
+				if (!vehicle.hasComponent(Component.WINGS)) return false;
+				Wings wings = (Wings) vehicle.getComponent(Component.WINGS);
+				if (!vehicle.hasComponent(Component.ENGINE)) return false;
+				Engine engine = (Engine) vehicle.getComponent(Component.ENGINE);
+				double lift = wings.getLift() * engine.getSpeed();
+				double throttleFactor = Math.max(0, engine.getThrottle().getCurrent()) / 100.0;
+				lift *= throttleFactor;
+				if (lift < 0.49 && isTrue) return false;
+				return !(lift >= 0.49 && isFalse);
+			};
+		} else if (kind.equalsIgnoreCase("passengers")) {
+			boolean wanted = Boolean.parseBoolean(arg);
+			return vehicle -> vehicle.getSeatHandler().hasPassengers() == wanted;
+		} else if (kind.equalsIgnoreCase("seat_filled")) {
+			return vehicle -> vehicle.getAccessPanel().getSeat(arg) != null && vehicle.getAccessPanel().getSeat(arg).isOccupied();
+		} else if (kind.equalsIgnoreCase("seat_empty")) {
+			return vehicle -> vehicle.getAccessPanel().getSeat(arg) != null && !vehicle.getAccessPanel().getSeat(arg).isOccupied();
+		} else if (kind.equalsIgnoreCase("is_passenger")) {
+			return vehicle -> matches(vehicle.hasParent(), isTrue, isFalse);
+		} else if (kind.equalsIgnoreCase("has_fuel")) {
+			return vehicle -> matches(vehicle.hasFuel(), isTrue, isFalse);
+		} else if (kind.equalsIgnoreCase("throttle_less_than")) {
+			Integer limit = parseInt(arg);
+			if (limit == null) return FALSE;
+			return vehicle -> {
+				Throttle throttle = vehicle.getThrottle();
+				return throttle != null && throttle.getCurrent() <= limit;
+			};
+		} else if (kind.equalsIgnoreCase("throttle_more_than")) {
+			Integer limit = parseInt(arg);
+			if (limit == null) return FALSE;
+			return vehicle -> {
+				Throttle throttle = vehicle.getThrottle();
+				return throttle != null && throttle.getCurrent() >= limit;
+			};
+		} else if (kind.equalsIgnoreCase("OR")) {
+			return orStatement(arg);
+		} else if (kind.equalsIgnoreCase("AND")) {
+			return andStatement(arg);
+		} else if (kind.equalsIgnoreCase("health_percent")) {
+			return healthPercent(arg);
+		}
+		return FALSE;
+	}
+
+	/** Only an exact true or false constrains the value; anything else holds either way. */
+	private static boolean matches(boolean actual, boolean isTrue, boolean isFalse) {
+		if (isTrue && !actual) return false;
+		return !(isFalse && actual);
+	}
+
+	private static Integer parseInt(String value) {
+		try {
+			return Integer.parseInt(value);
+		} catch (NumberFormatException invalid) {
+			return null;
+		}
+	}
+
+	private static Condition healthPercent(String value) {
 		String componentName = null;
 		String comparison = null;
 		Integer threshold = null;
@@ -92,7 +140,7 @@ public class ConditionChecker {
 			int eq = part.indexOf('=');
 			if (eq < 0) {
 				if (componentName != null) {
-					return false;
+					return FALSE;
 				}
 				componentName = part;
 				continue;
@@ -106,51 +154,83 @@ public class ConditionChecker {
 			if (key.equalsIgnoreCase("less_than") || key.equalsIgnoreCase("more_than")
 					|| key.equalsIgnoreCase("at_most") || key.equalsIgnoreCase("at_least")) {
 				if (comparison != null) {
-					return false;
+					return FALSE;
 				}
-				try {
-					threshold = Integer.parseInt(raw);
-				} catch (NumberFormatException e) {
-					return false;
+				threshold = parseInt(raw);
+				if (threshold == null) {
+					return FALSE;
 				}
-				comparison = key.toLowerCase(java.util.Locale.ROOT);
+				comparison = key.toLowerCase(Locale.ROOT);
 				continue;
 			}
-			return false;
+			return FALSE;
 		}
-		if (componentName == null || comparison == null || threshold == null) {
-			return false;
+		if (componentName == null || comparison == null) {
+			return FALSE;
 		}
 		Component component;
 		try {
-			component = Component.valueOf(componentName.toUpperCase(java.util.Locale.ROOT));
+			component = Component.valueOf(componentName.toUpperCase(Locale.ROOT));
 		} catch (IllegalArgumentException e) {
-			return false;
+			return FALSE;
 		}
-		if (!vehicle.hasComponent(component)) {
-			return false;
-		}
-		int percent = vehicle.getComponent(component).getHealthData().getHealthPercentage();
-		if (comparison.equals("less_than")) return percent < threshold;
-		if (comparison.equals("more_than")) return percent > threshold;
-		if (comparison.equals("at_most")) return percent <= threshold;
-		return percent >= threshold; // The parser accepts only these four comparisons.
+		int limit = threshold;
+		String compare = comparison;
+		return vehicle -> {
+			if (!vehicle.hasComponent(component)) {
+				return false;
+			}
+			int percent = vehicle.getComponent(component).getHealthData().getHealthPercentage();
+			if (compare.equals("less_than")) return percent < limit;
+			if (compare.equals("more_than")) return percent > limit;
+			if (compare.equals("at_most")) return percent <= limit;
+			return percent >= limit; // The parser accepts only these four comparisons.
+		};
 	}
-	
-    private static boolean orStatement(ActiveVehicle vehicle, String conditions) {
-        for (String condition : conditions.split(";", -1)) {
-            int separator = condition.indexOf('=');
-            if (separator <= 0) return false;
-            if (checkCondition(vehicle, condition.substring(0, separator), condition.substring(separator + 1))) return true;
-        }
-        return false;
-    }
 
-    private static boolean andStatement(ActiveVehicle vehicle, String conditions) {
-        for (String condition : conditions.split(";", -1)) {
-            int separator = condition.indexOf('=');
-            if (separator <= 0 || !checkCondition(vehicle, condition.substring(0, separator), condition.substring(separator + 1))) return false;
-        }
-        return true;
-    }
+	/** True at the first entry that holds; false at the end, or at an entry without a type. */
+	private static Condition orStatement(String conditions) {
+		List<Condition> parts = new ArrayList<>();
+		for (String condition : conditions.split(";", -1)) {
+			int separator = condition.indexOf('=');
+			if (separator <= 0) {
+				parts.add(END_FALSE);
+				break;
+			}
+			parts.add(compile(condition.substring(0, separator), condition.substring(separator + 1)));
+		}
+		Condition[] all = parts.toArray(new Condition[0]);
+		return vehicle -> {
+			for (Condition part : all) {
+				if (part == END_FALSE) return false;
+				if (part.test(vehicle)) return true;
+			}
+			return false;
+		};
+	}
+
+	/** Every entry must hold; one without a type is false. */
+	private static Condition andStatement(String conditions) {
+		List<Condition> parts = new ArrayList<>();
+		for (String condition : conditions.split(";", -1)) {
+			int separator = condition.indexOf('=');
+			if (separator <= 0) {
+				parts.add(FALSE);
+				break;
+			}
+			parts.add(compile(condition.substring(0, separator), condition.substring(separator + 1)));
+		}
+		return allOf(parts);
+	}
+
+	/** True when every part holds, tested in order up to the first that does not. */
+	private static Condition allOf(List<Condition> parts) {
+		Condition[] all = parts.toArray(new Condition[0]);
+		return vehicle -> {
+			for (Condition part : all) {
+				if (!part.test(vehicle)) return false;
+			}
+			return true;
+		};
+	}
 }

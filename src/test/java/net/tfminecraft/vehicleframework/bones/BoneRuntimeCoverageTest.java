@@ -15,6 +15,7 @@ import net.tfminecraft.vehicleframework.enums.Keybind;
 import net.tfminecraft.vehicleframework.projectiles.ProjectilesCoverageTest.Rig;
 import net.tfminecraft.vehicleframework.protocol.PacketConverter;
 import net.tfminecraft.vehicleframework.protocol.VehiclePacketListener;
+import net.tfminecraft.vehicleframework.util.ConditionChecker;
 import net.tfminecraft.vehicleframework.vehicles.ActiveVehicle;
 import net.tfminecraft.vehicleframework.vehicles.util.AccessPanel;
 import org.bukkit.*;
@@ -23,6 +24,7 @@ import org.bukkit.util.Vector;
 import org.joml.Quaternionf;
 import org.junit.jupiter.api.*;
 import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
 
 class BoneRuntimeCoverageTest {
   Rig r;
@@ -196,6 +198,33 @@ class BoneRuntimeCoverageTest {
     vector.updateModel(model);
     assertSame(replacement, vector.getBase());
     assertEquals(new Vector(1, 0, 0), vector.getVector());
+  }
+
+  @Test
+  void rotationTargetConditionsAreParsedOnceAtLoadAndSharedByEveryCopy() throws Exception {
+    BoneRotator base = rotator("base", new RotationLimits());
+    try (MockedStatic<ConditionChecker> checker = mockStatic(ConditionChecker.class, CALLS_REAL_METHODS)) {
+      RotationTarget stored =
+          new RotationTarget(Rig.yaml("yaw: 30\nconditions: [has_fuel(true), passengers(false)]\n"));
+      RotationTarget first = new RotationTarget(vehicle, stored, base);
+      RotationTarget second = new RotationTarget(vehicle, stored, base);
+      when(vehicle.hasFuel()).thenReturn(true);
+      for (int tick = 0; tick < 5; tick++) {
+        first.run(vehicle);
+        second.run(vehicle);
+      }
+      assertTrue(first.isActive());
+      checker.verify(() -> ConditionChecker.compile(anyList()), times(1));
+      checker.verify(() -> ConditionChecker.checkConditions(any(), anyList()), never());
+      // A copy of a target that was never parsed parses on its first tick, once.
+      RotationTarget unparsed = mock(RotationTarget.class);
+      when(unparsed.getRotatorOverride()).thenReturn("none");
+      when(unparsed.getConditions()).thenReturn(List.of("has_fuel(false)"));
+      RotationTarget copy = new RotationTarget(vehicle, unparsed, base);
+      for (int tick = 0; tick < 3; tick++) copy.run(vehicle);
+      assertFalse(copy.isActive());
+      checker.verify(() -> ConditionChecker.compile(anyList()), times(2));
+    }
   }
 
   @Test

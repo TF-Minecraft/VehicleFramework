@@ -312,7 +312,9 @@ class ActiveVehicleTest {
         verify(v.getWeaponHandler()).input(v.getNearbyPlayers(), Keybind.W, player);
         v.damage("SUFFOCATION", 7);
         verify(v.getComponentHandler(), never()).damage(anyString(), anyDouble());
+        verify(v.getStateHandler(), never()).resetParkedRest();
         v.damage("fire", 8);
+        verify(v.getStateHandler()).resetParkedRest();
         verify(v.getComponentHandler()).damage("fire", 8);
         verify(v.getWeaponHandler()).damage("fire", 8);
         v.randomFire(); verify(v.getComponentHandler()).randomFire();
@@ -342,7 +344,9 @@ class ActiveVehicleTest {
         when(entity.getBoundingBox()).thenReturn(new BoundingBox(14.5, 64, -3.5, 16.5, 66, -0.5));
         when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
         StateHandler states = v.getStateHandler(); clearInvocations(states);
+        long before = v.getTicks();
         v.tick(); assertFalse(v.isEdgePaused()); verify(states).tick();
+        assertEquals(before + 1, v.getTicks());
         // Unloading a chunk the vehicle does not reach changes nothing; Paper fires the unload event for one it does.
         when(world.isChunkLoaded(1, -1)).thenReturn(false); v.chunkUnloading(world, 5, -1); v.chunkUnloading(mock(World.class), 1, -1);
         clearInvocations(world); v.tick(); assertFalse(v.isEdgePaused()); verify(world, never()).isChunkLoaded(anyInt(), anyInt());
