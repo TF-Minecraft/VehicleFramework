@@ -214,6 +214,7 @@ class BoneRuntimeCoverageTest {
         second.run(vehicle);
       }
       assertTrue(first.isActive());
+      assertTrue(second.isActive());
       checker.verify(() -> ConditionChecker.compile(anyList()), times(1));
       checker.verify(() -> ConditionChecker.checkConditions(any(), anyList()), never());
       // A copy of a target that was never parsed parses on its first tick, once.
